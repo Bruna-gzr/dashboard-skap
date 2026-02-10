@@ -211,9 +211,15 @@ for _, status_col, limite_col, _ in etapas:
     lim = df_f[limite_col]
 
     mask_np = (st_col == "No prazo") & lim.notna()
-    dias_para_vencer = (lim - hoje).dt.days
-    mask_venc3 = mask_np & (dias_para_vencer >= 0) & (dias_para_vencer <= 3)
-    no_prazo_vencendo_ids.update(df_f.loc[mask_venc3, "COLABORADOR"].astype(str).tolist())
+    # apenas quem está realmente "No prazo"
+mask_np = (st_col == "No prazo") & lim.notna()
+
+# dias até vencer
+dias_para_vencer = (lim - hoje).dt.days
+
+# somente futuros vencimentos (não vencidos)
+mask_venc3 = mask_np & dias_para_vencer.between(0, 3)
+
 
     mask_nr = (st_col == "Não Realizada")
     nao_realizada_ids.update(df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist())
