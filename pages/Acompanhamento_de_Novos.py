@@ -87,15 +87,15 @@ def normalizar_status(s) -> str:
     sl = s.lower()
 
     # Realizada
-    if sl in ["realizada", "realizada"]:
+    if sl in ["realizada", "realizado"]:
         return "Realizada"
 
     # Não Realizada
-    if sl in ["não realizada", "nao realizada", "não realizada", "nao realizada"]:
+    if sl in ["não realizada", "nao realizada", "não realizado", "nao realizado"]:
         return "Não Realizada"
 
     # Realizada - Fora do Prazo
-    if sl in ["realizada - fora do prazo", "realizada - fora do prazo"]:
+    if sl in ["realizada - fora do prazo", "realizado - fora do prazo"]:
         return "Realizada - Fora do Prazo"
 
     # No prazo
@@ -213,7 +213,7 @@ if f_atividade:
 # Cards globais
 # =========================
 no_prazo_vencendo_ids = set()
-nao_realizada_ids = set()
+nao_realizado_ids = set()
 
 for _, status_col, limite_col, _ in etapas:
     st_col = df_f[status_col].fillna("")
@@ -229,24 +229,24 @@ for _, status_col, limite_col, _ in etapas:
         df_f.loc[mask_venc3, "COLABORADOR"].astype(str).tolist()
     )
 
-    # Não realizada em alguma etapa
+    # Não realizado em alguma etapa
     mask_nr = (st_col == "Não Realizada")
 
     if mask_nr.any():
-        nao_realizada_ids.update(
+        nao_realizado_ids.update(
             df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist()
         )
 
 
-    # Não Realizada em alguma etapa
+    # Não Realizado em alguma etapa
     mask_nr = (st_col == "Não Realizada")
     if mask_nr.any():
-        nao_realizada_ids.update(df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist())
+        nao_realizado_ids.update(df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist())
 
 c1, c2, c3 = st.columns(3)
 c1.metric("Total (Admissão ≥ 01/01/2025)", len(df_f))
 c2.metric("🟡 No prazo vencendo em até 3 dias", len(no_prazo_vencendo_ids))
-c3.metric("🔴 Com alguma etapa Não Realizada", len(nao_realizada_ids))
+c3.metric("🔴 Com alguma etapa Não Realizado", len(nao_realizado_ids))
 
 st.divider()
 
@@ -273,24 +273,24 @@ else:
 st.divider()
 
 # =========================
-# Top 5 Operações com mais Não Realizada (global)
+# Top 5 Operações com mais Não Realizado (global)
 # =========================
-st.subheader("🏆 Top 5 operações com mais 'Não Realizada' (geral)")
+st.subheader("🏆 Top 5 operações com mais 'Não Realizado' (geral)")
 
 nr_counts = []
 for _, status_col, _, _ in etapas:
-    tmp = df_f[df_f[status_col] == "Não Realizada"].groupby("OPERACAO").size()
+    tmp = df_f[df_f[status_col] == "Não Realizado"].groupby("OPERACAO").size()
     nr_counts.append(tmp)
 
 if nr_counts:
     nr_total = pd.concat(nr_counts, axis=0).groupby(level=0).sum().sort_values(ascending=False)
     top5_global = nr_total.head(5).reset_index()
-    top5_global.columns = ["OPERACAO", "QTD_NAO_REALIZADA"]
+    top5_global.columns = ["OPERACAO", "QTD_NAO_REALIZADO"]
 else:
-    top5_global = pd.DataFrame(columns=["OPERACAO", "QTD_NAO_REALIZADA"])
+    top5_global = pd.DataFrame(columns=["OPERACAO", "QTD_NAO_REALIZADO"])
 
 if len(top5_global) == 0:
-    st.info("Nenhuma ocorrência de 'Não Realizada' com os filtros atuais.")
+    st.info("Nenhuma ocorrência de 'Não Realizado' com os filtros atuais.")
 else:
     st.dataframe(top5_global, use_container_width=True)
 
@@ -384,18 +384,18 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
         ]
     ].copy()
 
-    # Top 5 operações com mais "Não Realizada" NESTA etapa
-    st.write("**Top 5 operações com mais 'Não Realizada' (nesta etapa)**")
+    # Top 5 operações com mais "Não Realizado" NESTA etapa
+    st.write("**Top 5 operações com mais 'Não Realizado' (nesta etapa)**")
     top5_etapa = (
         tmp[tmp[status_col] == "Não Realizada"]
         .groupby("OPERACAO")
         .size()
         .sort_values(ascending=False)
         .head(5)
-        .reset_index(name="QTD_NAO_REALIZADA")
+        .reset_index(name="QTD_NAO_REALIZADO")
     )
     if len(top5_etapa) == 0:
-        st.caption("Sem 'Não Realizada' nesta etapa com os filtros atuais.")
+        st.caption("Sem 'Não Realizado' nesta etapa com os filtros atuais.")
     else:
         st.dataframe(top5_etapa, use_container_width=True)
 
