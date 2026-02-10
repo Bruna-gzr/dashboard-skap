@@ -10,7 +10,7 @@ from io import BytesIO
 # Config
 # =========================
 st.set_page_config(layout="wide")
-st.title("📊 Painel SKAP - Gestão de Desenvolvimento")
+st.title("📊 Painel SKAP")
 
 # =========================
 # Carregamento automático (pasta data/)
@@ -50,6 +50,14 @@ def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
         .str.decode("utf-8")
     )
     return df
+
+def centralizar_tabela(df: pd.DataFrame):
+    return (
+        df.style
+        .set_properties(**{"text-align": "center"})
+        .set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
+    )
+
 
 def limpar_texto(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     for c in cols:
@@ -382,7 +390,7 @@ st.subheader("⚠️ Atenção: Vencimento próximo")
 if len(alerta_df) == 0:
     st.info("Nenhuma etapa vencendo nos próximos 7 dias com os filtros atuais.")
 else:
-    st.dataframe(alerta_df, use_container_width=True)
+    st.dataframe(centralizar_tabela(alerta_df), use_container_width=True)
 
 st.divider()
 
@@ -453,4 +461,6 @@ for c in ["STATUS TECNICAS", "STATUS ESPECIFICAS"]:
     if c in tabela.columns:
         tabela[c] = tabela[c].astype(str).map(emoji_status)
 
-st.dataframe(tabela, use_container_width=True)
+st.dataframe(centralizar_tabela(tabela), use_container_width=True)
+
+
