@@ -11,10 +11,7 @@ st.title("📊 Painel SKAP - Gestão de Desenvolvimento")
 # =========================
 # Atualização (cache)
 # =========================
-st.sidebar.header("Atualização")
-if st.sidebar.button("🔄 Recarregar dados"):
-    st.cache_data.clear()
-    st.rerun()
+
 
 # =========================
 # Carregamento automático (pasta data/)
