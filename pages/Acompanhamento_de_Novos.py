@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, date
+from datetime import datetime
 from pathlib import Path
 from io import BytesIO
 import plotly.express as px
@@ -65,7 +65,7 @@ def to_datetime_safe(s: pd.Series) -> pd.Series:
     s2 = s.copy()
     s_str = (
         s2.astype(str)
-        .str.replace("\u00a0", " ", regex=False)
+        .str.replace("\u00a0", " ", regex=False)  # NBSP
         .str.strip()
     )
     s_str = s_str.replace({"": pd.NA, "nan": pd.NA, "None": pd.NA, "NaT": pd.NA, "-": pd.NA})
@@ -98,16 +98,12 @@ def normalizar_status(s) -> str:
 
     if sl in ["realizada", "realizado"]:
         return "Realizada"
-
     if sl in ["não realizada", "nao realizada", "não realizado", "nao realizado"]:
         return "Não Realizada"
-
     if sl in ["realizada - fora do prazo", "realizado - fora do prazo"]:
         return "Realizada - Fora do Prazo"
-
     if sl == "no prazo":
         return "No prazo"
-
     if sl in ["n/a", "na"]:
         return "N/A"
 
@@ -203,183 +199,31 @@ if f_atividade:
 # =========================
 # Cards globais
 # =========================
-no_prazo_vencendo_ids = set()
+no_prazo_venc3_ids = set()
 nao_realizada_ids = set()
 
 for _, status_col, limite_col, _ in etapas:
     st_col = df_f[status_col].fillna("")
     lim = df_f[limite_col]
 
+    # ✅ SOMENTE "No prazo"
     mask_np = (st_col == "No prazo") & lim.notna()
-    # apenas quem está realmente "No prazo"
-mask_np = (st_col == "No prazo") & lim.notna()
-
-# dias até vencer
-dias_para_vencer = (lim - hoje).dt.days
-
-# somente futuros vencimentos (não vencidos)
-mask_venc3 = mask_np & dias_para_vencer.between(0, 3)
-
+    dias_para_vencer = (lim - hoje).dt.days
+    mask_venc3 = mask_np & dias_para_vencer.between(0, 3)
+    no_prazo_venc3_ids.update(df_f.loc[mask_venc3, "COLABORADOR"].astype(str).tolist())
 
     mask_nr = (st_col == "Não Realizada")
     nao_realizada_ids.update(df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist())
 
 c1, c2, c3 = st.columns(3)
 c1.metric("Total (Admissão ≥ 01/01/2025)", len(df_f))
-c2.metric("🟡 No prazo vencendo em até 3 dias", len(no_prazo_vencendo_ids))
+c2.metric("🟡 No prazo vencendo em até 3 dias", len(no_prazo_venc3_ids))
 c3.metric("🔴 Com alguma etapa Não Realizada", len(nao_realizada_ids))
 
 st.divider()
 
 # =========================
-# Gráfico: % médio de Progresso Geral por Operação
-# =========================
-st.subheader("📈 Progresso Geral médio por Operação")
-
-prog_op = (
-    df_f.groupby("OPERACAO", dropna=False)["PROGRESSO_GERAL_NUM"]
-    .mean()
-    .sort_values(ascending=False)
-    .reset_index(name="PROGRESSO_MEDIO")
-)
-
-if len(prog_op) == 0:
-    st.info("Sem dados para exibir o gráfico com os filtros atuais.")
-else:
-    prog_op["PROGRESSO_MEDIO_%"] = (prog_op["PROGRESSO_MEDIO"] * 100).round(1)
-    fig = px.bar(prog_op, x="OPERACAO", y="PROGRESSO_MEDIO_%", text="PROGRESSO_MEDIO_%")
-    fig.update_layout(yaxis_title="% médio", xaxis_title="Operação", xaxis={"categoryorder": "total descending"})
-    st.plotly_chart(fig, use_container_width=True)
-
-st.divider()
-
-# =========================
-# Top 5 Operações com mais Não Realizada (global)
-# =========================
-# =========================
-# Não Realizada (geral) - lista consolidada
-# =========================
-st.subheader("🔴 Não Realizada — detalhamento geral")
-
-linhas_nr = []
-
-for nome_aba, status_col, limite_col, dt_col in etapas:
-    st_col = df_f[status_col].fillna("")
-    lim = df_f[limite_col]
-    dt = df_f[dt_col]
-
-    mask_nr = (st_col == "Não Realizada") & lim.notna()
-
-    if mask_nr.any():
-        # DIAS: se tem dt -> limite - dt | se dt vazia -> limite - hoje
-        dias = (lim - hoje).dt.days
-        dias_dt = (lim - dt).dt.days
-        dias = dias.where(dt.isna(), dias_dt)
-
-        tmp_nr = df_f.loc[mask_nr, ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
-        tmp_nr["ETAPA"] = nome_aba
-        tmp_nr["DATA LIMITE"] = lim.loc[mask_nr].copy()
-        tmp_nr["DIAS"] = pd.to_numeric(dias.loc[mask_nr], errors="coerce").fillna(0).astype(int).values
-
-        linhas_nr.append(tmp_nr)
-
-if linhas_nr:
-    df_nr = pd.concat(linhas_nr, ignore_index=True)
-
-    # ordena: mais críticos primeiro (mais negativo), depois por admissão
-    df_nr = df_nr.sort_values(["DIAS", "ADMISSAO"], ascending=[True, True])
-
-    # formata datas
-    df_nr["ADMISSAO"] = fmt_data(df_nr["ADMISSAO"])
-    df_nr["DATA LIMITE"] = fmt_data(df_nr["DATA LIMITE"])
-
-    st.metric("Registros com etapa 'Não Realizada'", len(df_nr))
-
-    st.dataframe(
-        df_nr[["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "ETAPA", "DATA LIMITE", "DIAS"]],
-        use_container_width=True,
-        height=450
-    )
-else:
-    st.metric("Registros com etapa 'Não Realizada'", 0)
-    st.info("Nenhuma ocorrência de 'Não Realizada' com os filtros atuais.")
-
-
-# ✅ Card / lista abaixo do Top 5 global: No prazo vencendo até 3 dias
-st.subheader("🟡 No prazo vencendo em até 3 dias (geral)")
-
-linhas = []
-
-for nome_aba, status_col, limite_col, dt_col in etapas:
-    st_col = df_f[status_col].fillna("")
-    lim = df_f[limite_col]
-
-    # somente "No prazo" com limite válido
-    mask_np = (st_col == "No prazo") & lim.notna()
-
-    dias_para_vencer = (lim - hoje).dt.days
-    mask_venc3 = mask_np & (dias_para_vencer >= 0) & (dias_para_vencer <= 3)
-
-    if mask_venc3.any():
-        tmp_np = df_f.loc[mask_venc3, ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
-        tmp_np["ETAPA"] = nome_aba
-        tmp_np["DATA LIMITE"] = df_f.loc[mask_venc3, limite_col].copy()
-        tmp_np["DIAS"] = dias_para_vencer.loc[mask_venc3].astype(int).values
-        linhas.append(tmp_np)
-
-if linhas:
-    df_alerta = pd.concat(linhas, ignore_index=True)
-
-    # ordena: primeiro quem vence antes, depois por admissão
-    df_alerta = df_alerta.sort_values(["DIAS", "ADMISSAO"], ascending=[True, True])
-
-    # formata datas sem hora
-    df_alerta["ADMISSAO"] = fmt_data(df_alerta["ADMISSAO"])
-    df_alerta["DATA LIMITE"] = fmt_data(df_alerta["DATA LIMITE"])
-
-    st.metric("Registros 'No prazo' vencendo em até 3 dias", len(df_alerta))
-
-    view_nr = df_nr[
-    ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO",
-     "TEMPO DE CASA", "ETAPA", "DATA LIMITE", "DIAS"]
-].copy()
-
-styler_nr = view_nr.style
-styler_nr = styler_nr.set_properties(**{
-    "text-align": "center",
-    "max-width": "140px",
-    "white-space": "nowrap",
-    "overflow": "hidden",
-    "text-overflow": "ellipsis",
-    "font-size": "12px",
-})
-
-styler_nr = styler_nr.set_table_styles([
-    {"selector": "th", "props": [("text-align", "center"), ("font-size", "12px")]},
-])
-
-# aplica cores no DIAS
-def estilo_dias(v):
-    try:
-        v = int(v)
-    except Exception:
-        return "text-align: center;"
-    if v > 0:
-        return "color: #00c853; font-weight: 700; text-align: center;"
-    if v < 0:
-        return "color: #ff1744; font-weight: 700; text-align: center;"
-    return "color: #ffd600; font-weight: 700; text-align: center;"
-
-styler_nr = styler_nr.applymap(estilo_dias, subset=["DIAS"])
-
-st.dataframe(
-    styler_nr,
-    use_container_width=True,
-    height=450
-)
-
-# =========================
-# Estilos
+# Estilos (usados em tudo)
 # =========================
 def estilo_progresso(v):
     try:
@@ -417,13 +261,127 @@ def estilo_dias(v):
         return "color: #ff1744; font-weight: 700; text-align: center;"
     return "color: #ffd600; font-weight: 700; text-align: center;"
 
+def styler_padrao(df_view: pd.DataFrame):
+    sty = df_view.style
+    sty = sty.set_properties(**{
+        "text-align": "center",
+        "max-width": "140px",
+        "white-space": "nowrap",
+        "overflow": "hidden",
+        "text-overflow": "ellipsis",
+        "font-size": "12px",
+    })
+    sty = sty.set_table_styles([
+        {"selector": "th", "props": [("text-align", "center"), ("font-size", "12px")]},
+    ])
+    return sty
+
 # =========================
-# Função por etapa
+# Gráfico: % médio de Progresso Geral por Operação
+# =========================
+st.subheader("📈 Progresso Geral médio por Operação")
+
+prog_op = (
+    df_f.groupby("OPERACAO", dropna=False)["PROGRESSO_GERAL_NUM"]
+    .mean()
+    .sort_values(ascending=False)
+    .reset_index(name="PROGRESSO_MEDIO")
+)
+
+if len(prog_op) == 0:
+    st.info("Sem dados para exibir o gráfico com os filtros atuais.")
+else:
+    prog_op["PROGRESSO_MEDIO_%"] = (prog_op["PROGRESSO_MEDIO"] * 100).round(1)
+    fig = px.bar(prog_op, x="OPERACAO", y="PROGRESSO_MEDIO_%", text="PROGRESSO_MEDIO_%")
+    fig.update_layout(yaxis_title="% médio", xaxis_title="Operação", xaxis={"categoryorder": "total descending"})
+    st.plotly_chart(fig, use_container_width=True)
+
+st.divider()
+
+# =========================
+# 🔴 Não Realizada — detalhamento geral
+# =========================
+st.subheader("🔴 Não Realizada — detalhamento geral")
+
+linhas_nr = []
+for nome_aba, status_col, limite_col, dt_col in etapas:
+    st_col = df_f[status_col].fillna("")
+    lim = df_f[limite_col]
+    dt = df_f[dt_col]
+
+    mask_nr = (st_col == "Não Realizada") & lim.notna()
+    if mask_nr.any():
+        dias = (lim - hoje).dt.days
+        dias_dt = (lim - dt).dt.days
+        dias = dias.where(dt.isna(), dias_dt)
+
+        tmp_nr = df_f.loc[mask_nr, ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
+        tmp_nr["ETAPA"] = nome_aba
+        tmp_nr["DATA LIMITE"] = lim.loc[mask_nr].copy()
+        tmp_nr["DIAS"] = pd.to_numeric(dias.loc[mask_nr], errors="coerce").fillna(0).astype(int).values
+        linhas_nr.append(tmp_nr)
+
+if linhas_nr:
+    df_nr = pd.concat(linhas_nr, ignore_index=True)
+    df_nr = df_nr.sort_values(["DIAS", "ADMISSAO"], ascending=[True, True])  # mais crítico (negativo) primeiro
+    df_nr["ADMISSAO"] = fmt_data(df_nr["ADMISSAO"])
+    df_nr["DATA LIMITE"] = fmt_data(df_nr["DATA LIMITE"])
+
+    st.metric("Registros com etapa 'Não Realizada'", len(df_nr))
+
+    view_nr = df_nr[["COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
+    sty_nr = styler_padrao(view_nr).applymap(estilo_dias, subset=["DIAS"])
+    st.dataframe(sty_nr, use_container_width=True, height=450)
+else:
+    st.metric("Registros com etapa 'Não Realizada'", 0)
+    st.info("Nenhuma ocorrência de 'Não Realizada' com os filtros atuais.")
+
+st.divider()
+
+# =========================
+# 🟡 No prazo vencendo em até 3 dias (geral) — detalhamento
+# =========================
+st.subheader("🟡 No prazo vencendo em até 3 dias (geral)")
+
+linhas_np = []
+for nome_aba, status_col, limite_col, dt_col in etapas:
+    st_col = df_f[status_col].fillna("")
+    lim = df_f[limite_col]
+
+    # ✅ SOMENTE "No prazo"
+    mask_np = (st_col == "No prazo") & lim.notna()
+    dias_para_vencer = (lim - hoje).dt.days
+    mask_venc3 = mask_np & dias_para_vencer.between(0, 3)
+
+    if mask_venc3.any():
+        tmp_np = df_f.loc[mask_venc3, ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
+        tmp_np["ETAPA"] = nome_aba
+        tmp_np["DATA LIMITE"] = lim.loc[mask_venc3].copy()
+        tmp_np["DIAS"] = pd.to_numeric(dias_para_vencer.loc[mask_venc3], errors="coerce").fillna(0).astype(int).values
+        linhas_np.append(tmp_np)
+
+if linhas_np:
+    df_alerta = pd.concat(linhas_np, ignore_index=True)
+    df_alerta = df_alerta.sort_values(["DIAS", "ADMISSAO"], ascending=[True, True])
+    df_alerta["ADMISSAO"] = fmt_data(df_alerta["ADMISSAO"])
+    df_alerta["DATA LIMITE"] = fmt_data(df_alerta["DATA LIMITE"])
+
+    st.metric("Registros 'No prazo' vencendo em até 3 dias", len(df_alerta))
+
+    view_np = df_alerta[["COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
+    sty_np = styler_padrao(view_np).applymap(estilo_dias, subset=["DIAS"])
+    st.dataframe(sty_np, use_container_width=True, height=420)
+else:
+    st.metric("Registros 'No prazo' vencendo em até 3 dias", 0)
+    st.info("Nenhum colaborador com etapa 'No prazo' vencendo em até 3 dias com os filtros atuais.")
+
+st.divider()
+
+# =========================
+# Função por etapa (abas)
 # =========================
 def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     tmp = df_f.copy()
-
-    # ✅ entender a ordem por ADMISSAO (data real)
     tmp = tmp.sort_values("ADMISSAO", ascending=True)
 
     if f_status:
@@ -433,6 +391,10 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     lim = tmp[limite_col]
     status = tmp[status_col].fillna("")
 
+    # DIAS:
+    # - padrão: limite - hoje
+    # - se tiver dt preenchida: limite - dt
+    # - se status == "No prazo": força limite - hoje
     dias = (lim - hoje).dt.days
     dias_dt = (lim - dt).dt.days
     dias = dias.where(dt.isna(), dias_dt)
@@ -470,7 +432,6 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
         .head(5)
         .reset_index(name="QTD_NAO_REALIZADA")
     )
-
     if len(top5_etapa) == 0:
         st.caption("Sem 'Não Realizada' nesta etapa com os filtros atuais.")
     else:
@@ -488,24 +449,12 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
 
     st.subheader(f"📋 Detalhamento — {nome_aba}")
 
-    styler = view.style
-    styler = styler.set_properties(**{
-        "text-align": "center",
-        "max-width": "140px",
-        "white-space": "nowrap",
-        "overflow": "hidden",
-        "text-overflow": "ellipsis",
-        "font-size": "12px",
-    })
-    styler = styler.set_table_styles([
-        {"selector": "th", "props": [("text-align", "center"), ("font-size", "12px")]},
-    ])
+    sty = styler_padrao(view)
+    sty = sty.applymap(estilo_progresso, subset=["PROGRESSO GERAL"])
+    sty = sty.applymap(estilo_status, subset=[status_col])
+    sty = sty.applymap(estilo_dias, subset=["DIAS"])
 
-    styler = styler.applymap(estilo_progresso, subset=["PROGRESSO GERAL"])
-    styler = styler.applymap(estilo_status, subset=[status_col])
-    styler = styler.applymap(estilo_dias, subset=["DIAS"])
-
-    st.dataframe(styler, use_container_width=True, height=700)
+    st.dataframe(sty, use_container_width=True, height=700)
 
 # =========================
 # Abas
