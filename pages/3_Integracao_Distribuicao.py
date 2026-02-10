@@ -154,17 +154,19 @@ base = ativos[
 ].copy()
 
 # --- EXCEÇÃO: CD PETRÓPOLIS com admissão em 16/07/2025 (ignorar) ---
-data_excluir = pd.to_datetime("2025-07-16")
-base = base[
-    ~(
-        base["OPERACAO"].astype(str).str.upper().str.contains("PETROPOLIS", na=False)
-        & (base["DATA_ADM_DT"] == data_excluir)
-    )
-]
+data_excluir = pd.to_datetime("2025-07-16").date()
 
-base["DATA ADMISSAO"] = base["DATA_ADM_DT"].dt.strftime("%d/%m/%Y").fillna("")
-hoje = pd.to_datetime(datetime.today().date())
-base["TEMPO DE CASA"] = (hoje - base["DATA_ADM_DT"]).dt.days.fillna(0).astype(int)
+def normalizar_texto(s: str) -> str:
+    import unicodedata
+    s = "" if s is None else str(s)
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("utf-8")
+    return s.upper().strip()
+
+op_norm = base["OPERACAO"].astype(str).map(normalizar_texto)
+adm_date = base["DATA_ADM_DT"].dt.date  # tira hora, compara só a data
+
+base = base[~((op_norm.str.contains("CD PETROPOLIS", na=False)) & (adm_date == data_excluir))]
+
 
 # =========================
 # IDs por colaborador
@@ -240,16 +242,17 @@ for _, r in base[base_cols].iterrows():
         status = calcular_status(realizado_dt, dias, lim_adiantado)
 
         linhas.append({
-            "COLABORADOR": r["COLABORADOR"],
-            "CARGO": r["CARGO"],
-            "OPERACAO": r["OPERACAO"],
-            "ETAPA": etapa,
-            "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
-            "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
-            "REALIZADO": "" if pd.isna(realizado_dt) else realizado_dt.strftime("%d/%m/%Y"),
-            "DIAS": dias,
-            "STATUS": status,
-        })
+    "COLABORADOR": r["COLABORADOR"],
+    "CARGO": r["CARGO"],
+    "OPERACAO": r["OPERACAO"],
+    "ADMISSAO": r["DATA ADMISSAO"],  # ✅ NOVO
+    "ETAPA": etapa,
+    "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
+    "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
+    "REALIZADO": "" if pd.isna(realizado_dt) else realizado_dt.strftime("%d/%m/%Y"),
+    "DIAS": dias,
+    "STATUS": status,
+})
 
 etapas_df = pd.DataFrame(linhas)
 
@@ -389,6 +392,13 @@ for i, etapa in enumerate(ordem_etapas, start=1):
         st.write(f"Etapa: **{etapa}**")
 
         df_etapa = df_f[df_f["ETAPA"] == etapa].copy()
+        # ordenar por admissão e reorganizar colunas
+df_etapa["_ADM_DT"] = pd.to_datetime(df_etapa["ADMISSAO"], dayfirst=True, errors="coerce")
+df_etapa = df_etapa.sort_values(["OPERACAO", "_ADM_DT", "COLABORADOR"]).drop(columns=["_ADM_DT"])
+
+cols_ordem = ["COLABORADOR", "CARGO", "OPERACAO", "ADMISSAO", "ETAPA", "PRAZO MINIMO", "PRAZO MAXIMO", "REALIZADO", "DIAS", "STATUS"]
+df_etapa = df_etapa[[c for c in cols_ordem if c in df_etapa.columns]]
+
         df_etapa = df_etapa.sort_values(["OPERACAO", "COLABORADOR"])
 
         if len(df_etapa) == 0:
