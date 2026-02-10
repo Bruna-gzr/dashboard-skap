@@ -209,12 +209,16 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col, dt_e_datahora: bool):
     lim = tmp[limite_col]
 
     dias = np.where(
-        dt.isna(),
-        (lim - hoje).dt.days,
-        (lim - dt).dt.days
-    )
+    dt.isna(),
+    (lim - hoje).dt.days,
+    (lim - dt).dt.days
+)
 
-    tmp["DIAS"] = pd.to_numeric(dias, errors="coerce").round(0).astype("Int64")
+# robusto: converte, mantém NaN, e usa inteiro sem quebrar
+tmp["DIAS"] = pd.to_numeric(pd.Series(dias), errors="coerce")
+tmp["DIAS"] = tmp["DIAS"].round(0)
+tmp["DIAS"] = tmp["DIAS"].astype("Int64")  # permite <NA>
+
 
     # Formata datas para exibição
     tmp["ADMISSAO"] = fmt_data(tmp["ADMISSAO"])
