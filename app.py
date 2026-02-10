@@ -8,10 +8,6 @@ import numpy as np
 st.set_page_config(layout="wide")
 st.title("📊 Painel SKAP - Gestão de Desenvolvimento")
 
-# =========================
-# Atualização (cache)
-# =========================
-
 
 # =========================
 # Carregamento automático (pasta data/)
@@ -299,3 +295,4 @@ styled = (
 
 st.subheader("📋 Detalhamento Individual")
 st.dataframe(styled, use_container_width=True)
+
