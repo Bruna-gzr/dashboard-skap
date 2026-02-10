@@ -80,20 +80,32 @@ def fmt_data(d: pd.Series) -> pd.Series:
 
 def normalizar_status(s) -> str:
     s = str(s).strip()
+
     if s.lower() in ["nan", "none", ""]:
         return ""
+
     sl = s.lower()
-    if sl == "realizado":
-        return "Realizado"
-    if sl in ["não realizado", "nao realizado"]:
-        return "Não Realizado"
-    if sl in ["realizado - fora do prazo", "realizada - fora do prazo"]:
-        return "Realizado - fora do prazo"
-    if sl in ["no prazo", "no-prazo"]:
+
+    if sl in ["realizada", "realizado"]:
+        return "Realizada"
+
+    if sl in ["não realizada", "nao realizada", "não realizado", "nao realizado"]:
+        return "Não Realizada"
+
+    if sl in [
+        "realizada - fora do prazo",
+        "realizado - fora do prazo"
+    ]:
+        return "Realizada - Fora do Prazo"
+
+    if sl in ["no prazo"]:
         return "No prazo"
+
     if sl in ["n/a", "na"]:
         return "N/A"
+
     return s
+
 
 def preparar_excel_para_download(df_: pd.DataFrame, sheet_name="Dados") -> bytes:
     output = BytesIO()
@@ -208,10 +220,14 @@ for _, status_col, limite_col, _ in etapas:
 
     # No prazo vencendo em até 3 dias
     mask_np = (st_col == "No prazo") & lim.notna()
-    dias_para_vencer = (lim - hoje).dt.days
-    mask_venc3 = mask_np & (dias_para_vencer >= 0) & (dias_para_vencer <= 3)
-    if mask_venc3.any():
-        no_prazo_vencendo_ids.update(df_f.loc[mask_venc3, "COLABORADOR"].astype(str).tolist())
+
+dias_para_vencer = (lim - hoje).dt.days
+
+mask_venc3 = mask_np & (dias_para_vencer >= 0) & (dias_para_vencer <= 3)
+
+no_prazo_vencendo_ids.update(
+    df_f.loc[mask_venc3, "COLABORADOR"].astype(str).tolist()
+)
 
     # Não Realizado em alguma etapa
     mask_nr = (st_col == "Não Realizado")
@@ -240,7 +256,7 @@ prog_op = (
 if len(prog_op) == 0:
     st.info("Sem dados para exibir o gráfico com os filtros atuais.")
 else:
-    prog_op["PROGRESSO_MEDIO_%"] = (prog_op["PROGRESSO_MEDIO"] * 100).round(0).astype(int)
+    prog_op["PROGRESSO_MEDIO_%"] = (prog_op["PROGRESSO_MEDIO"] * 100).round(1)
     fig = px.bar(prog_op, x="OPERACAO", y="PROGRESSO_MEDIO_%", text="PROGRESSO_MEDIO_%")
     fig.update_layout(yaxis_title="% médio", xaxis_title="Operação", xaxis={"categoryorder": "total descending"})
     st.plotly_chart(fig, use_container_width=True)
@@ -287,17 +303,24 @@ def estilo_progresso(v):
 
 def estilo_status(v):
     s = str(v).strip().lower()
-    if s == "realizado":
+
+    if s == "realizada":
         return "color: #00c853; font-weight: 700; text-align: center;"
-    if s in ["não realizado", "nao realizado"]:
+
+    if s == "não realizada":
         return "color: #ff1744; font-weight: 700; text-align: center;"
-    if s == "realizado - fora do prazo":
+
+    if s == "realizada - fora do prazo":
         return "color: #ff9100; font-weight: 700; text-align: center;"
+
     if s == "no prazo":
         return "color: #ffd600; font-weight: 700; text-align: center;"
-    if s in ["n/a", "na"]:
-        return "color: #ffffff; font-weight: 700; text-align: center;"
+
+    if s == "n/a":
+        return "text-align: center;"
+
     return "text-align: center;"
+
 
 def estilo_dias(v):
     try:
