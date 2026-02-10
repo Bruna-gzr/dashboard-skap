@@ -394,6 +394,58 @@ else:
 st.divider()
 
 # =========================
+# SKAP Vencida (etapas "Não realizado" e já vencidas)
+# =========================
+vencidas = []
+
+# Técnicas vencidas
+mask_vtec = (tmp["STATUS TECNICAS"] == "Não realizado") & tmp["PRAZO_TECNICAS_DT"].notna()
+dias_vtec = (hoje - tmp.loc[mask_vtec, "PRAZO_TECNICAS_DT"]).dt.days  # >0 = vencido
+tmp_vtec = tmp.loc[mask_vtec].copy()
+tmp_vtec["DIAS VENCIDO"] = dias_vtec.values
+tmp_vtec = tmp_vtec[tmp_vtec["DIAS VENCIDO"] > 0]
+
+if len(tmp_vtec) > 0:
+    tmp_vtec["ETAPA"] = "Técnicas"
+    tmp_vtec["DATA VENCIMENTO"] = tmp_vtec["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y")
+    vencidas.append(tmp_vtec[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS VENCIDO"]])
+
+# Específicas vencidas
+mask_vesp = (tmp["STATUS ESPECIFICAS"] == "Não realizado") & tmp["PRAZO_ESPECIFICAS_DT"].notna()
+dias_vesp = (hoje - tmp.loc[mask_vesp, "PRAZO_ESPECIFICAS_DT"]).dt.days
+tmp_vesp = tmp.loc[mask_vesp].copy()
+tmp_vesp["DIAS VENCIDO"] = dias_vesp.values
+tmp_vesp = tmp_vesp[tmp_vesp["DIAS VENCIDO"] > 0]
+
+if len(tmp_vesp) > 0:
+    tmp_vesp["ETAPA"] = "Específicas"
+    tmp_vesp["DATA VENCIMENTO"] = tmp_vesp["PRAZO_ESPECIFICAS_DT"].dt.strftime("%d/%m/%Y")
+    vencidas.append(tmp_vesp[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS VENCIDO"]])
+
+vencida_df = pd.concat(vencidas, ignore_index=True) if vencidas else pd.DataFrame(
+    columns=["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS VENCIDO"]
+)
+
+if len(vencida_df) > 0:
+    vencida_df = vencida_df.sort_values(["DIAS VENCIDO", "OPERACAO", "LIDERANCA", "COLABORADOR"], ascending=[False, True, True, True])
+
+# "Card" + tabela
+st.subheader("🔴 Atenção: Skap Vencida")
+if len(vencida_df) == 0:
+    st.info("Nenhuma etapa vencida (Não realizado) com os filtros atuais.")
+else:
+    st.write(f"Total de etapas vencidas no filtro atual: **{len(vencida_df)}**")
+
+    def destacar_dias_vermelho(df):
+        # deixa a coluna DIAS VENCIDO em vermelho
+        return df.style.applymap(lambda v: "color: red; font-weight: 700;", subset=["DIAS VENCIDO"])
+
+    st.dataframe(
+        centralizar_tabela(vencida_df).applymap(lambda v: "color: red; font-weight:700;", subset=["DIAS VENCIDO"]),
+        use_container_width=True
+    )
+
+# =========================
 # Exportar pendentes (filtrados)
 # - Pendentes = qualquer etapa que NÃO esteja Realizado (No prazo ou Não realizado)
 # =========================
@@ -440,6 +492,12 @@ st.divider()
 st.subheader("📋 Detalhamento Individual")
 
 tabela = base_f.copy()
+
+# Ordenar por DATA ADMISSAO (convertendo de texto dd/mm/aaaa -> datetime)
+if "DATA ADMISSAO" in tabela.columns:
+    tabela["_DATA_ADMISSAO_DT"] = pd.to_datetime(tabela["DATA ADMISSAO"], errors="coerce", dayfirst=True)
+    tabela = tabela.sort_values("_DATA_ADMISSAO_DT", ascending=True).drop(columns=["_DATA_ADMISSAO_DT"])
+
 
 # Percentuais como texto (97%)
 for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
