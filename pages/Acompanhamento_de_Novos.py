@@ -223,6 +223,21 @@ c3.metric("🔴 Com alguma etapa Não Realizada", len(nao_realizada_ids))
 st.divider()
 
 # =========================
+# Progresso Geral (empresa) - barra
+# =========================
+st.subheader("📌 Progresso Geral — Empresa")
+
+progresso_empresa = float(df_f["PROGRESSO_GERAL_NUM"].mean()) if len(df_f) else 0.0
+progresso_empresa = max(0.0, min(1.0, progresso_empresa))  # garante 0..1
+
+c_bar, c_txt = st.columns([6, 1])
+with c_txt:
+    st.markdown(f"### {progresso_empresa:.2%}")
+
+with c_bar:
+    st.progress(progresso_empresa)
+
+# =========================
 # Estilos (usados em tudo)
 # =========================
 def estilo_progresso(v):
