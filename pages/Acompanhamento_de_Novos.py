@@ -253,7 +253,7 @@ st.divider()
 # =========================
 # Não Realizada (geral) - lista consolidada
 # =========================
-st.subheader("🏆 Etapas 'Não Realizada' (geral) — detalhamento")
+st.subheader("🔴 Não Realizada — detalhamento geral")
 
 linhas_nr = []
 
@@ -333,17 +333,33 @@ if linhas:
 
     st.metric("Registros 'No prazo' vencendo em até 3 dias", len(df_alerta))
 
-    st.dataframe(
-        df_alerta[
-            ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "ETAPA", "DATA LIMITE", "DIAS"]
-        ],
-        use_container_width=True,
-        height=420
-    )
-else:
-    st.metric("Registros 'No prazo' vencendo em até 3 dias", 0)
-    st.info("Nenhum colaborador com etapa 'No prazo' vencendo em até 3 dias com os filtros atuais.")
+    view_nr = df_nr[
+    ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO",
+     "TEMPO DE CASA", "ETAPA", "DATA LIMITE", "DIAS"]
+].copy()
 
+styler_nr = view_nr.style
+styler_nr = styler_nr.set_properties(**{
+    "text-align": "center",
+    "max-width": "140px",
+    "white-space": "nowrap",
+    "overflow": "hidden",
+    "text-overflow": "ellipsis",
+    "font-size": "12px",
+})
+
+styler_nr = styler_nr.set_table_styles([
+    {"selector": "th", "props": [("text-align", "center"), ("font-size", "12px")]},
+])
+
+# aplica cores no DIAS
+styler_nr = styler_nr.applymap(estilo_dias, subset=["DIAS"])
+
+st.dataframe(
+    styler_nr,
+    use_container_width=True,
+    height=450
+)
 
 # =========================
 # Estilos
