@@ -5,16 +5,18 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 
+# =========================
+# Config
+# =========================
 st.set_page_config(layout="wide")
 st.title("📊 Painel SKAP - Gestão de Desenvolvimento")
-
 
 # =========================
 # Carregamento automático (pasta data/)
 # =========================
 DATA_DIR = Path(__file__).parent / "data"
 ARQ_SKAP = DATA_DIR / "Skap.xlsx"
-ARQ_COM  = DATA_DIR / "Skap - comentarios.xlsx"
+ARQ_COM = DATA_DIR / "Skap - comentarios.xlsx"
 
 @st.cache_data(show_spinner=True)
 def carregar_dados():
@@ -22,6 +24,7 @@ def carregar_dados():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_SKAP}")
     if not ARQ_COM.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_COM}")
+
     skap_df = pd.read_excel(ARQ_SKAP)
     com_df = pd.read_excel(ARQ_COM)
     return skap_df, com_df
@@ -59,6 +62,7 @@ def garantir_coluna(df: pd.DataFrame, col: str, default="") -> pd.DataFrame:
     return df
 
 def consolidar_xy(df: pd.DataFrame, nome: str) -> pd.DataFrame:
+    """Consolida colunas duplicadas do merge: NOME_X/NOME_Y -> NOME."""
     if nome in df.columns:
         return df
     x = f"{nome}_X"
@@ -79,21 +83,26 @@ def consolidar_xy(df: pd.DataFrame, nome: str) -> pd.DataFrame:
     return df
 
 def tratar_data_adm(df: pd.DataFrame, col_data: str = "DATA ULT. ADM") -> pd.DataFrame:
+    """
+    Converte data em:
+    - aceita texto BR dd/mm/aaaa
+    - aceita serial excel (somente faixa plausível e finita)
+    Evita overflow no Streamlit Cloud.
+    """
     df = garantir_coluna(df, col_data, "")
     df[f"{col_data}_RAW"] = df[col_data]
 
     # 1) tenta parse como texto (BR)
     dt_txt = pd.to_datetime(df[col_data], errors="coerce", dayfirst=True)
 
-    # 2) tenta serial do Excel, mas somente em valores válidos e finitos (sem overflow)
+    # 2) serial do Excel (blindado)
     num = pd.to_numeric(df[col_data], errors="coerce")
     num = num.replace([np.inf, -np.inf], np.nan)
 
-    mask = num.notna() & np.isfinite(num) & (num >= 20000) & (num <= 80000)
+    mask = num.notna() & np.isfinite(num) & (num >= 20000) & (num <= 80000)  # ~1954 a ~2119
 
     dt_excel = pd.Series(pd.NaT, index=df.index)
     if mask.any():
-        # converter só as linhas válidas
         dt_excel.loc[mask] = pd.to_datetime(
             num.loc[mask].astype("int64"),
             unit="D",
@@ -109,7 +118,6 @@ def tratar_data_adm(df: pd.DataFrame, col_data: str = "DATA ULT. ADM") -> pd.Dat
 
     df["DATA ADMISSAO"] = df[col_data].dt.strftime("%d/%m/%Y").fillna("")
     return df
-
 
 def opcoes(df: pd.DataFrame, col: str) -> list[str]:
     if col not in df.columns:
@@ -129,6 +137,7 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
 skap = normalizar_colunas(skap)
 comentarios = normalizar_colunas(comentarios)
 
+# garante colunas mínimas no SKAP (agora a SKAP já tem esses campos)
 for col in ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "DATA ULT. ADM"]:
     skap = garantir_coluna(skap, col, "")
 
@@ -140,7 +149,7 @@ comentarios = limpar_texto(comentarios, ["COLABORADOR", "CARGO", "OPERACAO", "AT
 # =========================
 skap = tratar_data_adm(skap, "DATA ULT. ADM")
 
-# Percentuais
+# Percentuais (como número 0..1)
 for col in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS"]:
     skap = garantir_coluna(skap, col, 0)
     skap[col] = pd.to_numeric(skap[col], errors="coerce").fillna(0)
@@ -226,14 +235,17 @@ if f_status:
 # Cards
 # =========================
 total = len(base_f)
+
 pend = len(base_f[
     (base_f["STATUS TECNICAS"] == "Não realizado") |
     (base_f["STATUS ESPECIFICAS"] == "Não realizado")
 ])
+
 concl = len(base_f[
     (base_f["STATUS TECNICAS"] == "Realizado") &
     (base_f["STATUS ESPECIFICAS"] == "Realizado")
 ])
+
 nop = len(base_f[
     (base_f["STATUS TECNICAS"] == "No prazo") |
     (base_f["STATUS ESPECIFICAS"] == "No prazo")
@@ -248,7 +260,7 @@ c4.metric("🔴 Com pendência", pend)
 st.divider()
 
 # =========================
-# Gráficos (decrescente)
+# Gráficos (ordem decrescente)
 # =========================
 st.subheader("🔴 Pendências (Não realizado) por Operação")
 gop = (
@@ -261,9 +273,13 @@ gop = (
     .sort_values(ascending=False)
     .reset_index(name="Quantidade")
 )
-fig1 = px.bar(gop, x="OPERACAO", y="Quantidade", text="Quantidade")
-fig1.update_layout(xaxis={"categoryorder": "total descending"})
-st.plotly_chart(fig1, use_container_width=True)
+
+if len(gop) == 0:
+    st.info("Sem pendências no filtro atual.")
+else:
+    fig1 = px.bar(gop, x="OPERACAO", y="Quantidade", text="Quantidade")
+    fig1.update_layout(xaxis={"categoryorder": "total descending"})
+    st.plotly_chart(fig1, use_container_width=True)
 
 st.subheader("🔴 Pendências (Não realizado) por Liderança")
 glid = (
@@ -276,35 +292,17 @@ glid = (
     .sort_values(ascending=False)
     .reset_index(name="Quantidade")
 )
-fig2 = px.bar(glid, x="LIDERANCA", y="Quantidade", text="Quantidade")
-fig2.update_layout(xaxis={"categoryorder": "total descending"})
-st.plotly_chart(fig2, use_container_width=True)
+
+if len(glid) == 0:
+    st.info("Sem pendências no filtro atual.")
+else:
+    fig2 = px.bar(glid, x="LIDERANCA", y="Quantidade", text="Quantidade")
+    fig2.update_layout(xaxis={"categoryorder": "total descending"})
+    st.plotly_chart(fig2, use_container_width=True)
 
 # =========================
-# Tabela formatada
+# Tabela (sem Styler / sem matplotlib)
 # =========================
-def cor_status(val):
-    if val == "Não realizado":
-        return "color: red; font-weight: bold;"
-    if val == "Realizado":
-        return "color: green; font-weight: bold;"
-    if val == "No prazo":
-        return "color: orange; font-weight: bold;"
-    return ""
-	
-# =========================
-# Tabela formatada (SEM matplotlib)
-# =========================
-def cor_status(val):
-    if val == "Não realizado":
-        return "color: red; font-weight: bold;"
-    if val == "Realizado":
-        return "color: green; font-weight: bold;"
-    if val == "No prazo":
-        return "color: orange; font-weight: bold;"
-    return ""
-
-
 st.subheader("📋 Detalhamento Individual")
 
 tabela = base_f.copy()
@@ -314,7 +312,7 @@ for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS"]:
     if c in tabela.columns:
         tabela[c] = pd.to_numeric(tabela[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
 
-# Status com emoji (fica visual sem precisar de Styler)
+# Status com emoji (visual e simples)
 def emoji_status(s):
     if s == "Não realizado":
         return "🔴 Não realizado"
@@ -329,4 +327,3 @@ for c in ["STATUS TECNICAS", "STATUS ESPECIFICAS"]:
         tabela[c] = tabela[c].astype(str).map(emoji_status)
 
 st.dataframe(tabela, use_container_width=True)
-
