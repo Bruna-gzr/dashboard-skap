@@ -250,24 +250,54 @@ st.divider()
 # =========================
 # Top 5 Operações com mais Não Realizada (global)
 # =========================
-st.subheader("🏆 Top 5 operações com mais 'Não Realizada' (geral)")
+# =========================
+# Não Realizada (geral) - lista consolidada
+# =========================
+st.subheader("🏆 Etapas 'Não Realizada' (geral) — detalhamento")
 
-nr_counts = []
-for _, status_col, _, _ in etapas:
-    tmp = df_f[df_f[status_col] == "Não Realizada"].groupby("OPERACAO").size()
-    nr_counts.append(tmp)
+linhas_nr = []
 
-if nr_counts:
-    nr_total = pd.concat(nr_counts, axis=0).groupby(level=0).sum().sort_values(ascending=False)
-    top5_global = nr_total.head(5).reset_index()
-    top5_global.columns = ["OPERACAO", "QTD_NAO_REALIZADA"]
+for nome_aba, status_col, limite_col, dt_col in etapas:
+    st_col = df_f[status_col].fillna("")
+    lim = df_f[limite_col]
+    dt = df_f[dt_col]
+
+    mask_nr = (st_col == "Não Realizada") & lim.notna()
+
+    if mask_nr.any():
+        # DIAS: se tem dt -> limite - dt | se dt vazia -> limite - hoje
+        dias = (lim - hoje).dt.days
+        dias_dt = (lim - dt).dt.days
+        dias = dias.where(dt.isna(), dias_dt)
+
+        tmp_nr = df_f.loc[mask_nr, ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
+        tmp_nr["ETAPA"] = nome_aba
+        tmp_nr["DATA LIMITE"] = lim.loc[mask_nr].copy()
+        tmp_nr["DIAS"] = pd.to_numeric(dias.loc[mask_nr], errors="coerce").fillna(0).astype(int).values
+
+        linhas_nr.append(tmp_nr)
+
+if linhas_nr:
+    df_nr = pd.concat(linhas_nr, ignore_index=True)
+
+    # ordena: mais críticos primeiro (mais negativo), depois por admissão
+    df_nr = df_nr.sort_values(["DIAS", "ADMISSAO"], ascending=[True, True])
+
+    # formata datas
+    df_nr["ADMISSAO"] = fmt_data(df_nr["ADMISSAO"])
+    df_nr["DATA LIMITE"] = fmt_data(df_nr["DATA LIMITE"])
+
+    st.metric("Registros com etapa 'Não Realizada'", len(df_nr))
+
+    st.dataframe(
+        df_nr[["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "ETAPA", "DATA LIMITE", "DIAS"]],
+        use_container_width=True,
+        height=450
+    )
 else:
-    top5_global = pd.DataFrame(columns=["OPERACAO", "QTD_NAO_REALIZADA"])
-
-if len(top5_global) == 0:
+    st.metric("Registros com etapa 'Não Realizada'", 0)
     st.info("Nenhuma ocorrência de 'Não Realizada' com os filtros atuais.")
-else:
-    st.dataframe(top5_global, use_container_width=True)
+
 
 # ✅ Card / lista abaixo do Top 5 global: No prazo vencendo até 3 dias
 st.subheader("🟡 No prazo vencendo em até 3 dias (geral)")
