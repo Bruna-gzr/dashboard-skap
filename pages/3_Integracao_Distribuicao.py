@@ -320,30 +320,95 @@ st.divider()
 # =========================
 # Tabela principal
 # =========================
-st.subheader("📋 Etapas da Integração (por colaborador)")
+st.subheader("📋 Acompanhamento por Curso")
 
+# Ordem fixa das etapas
 ordem_etapas = [e[0] for e in ETAPAS]
-df_view = df_f.copy()
-df_view["ETAPA"] = pd.Categorical(df_view["ETAPA"], categories=ordem_etapas, ordered=True)
-df_view = df_view.sort_values(["OPERACAO", "COLABORADOR", "ETAPA"])
 
-if len(df_view) == 0:
-    st.info("Sem dados para exibir com os filtros atuais.")
-else:
-    # DIAS em vermelho se pendente em atraso
-    st.dataframe(
-        centralizar_tabela(df_view).applymap(
-            lambda v: "color: red; font-weight:700;",
-            subset=pd.IndexSlice[df_view.index, ["DIAS"]]
-        ),
-        use_container_width=True
-    )
+# Tabs: (opcional) primeira aba visão geral + uma para cada etapa
+tab_labels = ["📌 Visão Geral"] + ordem_etapas
+tabs = st.tabs(tab_labels)
 
-    excel_bytes = preparar_excel_para_download(df_view, sheet_name="Integracao")
-    st.download_button(
-        label="⬇️ Baixar Excel (Etapas filtradas)",
-        data=excel_bytes,
-        file_name="integracao_distribuicao_etapas.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
-    )
+# -------------------------
+# Aba 0: Visão Geral
+# -------------------------
+with tabs[0]:
+    st.write("Resumo do acompanhamento com os filtros atuais.")
+
+    # Cards rápidos por status (no contexto filtrado)
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Etapas", len(df_f))
+    c2.metric("🔴 Pendente em atraso", int((df_f["STATUS"] == "Pendente em atraso").sum()))
+    c3.metric("🟡 Pendente no prazo", int((df_f["STATUS"] == "Pendente mas no prazo").sum()))
+    c4.metric("🟢 Conforme esperado", int((df_f["STATUS"] == "Conforme esperado").sum()))
+    c5.metric("⚡ Concluído adiantado", int((df_f["STATUS"] == "Concluido adiantado").sum()))
+
+    st.divider()
+
+    # Lista geral (todas as etapas)
+    df_view = df_f.copy()
+    df_view["ETAPA"] = pd.Categorical(df_view["ETAPA"], categories=ordem_etapas, ordered=True)
+    df_view = df_view.sort_values(["OPERACAO", "COLABORADOR", "ETAPA"])
+
+    if len(df_view) == 0:
+        st.info("Sem dados para exibir com os filtros atuais.")
+    else:
+        # DIAS em vermelho apenas quando pendente em atraso
+        def colorir_dias(row):
+            return "color: red; font-weight:700;" if row["STATUS"] == "Pendente em atraso" else ""
+
+        sty = centralizar_tabela(df_view).apply(
+            lambda col: [colorir_dias(r) if col.name == "DIAS" else "" for _, r in df_view.iterrows()],
+            axis=0
+        )
+        st.dataframe(sty, use_container_width=True)
+
+        excel_bytes = preparar_excel_para_download(df_view, sheet_name="Visao_Geral")
+        st.download_button(
+            label="⬇️ Baixar Excel (Visão Geral)",
+            data=excel_bytes,
+            file_name="integracao_distribuicao_visao_geral.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+
+# -------------------------
+# Abas por etapa/curso
+# -------------------------
+for i, etapa in enumerate(ordem_etapas, start=1):
+    with tabs[i]:
+        st.write(f"Etapa: **{etapa}**")
+
+        df_etapa = df_f[df_f["ETAPA"] == etapa].copy()
+        df_etapa = df_etapa.sort_values(["OPERACAO", "COLABORADOR"])
+
+        if len(df_etapa) == 0:
+            st.info("Sem dados para esta etapa com os filtros atuais.")
+        else:
+            # cards por etapa
+            cc1, cc2, cc3 = st.columns(3)
+            cc1.metric("Registros", len(df_etapa))
+            cc2.metric("🔴 Pendente em atraso", int((df_etapa["STATUS"] == "Pendente em atraso").sum()))
+            cc3.metric("🟡 Pendente no prazo", int((df_etapa["STATUS"] == "Pendente mas no prazo").sum()))
+
+            # DIAS em vermelho apenas quando pendente em atraso
+            def colorir_dias(row):
+                return "color: red; font-weight:700;" if row["STATUS"] == "Pendente em atraso" else ""
+
+            sty = centralizar_tabela(df_etapa).apply(
+                lambda col: [colorir_dias(r) if col.name == "DIAS" else "" for _, r in df_etapa.iterrows()],
+                axis=0
+            )
+            st.dataframe(sty, use_container_width=True)
+
+            # Exportação logo abaixo (por etapa)
+            excel_etapa = preparar_excel_para_download(df_etapa, sheet_name=etapa)
+            nome_arquivo = etapa.replace("/", "-").replace("ª", "a").replace("°", "o").replace(" ", "_")
+            st.download_button(
+                label=f"⬇️ Baixar Excel ({etapa})",
+                data=excel_etapa,
+                file_name=f"integracao_{nome_arquivo}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
