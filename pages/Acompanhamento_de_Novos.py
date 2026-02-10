@@ -166,5 +166,6 @@ st.subheader("📋 Detalhamento — Reação Integração")
 # Para garantir que o estilo apareça, usamos Styler
 st.dataframe(
     df_view.style.applymap(cor_dias, subset=["DIAS"]),
-    use_container_width=True
+    use_container_width=True,
+    height=600
 )
