@@ -153,6 +153,15 @@ base = ativos[
     (ativos["DATA_ADM_DT"] >= limite)
 ].copy()
 
+# --- EXCEÇÃO: CD PETRÓPOLIS com admissão em 16/07/2025 (ignorar) ---
+data_excluir = pd.to_datetime("2025-07-16")
+base = base[
+    ~(
+        base["OPERACAO"].astype(str).str.upper().str.contains("PETROPOLIS", na=False)
+        & (base["DATA_ADM_DT"] == data_excluir)
+    )
+]
+
 base["DATA ADMISSAO"] = base["DATA_ADM_DT"].dt.strftime("%d/%m/%Y").fillna("")
 hoje = pd.to_datetime(datetime.today().date())
 base["TEMPO DE CASA"] = (hoje - base["DATA_ADM_DT"]).dt.days.fillna(0).astype(int)
