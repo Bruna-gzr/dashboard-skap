@@ -225,7 +225,7 @@ st.divider()
 # =========================
 # Progresso Geral (empresa) - barra
 # =========================
-st.subheader("📌 Progresso Geral — Empresa")
+st.subheader("📌 Aderência Média - Log20")
 
 progresso_empresa = float(df_f["PROGRESSO_GERAL_NUM"].mean()) if len(df_f) else 0.0
 progresso_empresa = max(0.0, min(1.0, progresso_empresa))  # garante 0..1
