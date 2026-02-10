@@ -292,18 +292,27 @@ def cor_status(val):
         return "color: orange; font-weight: bold;"
     return ""
 	
+# =========================
+# Tabela formatada (SEM matplotlib)
+# =========================
+def cor_status(val):
+    if val == "Não realizado":
+        return "color: red; font-weight: bold;"
+    if val == "Realizado":
+        return "color: green; font-weight: bold;"
+    if val == "No prazo":
+        return "color: orange; font-weight: bold;"
+    return ""
+
 styled = (
     base_f.style
     .format({
         "HABILIDADES TECNICAS": "{:.0%}",
         "HABILIDADES ESPECIFICAS": "{:.0%}",
     })
-    .background_gradient(
-        subset=[c for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS"] if c in base_f.columns],
-        cmap="RdYlGn"
-    )
     .applymap(cor_status, subset=["STATUS TECNICAS", "STATUS ESPECIFICAS"])
 )
 
 st.subheader("📋 Detalhamento Individual")
 st.dataframe(styled, use_container_width=True)
+
