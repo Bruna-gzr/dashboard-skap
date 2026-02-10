@@ -79,33 +79,34 @@ def fmt_data(d: pd.Series) -> pd.Series:
     return pd.to_datetime(d, errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 
 def normalizar_status(s) -> str:
+   def normalizar_status(s) -> str:
     s = str(s).strip()
-
     if s.lower() in ["nan", "none", ""]:
         return ""
 
     sl = s.lower()
 
+    # Realizada
     if sl in ["realizada", "realizado"]:
         return "Realizada"
 
+    # Não Realizada
     if sl in ["não realizada", "nao realizada", "não realizado", "nao realizado"]:
         return "Não Realizada"
 
-    if sl in [
-        "realizada - fora do prazo",
-        "realizado - fora do prazo"
-    ]:
+    # Realizada - Fora do Prazo
+    if sl in ["realizada - fora do prazo", "realizado - fora do prazo"]:
         return "Realizada - Fora do Prazo"
 
-    if sl in ["no prazo"]:
+    # No prazo
+    if sl == "no prazo":
         return "No prazo"
 
+    # N/A
     if sl in ["n/a", "na"]:
         return "N/A"
 
     return s
-
 
 def preparar_excel_para_download(df_: pd.DataFrame, sheet_name="Dados") -> bytes:
     output = BytesIO()
@@ -177,7 +178,7 @@ f_operacao = st.sidebar.multiselect("Operação", opcoes(df, "OPERACAO"))
 f_atividade = st.sidebar.multiselect("Atividade", opcoes(df, "ATIVIDADE"))
 f_status = st.sidebar.multiselect(
     "Status (aplica na etapa da aba)",
-    ["Realizado", "Não Realizado", "Realizado - fora do prazo", "N/A", "No prazo"]
+    ["Realizada", "Não Realizada", "Realizada - Fora do Prazo", "N/A", "No prazo"]
 )
 
 # filtro por período de admissão
@@ -238,7 +239,7 @@ for _, status_col, limite_col, _ in etapas:
 
 
     # Não Realizado em alguma etapa
-    mask_nr = (st_col == "Não Realizado")
+    mask_nr = (st_col == "Não Realizada")
     if mask_nr.any():
         nao_realizado_ids.update(df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist())
 
@@ -314,16 +315,12 @@ def estilo_status(v):
 
     if s == "realizada":
         return "color: #00c853; font-weight: 700; text-align: center;"
-
     if s == "não realizada":
         return "color: #ff1744; font-weight: 700; text-align: center;"
-
     if s == "realizada - fora do prazo":
         return "color: #ff9100; font-weight: 700; text-align: center;"
-
     if s == "no prazo":
         return "color: #ffd600; font-weight: 700; text-align: center;"
-
     if s == "n/a":
         return "text-align: center;"
 
@@ -390,7 +387,7 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     # Top 5 operações com mais "Não Realizado" NESTA etapa
     st.write("**Top 5 operações com mais 'Não Realizado' (nesta etapa)**")
     top5_etapa = (
-        tmp[tmp[status_col] == "Não Realizado"]
+        tmp[tmp[status_col] == "Não Realizada"]
         .groupby("OPERACAO")
         .size()
         .sort_values(ascending=False)
