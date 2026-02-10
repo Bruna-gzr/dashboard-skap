@@ -78,8 +78,8 @@ def fmt_data(d: pd.Series) -> pd.Series:
     # sempre dd/mm/aaaa (sem hora)
     return pd.to_datetime(d, errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 
+# ✅ CORRIGIDA (sem função duplicada)
 def normalizar_status(s) -> str:
-   def normalizar_status(s) -> str:
     s = str(s).strip()
     if s.lower() in ["nan", "none", ""]:
         return ""
@@ -90,7 +90,7 @@ def normalizar_status(s) -> str:
     if sl in ["realizada", "realizado"]:
         return "Realizada"
 
-    # Não Realizada
+    # Não Realizada (aceita masculino também)
     if sl in ["não realizada", "nao realizada", "não realizado", "nao realizado"]:
         return "Não Realizada"
 
@@ -165,7 +165,7 @@ for _, _, limite_col, dt_col in etapas:
     df[limite_col] = to_datetime_safe(df[limite_col])
     df[dt_col] = to_datetime_safe(df[dt_col])
 
-# Normalizar status
+# Normalizar status (AGORA FUNCIONA)
 for _, status_col, _, _ in etapas:
     df[status_col] = df[status_col].apply(normalizar_status)
 
@@ -184,18 +184,15 @@ f_status = st.sidebar.multiselect(
 # filtro por período de admissão
 min_adm = df["ADMISSAO"].min()
 max_adm = df["ADMISSAO"].max()
-
 if pd.isna(min_adm) or pd.isna(max_adm):
-    # fallback para não quebrar
     min_adm = pd.to_datetime("2025-01-01")
     max_adm = hoje
 
 dt_ini, dt_fim = st.sidebar.date_input(
     "Período de admissão",
-    value=(min_adm.date(), max_adm.date()) if isinstance(min_adm, pd.Timestamp) else (date(2025, 1, 1), hoje.date()),
+    value=(min_adm.date(), max_adm.date()),
 )
 
-# garante ordem e tipos
 dt_ini = pd.to_datetime(dt_ini)
 dt_fim = pd.to_datetime(dt_fim)
 if dt_fim < dt_ini:
@@ -213,7 +210,7 @@ if f_atividade:
 # Cards globais
 # =========================
 no_prazo_vencendo_ids = set()
-nao_realizado_ids = set()
+nao_realizada_ids = set()
 
 for _, status_col, limite_col, _ in etapas:
     st_col = df_f[status_col].fillna("")
@@ -222,36 +219,22 @@ for _, status_col, limite_col, _ in etapas:
     # No prazo vencendo em até 3 dias
     mask_np = (st_col == "No prazo") & lim.notna()
     dias_para_vencer = (lim - hoje).dt.days
-
     mask_venc3 = mask_np & (dias_para_vencer >= 0) & (dias_para_vencer <= 3)
+    no_prazo_vencendo_ids.update(df_f.loc[mask_venc3, "COLABORADOR"].astype(str).tolist())
 
-    no_prazo_vencendo_ids.update(
-        df_f.loc[mask_venc3, "COLABORADOR"].astype(str).tolist()
-    )
-
-    # Não realizado em alguma etapa
+    # Não Realizada em alguma etapa
     mask_nr = (st_col == "Não Realizada")
-
-    if mask_nr.any():
-        nao_realizado_ids.update(
-            df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist()
-        )
-
-
-    # Não Realizado em alguma etapa
-    mask_nr = (st_col == "Não Realizada")
-    if mask_nr.any():
-        nao_realizado_ids.update(df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist())
+    nao_realizada_ids.update(df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist())
 
 c1, c2, c3 = st.columns(3)
 c1.metric("Total (Admissão ≥ 01/01/2025)", len(df_f))
 c2.metric("🟡 No prazo vencendo em até 3 dias", len(no_prazo_vencendo_ids))
-c3.metric("🔴 Com alguma etapa Não Realizado", len(nao_realizado_ids))
+c3.metric("🔴 Com alguma etapa Não Realizada", len(nao_realizada_ids))
 
 st.divider()
 
 # =========================
-# Gráfico: % médio de Progresso Geral por Operação
+# Gráfico: % médio de Progresso Geral por Operação (em %)
 # =========================
 st.subheader("📈 Progresso Geral médio por Operação")
 
@@ -273,24 +256,24 @@ else:
 st.divider()
 
 # =========================
-# Top 5 Operações com mais Não Realizado (global)
+# Top 5 Operações com mais Não Realizada (global)
 # =========================
-st.subheader("🏆 Top 5 operações com mais 'Não Realizado' (geral)")
+st.subheader("🏆 Top 5 operações com mais 'Não Realizada' (geral)")
 
 nr_counts = []
 for _, status_col, _, _ in etapas:
-    tmp = df_f[df_f[status_col] == "Não Realizado"].groupby("OPERACAO").size()
+    tmp = df_f[df_f[status_col] == "Não Realizada"].groupby("OPERACAO").size()
     nr_counts.append(tmp)
 
 if nr_counts:
     nr_total = pd.concat(nr_counts, axis=0).groupby(level=0).sum().sort_values(ascending=False)
     top5_global = nr_total.head(5).reset_index()
-    top5_global.columns = ["OPERACAO", "QTD_NAO_REALIZADO"]
+    top5_global.columns = ["OPERACAO", "QTD_NAO_REALIZADA"]
 else:
-    top5_global = pd.DataFrame(columns=["OPERACAO", "QTD_NAO_REALIZADO"])
+    top5_global = pd.DataFrame(columns=["OPERACAO", "QTD_NAO_REALIZADA"])
 
 if len(top5_global) == 0:
-    st.info("Nenhuma ocorrência de 'Não Realizado' com os filtros atuais.")
+    st.info("Nenhuma ocorrência de 'Não Realizada' com os filtros atuais.")
 else:
     st.dataframe(top5_global, use_container_width=True)
 
@@ -312,7 +295,6 @@ def estilo_progresso(v):
 
 def estilo_status(v):
     s = str(v).strip().lower()
-
     if s == "realizada":
         return "color: #00c853; font-weight: 700; text-align: center;"
     if s == "não realizada":
@@ -323,21 +305,18 @@ def estilo_status(v):
         return "color: #ffd600; font-weight: 700; text-align: center;"
     if s == "n/a":
         return "text-align: center;"
-
     return "text-align: center;"
-
 
 def estilo_dias(v):
     try:
         v = int(v)
     except Exception:
         return "text-align: center;"
-    # DIAS = LIMITE - HOJE (ou LIMITE - DT)
     if v > 0:
-        return "color: #00c853; font-weight: 700; text-align: center;"  # faltam dias
+        return "color: #00c853; font-weight: 700; text-align: center;"
     if v < 0:
-        return "color: #ff1744; font-weight: 700; text-align: center;"  # atrasado
-    return "color: #ffd600; font-weight: 700; text-align: center;"      # vence hoje
+        return "color: #ff1744; font-weight: 700; text-align: center;"
+    return "color: #ffd600; font-weight: 700; text-align: center;"
 
 # =========================
 # Função por etapa
@@ -360,12 +339,12 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     )
 
     tmp["DIAS"] = pd.to_numeric(pd.Series(dias), errors="coerce").replace([np.inf, -np.inf], np.nan)
-    tmp["DIAS"] = tmp["DIAS"].round(0).astype("Int64")  # inteiro, sem casas
+    tmp["DIAS"] = tmp["DIAS"].round(0).astype("Int64")
 
     # Formatação: datas só com dd/mm/aaaa
     tmp["ADMISSAO"] = fmt_data(tmp["ADMISSAO"])
     tmp[limite_col] = fmt_data(tmp[limite_col])
-    tmp[dt_col] = fmt_data(tmp[dt_col])  # SEM HORA
+    tmp[dt_col] = fmt_data(tmp[dt_col])
 
     tmp["PROGRESSO GERAL"] = tmp["PROGRESSO_GERAL_NUM"].map(lambda x: f"{x:.0%}")
 
@@ -384,18 +363,18 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
         ]
     ].copy()
 
-    # Top 5 operações com mais "Não Realizado" NESTA etapa
-    st.write("**Top 5 operações com mais 'Não Realizado' (nesta etapa)**")
+    # Top 5 operações com mais "Não Realizada" NESTA etapa
+    st.write("**Top 5 operações com mais 'Não Realizada' (nesta etapa)**")
     top5_etapa = (
         tmp[tmp[status_col] == "Não Realizada"]
         .groupby("OPERACAO")
         .size()
         .sort_values(ascending=False)
         .head(5)
-        .reset_index(name="QTD_NAO_REALIZADO")
+        .reset_index(name="QTD_NAO_REALIZADA")
     )
     if len(top5_etapa) == 0:
-        st.caption("Sem 'Não Realizado' nesta etapa com os filtros atuais.")
+        st.caption("Sem 'Não Realizada' nesta etapa com os filtros atuais.")
     else:
         st.dataframe(top5_etapa, use_container_width=True)
 
