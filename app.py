@@ -9,6 +9,14 @@ st.set_page_config(layout="wide")
 st.title("📊 Painel SKAP - Gestão de Desenvolvimento")
 
 # =========================
+# MODO ADMIN
+# =========================
+admin = st.sidebar.text_input("Modo administrador", type="password")
+
+modo_admin = admin == "rhadmin"
+
+
+# =========================
 # Utils
 # =========================
 def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
@@ -94,10 +102,17 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
 # =========================
 # Upload + recarregar
 # =========================
-st.sidebar.header("📥 Atualização de dados")
+if modo_admin:
+    st.sidebar.header("📥 Atualização de dados")
 
-upload_skap = st.sidebar.file_uploader("Enviar Skap.xlsx", type=["xlsx"], key="up_skap")
-upload_com = st.sidebar.file_uploader("Enviar Skap - comentarios.xlsx", type=["xlsx"], key="up_com")
+
+if modo_admin:
+    upload_skap = st.sidebar.file_uploader("Enviar Skap.xlsx", type=["xlsx"])
+    upload_com = st.sidebar.file_uploader("Enviar Skap - comentarios.xlsx", type=["xlsx"])
+else:
+    upload_skap = None
+    upload_com = None
+
 
 if st.sidebar.button("🔄 Atualizar dados"):
     st.cache_data.clear()
