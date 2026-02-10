@@ -346,6 +346,9 @@ def estilo_dias(v):
 # =========================
 def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     tmp = df_f.copy()
+    tmp = df_f.copy()
+tmp = tmp.sort_values("ADMISSAO", ascending=True)
+
 
     # Aplicar filtro de status (apenas na etapa da aba)
     if f_status:
@@ -371,6 +374,8 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     tmp["ADMISSAO"] = fmt_data(tmp["ADMISSAO"])
     tmp[limite_col] = fmt_data(tmp[limite_col])
     tmp[dt_col] = fmt_data(tmp[dt_col])
+    
+    tmp = tmp.sort_values("ADMISSAO", ascending=True)
 
     tmp["PROGRESSO GERAL"] = tmp["PROGRESSO_GERAL_NUM"].map(lambda x: f"{x:.0%}")
 
