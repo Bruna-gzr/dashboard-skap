@@ -4,9 +4,7 @@ import plotly.express as px
 from datetime import datetime
 from pathlib import Path
 import numpy as np
-
-st.write("VERSAO NOVA - 09/02/2026 15:xx")
-
+from io import BytesIO
 
 # =========================
 # Config
@@ -134,17 +132,27 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
     )
     return sorted(vals)
 
+def percent_str(x) -> str:
+    try:
+        return f"{float(x):.0%}"
+    except Exception:
+        return "0%"
+
 # =========================
 # Normalização + colunas mínimas
 # =========================
 skap = normalizar_colunas(skap)
 comentarios = normalizar_colunas(comentarios)
 
-# garante colunas mínimas no SKAP (agora a SKAP já tem esses campos)
-for col in ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "DATA ULT. ADM"]:
+# garante colunas mínimas no SKAP
+for col in [
+    "COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "DATA ULT. ADM",
+    "HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO",
+    "NIVEIS"
+]:
     skap = garantir_coluna(skap, col, "")
 
-skap = limpar_texto(skap, ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA"])
+skap = limpar_texto(skap, ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "NIVEIS"])
 comentarios = limpar_texto(comentarios, ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA"])
 
 # =========================
@@ -153,13 +161,16 @@ comentarios = limpar_texto(comentarios, ["COLABORADOR", "CARGO", "OPERACAO", "AT
 skap = tratar_data_adm(skap, "DATA ULT. ADM")
 
 # Percentuais (como número 0..1)
-for col in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS"]:
+for col in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
     skap = garantir_coluna(skap, col, 0)
     skap[col] = pd.to_numeric(skap[col], errors="coerce").fillna(0)
 
-# Prazos
-skap["PRAZO TECNICAS"] = (skap["DATA ULT. ADM"] + pd.Timedelta(days=30)).dt.strftime("%d/%m/%Y").fillna("")
-skap["PRAZO ESPECIFICAS"] = (skap["DATA ULT. ADM"] + pd.Timedelta(days=60)).dt.strftime("%d/%m/%Y").fillna("")
+# Prazos (data real + versão texto)
+skap["PRAZO_TECNICAS_DT"] = skap["DATA ULT. ADM"] + pd.Timedelta(days=30)
+skap["PRAZO_ESPECIFICAS_DT"] = skap["DATA ULT. ADM"] + pd.Timedelta(days=60)
+
+skap["PRAZO TECNICAS"] = skap["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y").fillna("")
+skap["PRAZO ESPECIFICAS"] = skap["PRAZO_ESPECIFICAS_DT"].dt.strftime("%d/%m/%Y").fillna("")
 
 # Status (suas regras)
 def status_tecnicas(row):
@@ -184,11 +195,13 @@ skap["STATUS ESPECIFICAS"] = skap.apply(status_especificas, axis=1)
 # =========================
 base = skap.merge(comentarios, on="COLABORADOR", how="left", suffixes=("_X", "_Y")).fillna("")
 
-for c in ["CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA"]:
+for c in ["CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "NIVEIS"]:
     base = consolidar_xy(base, c)
 
 # =========================
-# Ordem das colunas (EXATA)
+# Ordem das colunas (EXATA + ajustes pedidos)
+# - Inserir HABILIDADES EMPODERAMENTO após STATUS ESPECIFICAS
+# - Inserir NIVEIS ao lado (logo após)
 # =========================
 ordem = [
     "COLABORADOR",
@@ -204,10 +217,13 @@ ordem = [
     "HABILIDADES ESPECIFICAS",
     "PRAZO ESPECIFICAS",
     "STATUS ESPECIFICAS",
+    "HABILIDADES EMPODERAMENTO",
+    "NIVEIS",
     "HABILIDADE TECNICA",
     "HABILIDADE ESPECIFICA",
     "HABILIDADE EMPODERAMENTO",
 ]
+
 ordem = [c for c in ordem if c in base.columns]
 base = base[ordem].copy()
 
@@ -219,6 +235,7 @@ st.sidebar.header("Filtros")
 f_operacao = st.sidebar.multiselect("Operação", opcoes(base, "OPERACAO"))
 f_lideranca = st.sidebar.multiselect("Liderança", opcoes(base, "LIDERANCA"))
 f_atividade = st.sidebar.multiselect("Atividade", opcoes(base, "ATIVIDADE"))
+f_niveis = st.sidebar.multiselect("Níveis", opcoes(base, "NIVEIS"))
 f_status = st.sidebar.multiselect("Status", ["Realizado", "Não realizado", "No prazo"])
 
 base_f = base.copy()
@@ -228,6 +245,8 @@ if f_lideranca:
     base_f = base_f[base_f["LIDERANCA"].isin(f_lideranca)]
 if f_atividade:
     base_f = base_f[base_f["ATIVIDADE"].isin(f_atividade)]
+if f_niveis:
+    base_f = base_f[base_f["NIVEIS"].isin(f_niveis)]
 if f_status:
     base_f = base_f[
         base_f["STATUS TECNICAS"].isin(f_status) |
@@ -304,14 +323,119 @@ else:
     st.plotly_chart(fig2, use_container_width=True)
 
 # =========================
-# Tabela (sem Styler / sem matplotlib)
+# Atenção: Vencimento próximo (até 7 dias)
+# - Apenas etapas NÃO realizadas
+# =========================
+hoje = pd.to_datetime(datetime.today().date())
+
+# reconstruir datas de prazo a partir da base original (skap) com join por colaborador
+# (usamos as datas calculadas no skap para não depender de strings)
+tmp = skap[[
+    "COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA",
+    "HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS",
+    "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT",
+    "STATUS TECNICAS", "STATUS ESPECIFICAS"
+]].copy()
+
+# aplica os mesmos filtros na tmp (para respeitar o que usuário filtrou)
+tmp = normalizar_colunas(tmp)
+tmp = tmp.merge(
+    base_f[["COLABORADOR"]].drop_duplicates(),
+    on="COLABORADOR",
+    how="inner"
+)
+
+alertas = []
+
+# Técnicas vencendo
+mask_tec = (tmp["STATUS TECNICAS"] != "Realizado") & tmp["PRAZO_TECNICAS_DT"].notna()
+dias_tec = (tmp.loc[mask_tec, "PRAZO_TECNICAS_DT"] - hoje).dt.days
+tmp_tec = tmp.loc[mask_tec].copy()
+tmp_tec["DIAS PARA VENCER"] = dias_tec.values
+tmp_tec = tmp_tec[(tmp_tec["DIAS PARA VENCER"] >= 0) & (tmp_tec["DIAS PARA VENCER"] <= 7)]
+
+if len(tmp_tec) > 0:
+    tmp_tec["ETAPA"] = "Técnicas"
+    tmp_tec["DATA VENCIMENTO"] = tmp_tec["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y")
+    alertas.append(tmp_tec[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS PARA VENCER"]])
+
+# Específicas vencendo
+mask_esp = (tmp["STATUS ESPECIFICAS"] != "Realizado") & tmp["PRAZO_ESPECIFICAS_DT"].notna()
+dias_esp = (tmp.loc[mask_esp, "PRAZO_ESPECIFICAS_DT"] - hoje).dt.days
+tmp_esp = tmp.loc[mask_esp].copy()
+tmp_esp["DIAS PARA VENCER"] = dias_esp.values
+tmp_esp = tmp_esp[(tmp_esp["DIAS PARA VENCER"] >= 0) & (tmp_esp["DIAS PARA VENCER"] <= 7)]
+
+if len(tmp_esp) > 0:
+    tmp_esp["ETAPA"] = "Específicas"
+    tmp_esp["DATA VENCIMENTO"] = tmp_esp["PRAZO_ESPECIFICAS_DT"].dt.strftime("%d/%m/%Y")
+    alertas.append(tmp_esp[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS PARA VENCER"]])
+
+alerta_df = pd.concat(alertas, ignore_index=True) if alertas else pd.DataFrame(
+    columns=["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS PARA VENCER"]
+)
+
+if len(alerta_df) > 0:
+    alerta_df = alerta_df.sort_values(["DIAS PARA VENCER", "OPERACAO", "LIDERANCA", "COLABORADOR"], ascending=[True, True, True, True])
+
+st.subheader("⚠️ Atenção: Vencimento próximo")
+if len(alerta_df) == 0:
+    st.info("Nenhuma etapa vencendo nos próximos 7 dias com os filtros atuais.")
+else:
+    st.dataframe(alerta_df, use_container_width=True)
+
+st.divider()
+
+# =========================
+# Exportar pendentes (filtrados)
+# - Pendentes = qualquer etapa que NÃO esteja Realizado (No prazo ou Não realizado)
+# =========================
+pendentes_df = base_f[
+    (base_f["STATUS TECNICAS"] != "Realizado") |
+    (base_f["STATUS ESPECIFICAS"] != "Realizado")
+].copy()
+
+def preparar_excel_para_download(df: pd.DataFrame) -> bytes:
+    export_df = df.copy()
+
+    # formatar percentuais como texto no arquivo exportado
+    for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
+        if c in export_df.columns:
+            export_df[c] = pd.to_numeric(export_df[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        export_df.to_excel(writer, index=False, sheet_name="Pendentes")
+    return output.getvalue()
+
+st.subheader("📤 Exportação")
+col_a, col_b = st.columns([1, 2])
+with col_a:
+    st.write(f"Pendentes no filtro atual: **{len(pendentes_df)}**")
+
+if len(pendentes_df) == 0:
+    st.info("Sem pendentes para exportar com os filtros atuais.")
+else:
+    excel_bytes = preparar_excel_para_download(pendentes_df)
+    st.download_button(
+        label="⬇️ Baixar Excel (pendentes filtrados)",
+        data=excel_bytes,
+        file_name="pendentes_filtrados_skap.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
+
+st.divider()
+
+# =========================
+# Tabela principal (sem Styler)
 # =========================
 st.subheader("📋 Detalhamento Individual")
 
 tabela = base_f.copy()
 
 # Percentuais como texto (97%)
-for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS"]:
+for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
     if c in tabela.columns:
         tabela[c] = pd.to_numeric(tabela[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
 
@@ -330,4 +454,3 @@ for c in ["STATUS TECNICAS", "STATUS ESPECIFICAS"]:
         tabela[c] = tabela[c].astype(str).map(emoji_status)
 
 st.dataframe(tabela, use_container_width=True)
-
