@@ -11,7 +11,10 @@ st.title("📊 Painel SKAP - Gestão de Desenvolvimento")
 # =========================
 # MODO ADMIN
 # =========================
-admin = st.sidebar.text_input("Modo administrador", type="password")
+admin = st.sidebar.text_input("", type="password", placeholder="Modo administrador")
+
+modo_admin = admin == "rhadmin"
+
 
 modo_admin = admin == "rhadmin"
 
@@ -103,7 +106,9 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
 # Upload + recarregar
 # =========================
 if modo_admin:
+    if modo_admin:
     st.sidebar.header("📥 Atualização de dados")
+
 
 
 if modo_admin:
@@ -114,9 +119,9 @@ else:
     upload_com = None
 
 
-if st.sidebar.button("🔄 Atualizar dados"):
-    st.cache_data.clear()
-    st.rerun()
+if modo_admin:
+    st.sidebar.button("Atualizar dados")
+
 
 @st.cache_data(show_spinner=False)
 def carregar_dados(upload1, upload2):
