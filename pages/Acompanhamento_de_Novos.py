@@ -58,27 +58,44 @@ def opcoes(df_, col):
     )
     return sorted(vals)
 
+# ✅ mais robusta: limpa texto, aceita NBSP, hífen, serial excel com fração de dia
 def to_datetime_safe(s: pd.Series) -> pd.Series:
-    # texto BR + serial excel (blindado)
-    dt_txt = pd.to_datetime(s, errors="coerce", dayfirst=True)
+    if pd.api.types.is_datetime64_any_dtype(s):
+        return pd.to_datetime(s, errors="coerce")
 
-    num = pd.to_numeric(s, errors="coerce").replace([np.inf, -np.inf], np.nan)
+    s2 = s.copy()
+
+    s_str = (
+        s2.astype(str)
+        .str.replace("\u00a0", " ", regex=False)  # NBSP (espaço invisível)
+        .str.strip()
+    )
+    s_str = s_str.replace(
+        {"": pd.NA, "nan": pd.NA, "None": pd.NA, "NaT": pd.NA, "-": pd.NA}
+    )
+
+    # 1) tenta parse texto BR
+    dt_txt = pd.to_datetime(s_str, errors="coerce", dayfirst=True)
+
+    # 2) tenta serial excel (inclui fração de dia)
+    num = pd.to_numeric(s_str, errors="coerce").replace([np.inf, -np.inf], np.nan)
     mask = num.notna() & np.isfinite(num) & (num >= 20000) & (num <= 80000)
-    dt_excel = pd.Series(pd.NaT, index=s.index)
+
+    dt_excel = pd.Series(pd.NaT, index=s2.index)
     if mask.any():
         dt_excel.loc[mask] = pd.to_datetime(
-            num.loc[mask].astype("int64"),
+            num.loc[mask],
             unit="D",
             origin="1899-12-30",
             errors="coerce",
         )
+
     return dt_txt.fillna(dt_excel)
 
 def fmt_data(d: pd.Series) -> pd.Series:
     # sempre dd/mm/aaaa (sem hora)
     return pd.to_datetime(d, errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 
-# ✅ CORRIGIDA (sem função duplicada)
 def normalizar_status(s) -> str:
     s = str(s).strip()
     if s.lower() in ["nan", "none", ""]:
@@ -86,23 +103,18 @@ def normalizar_status(s) -> str:
 
     sl = s.lower()
 
-    # Realizada
     if sl in ["realizada", "realizado"]:
         return "Realizada"
 
-    # Não Realizada (aceita masculino também)
     if sl in ["não realizada", "nao realizada", "não realizado", "nao realizado"]:
         return "Não Realizada"
 
-    # Realizada - Fora do Prazo
     if sl in ["realizada - fora do prazo", "realizado - fora do prazo"]:
         return "Realizada - Fora do Prazo"
 
-    # No prazo
     if sl == "no prazo":
         return "No prazo"
 
-    # N/A
     if sl in ["n/a", "na"]:
         return "N/A"
 
@@ -165,7 +177,7 @@ for _, _, limite_col, dt_col in etapas:
     df[limite_col] = to_datetime_safe(df[limite_col])
     df[dt_col] = to_datetime_safe(df[dt_col])
 
-# Normalizar status (AGORA FUNCIONA)
+# Normalizar status
 for _, status_col, _, _ in etapas:
     df[status_col] = df[status_col].apply(normalizar_status)
 
@@ -205,6 +217,16 @@ if f_operacao:
     df_f = df_f[df_f["OPERACAO"].isin(f_operacao)]
 if f_atividade:
     df_f = df_f[df_f["ATIVIDADE"].isin(f_atividade)]
+
+# ✅ DEBUG opcional (não aparece a menos que você marque)
+if st.sidebar.checkbox("DEBUG: checar datas que viraram NaT", value=False):
+    st.write("Linhas filtradas:", len(df_f))
+    for nome_aba, status_col, limite_col, dt_col in etapas:
+        st.write(f"### {nome_aba}")
+        st.write("Limite NaT:", int(df_f[limite_col].isna().sum()), "de", len(df_f))
+        st.write("Dt NaT:", int(df_f[dt_col].isna().sum()), "de", len(df_f))
+        exemplo = df_f[df_f[limite_col].isna()][["COLABORADOR", status_col, limite_col, dt_col]].head(5)
+        st.dataframe(exemplo, use_container_width=True)
 
 # =========================
 # Cards globais
@@ -280,7 +302,7 @@ else:
 st.divider()
 
 # =========================
-# Estilos (centralização + cores)
+# Estilos
 # =========================
 def estilo_progresso(v):
     try:
@@ -312,6 +334,7 @@ def estilo_dias(v):
         v = int(v)
     except Exception:
         return "text-align: center;"
+    # positivo = faltam dias; negativo = atrasado
     if v > 0:
         return "color: #00c853; font-weight: 700; text-align: center;"
     if v < 0:
@@ -324,7 +347,6 @@ def estilo_dias(v):
 def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     tmp = df_f.copy()
 
-    # Aplicar filtro de status (apenas na etapa da aba)
     if f_status:
         tmp = tmp[tmp[status_col].isin(f_status)].copy()
 
@@ -341,7 +363,6 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     tmp["DIAS"] = pd.to_numeric(pd.Series(dias), errors="coerce").replace([np.inf, -np.inf], np.nan)
     tmp["DIAS"] = tmp["DIAS"].round(0).astype("Int64")
 
-    # Formatação: datas só com dd/mm/aaaa
     tmp["ADMISSAO"] = fmt_data(tmp["ADMISSAO"])
     tmp[limite_col] = fmt_data(tmp[limite_col])
     tmp[dt_col] = fmt_data(tmp[dt_col])
@@ -363,7 +384,6 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
         ]
     ].copy()
 
-    # Top 5 operações com mais "Não Realizada" NESTA etapa
     st.write("**Top 5 operações com mais 'Não Realizada' (nesta etapa)**")
     top5_etapa = (
         tmp[tmp[status_col] == "Não Realizada"]
@@ -378,7 +398,6 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     else:
         st.dataframe(top5_etapa, use_container_width=True)
 
-    # Exportação: aba atual
     st.write("**Exportação (respeita filtros + etapa + status selecionado)**")
     excel_bytes = preparar_excel_para_download(view, sheet_name=nome_aba)
     st.download_button(
@@ -392,8 +411,17 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     st.subheader(f"📋 Detalhamento — {nome_aba}")
 
     styler = view.style
-    styler = styler.set_properties(**{"text-align": "center"})
-    styler = styler.set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
+    styler = styler.set_properties(**{
+        "text-align": "center",
+        "max-width": "140px",
+        "white-space": "nowrap",
+        "overflow": "hidden",
+        "text-overflow": "ellipsis",
+        "font-size": "12px",
+    })
+    styler = styler.set_table_styles([
+        {"selector": "th", "props": [("text-align", "center"), ("font-size", "12px")]},
+    ])
 
     styler = styler.applymap(estilo_progresso, subset=["PROGRESSO GERAL"])
     styler = styler.applymap(estilo_status, subset=[status_col])
