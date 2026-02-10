@@ -347,26 +347,27 @@ def estilo_dias(v):
 def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     tmp = df_f.copy()
 
+    # Aplicar filtro de status (apenas na etapa da aba)
     if f_status:
         tmp = tmp[tmp[status_col].isin(f_status)].copy()
 
     dt = tmp[dt_col]
-lim = tmp[limite_col]
-status = tmp[status_col].fillna("")
+    lim = tmp[limite_col]
+    status = tmp[status_col].fillna("")
 
-# Base: dias = limite - hoje (padrão)
-dias = (lim - hoje).dt.days
+    # DIAS:
+    # - padrão: limite - hoje
+    # - se tiver dt preenchida: limite - dt
+    # - se status == "No prazo": sempre limite - hoje
+    dias = (lim - hoje).dt.days
+    dias_dt = (lim - dt).dt.days
+    dias = dias.where(dt.isna(), dias_dt)
+    dias = dias.where(status != "No prazo", (lim - hoje).dt.days)
 
-# Se tiver dt preenchida, calcula limite - dt
-dias_dt = (lim - dt).dt.days
-dias = dias.where(dt.isna(), dias_dt)
+    # garante inteiro e nunca None
+    tmp["DIAS"] = pd.to_numeric(dias, errors="coerce").fillna(0).astype(int)
 
-# Se status for "No prazo", força limite - hoje (independente do dt)
-dias = dias.where(status != "No prazo", (lim - hoje).dt.days)
-
-# Evita None/NaN: se ainda ficar NaN (ex: lim NaT), põe 0
-tmp["DIAS"] = pd.to_numeric(dias, errors="coerce").fillna(0).astype(int)
-
+    # Formatação: datas só com dd/mm/aaaa
     tmp["ADMISSAO"] = fmt_data(tmp["ADMISSAO"])
     tmp[limite_col] = fmt_data(tmp[limite_col])
     tmp[dt_col] = fmt_data(tmp[dt_col])
@@ -388,6 +389,7 @@ tmp["DIAS"] = pd.to_numeric(dias, errors="coerce").fillna(0).astype(int)
         ]
     ].copy()
 
+    # Top 5 operações com mais "Não Realizada" NESTA etapa
     st.write("**Top 5 operações com mais 'Não Realizada' (nesta etapa)**")
     top5_etapa = (
         tmp[tmp[status_col] == "Não Realizada"]
@@ -397,11 +399,13 @@ tmp["DIAS"] = pd.to_numeric(dias, errors="coerce").fillna(0).astype(int)
         .head(5)
         .reset_index(name="QTD_NAO_REALIZADA")
     )
+
     if len(top5_etapa) == 0:
         st.caption("Sem 'Não Realizada' nesta etapa com os filtros atuais.")
     else:
         st.dataframe(top5_etapa, use_container_width=True)
 
+    # Exportação: aba atual
     st.write("**Exportação (respeita filtros + etapa + status selecionado)**")
     excel_bytes = preparar_excel_para_download(view, sheet_name=nome_aba)
     st.download_button(
