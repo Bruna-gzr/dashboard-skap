@@ -353,6 +353,17 @@ styler_nr = styler_nr.set_table_styles([
 ])
 
 # aplica cores no DIAS
+def estilo_dias(v):
+    try:
+        v = int(v)
+    except Exception:
+        return "text-align: center;"
+    if v > 0:
+        return "color: #00c853; font-weight: 700; text-align: center;"
+    if v < 0:
+        return "color: #ff1744; font-weight: 700; text-align: center;"
+    return "color: #ffd600; font-weight: 700; text-align: center;"
+
 styler_nr = styler_nr.applymap(estilo_dias, subset=["DIAS"])
 
 st.dataframe(
