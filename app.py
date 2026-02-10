@@ -283,7 +283,7 @@ def cor_status(val):
     if val == "No prazo":
         return "color: orange; font-weight: bold;"
     return ""
-
+	
 styled = (
     base_f.style
     .format({
