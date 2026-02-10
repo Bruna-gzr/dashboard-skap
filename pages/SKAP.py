@@ -57,7 +57,6 @@ def centralizar_tabela(df: pd.DataFrame):
         .set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
     )
 
-
 def limpar_texto(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     for c in cols:
         if c in df.columns:
@@ -145,6 +144,20 @@ def percent_str(x) -> str:
     except Exception:
         return "0%"
 
+# Exportação genérica
+def preparar_excel_para_download(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
+    export_df = df.copy()
+
+    # formatar percentuais como texto no arquivo exportado (se existirem)
+    for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
+        if c in export_df.columns:
+            export_df[c] = pd.to_numeric(export_df[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        export_df.to_excel(writer, index=False, sheet_name=sheet_name[:31])  # limite Excel
+    return output.getvalue()
+
 # =========================
 # Normalização + colunas mínimas
 # =========================
@@ -207,8 +220,6 @@ for c in ["CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "NIVEIS"]:
 
 # =========================
 # Ordem das colunas (EXATA + ajustes pedidos)
-# - Inserir HABILIDADES EMPODERAMENTO após STATUS ESPECIFICAS
-# - Inserir NIVEIS ao lado (logo após)
 # =========================
 ordem = [
     "COLABORADOR",
@@ -230,7 +241,6 @@ ordem = [
     "HABILIDADE ESPECIFICA",
     "HABILIDADE EMPODERAMENTO",
 ]
-
 ordem = [c for c in ordem if c in base.columns]
 base = base[ordem].copy()
 
@@ -335,8 +345,6 @@ else:
 # =========================
 hoje = pd.to_datetime(datetime.today().date())
 
-# reconstruir datas de prazo a partir da base original (skap) com join por colaborador
-# (usamos as datas calculadas no skap para não depender de strings)
 tmp = skap[[
     "COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA",
     "HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS",
@@ -344,7 +352,6 @@ tmp = skap[[
     "STATUS TECNICAS", "STATUS ESPECIFICAS"
 ]].copy()
 
-# aplica os mesmos filtros na tmp (para respeitar o que usuário filtrou)
 tmp = normalizar_colunas(tmp)
 tmp = tmp.merge(
     base_f[["COLABORADOR"]].drop_duplicates(),
@@ -391,10 +398,20 @@ if len(alerta_df) == 0:
 else:
     st.dataframe(centralizar_tabela(alerta_df), use_container_width=True)
 
+    # Exportação - Vencimento próximo (logo abaixo)
+    excel_alerta = preparar_excel_para_download(alerta_df, sheet_name="Vencimento_proximo")
+    st.download_button(
+        label="⬇️ Baixar Excel (Vencimento próximo)",
+        data=excel_alerta,
+        file_name="vencimento_proximo_skap.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
+
 st.divider()
 
 # =========================
-# SKAP Vencida (etapas "Não realizado" e já vencidas)
+# 🔴 Atenção: Skap Vencida (etapas "Não realizado" e já vencidas)
 # =========================
 vencidas = []
 
@@ -429,57 +446,26 @@ vencida_df = pd.concat(vencidas, ignore_index=True) if vencidas else pd.DataFram
 if len(vencida_df) > 0:
     vencida_df = vencida_df.sort_values(["DIAS VENCIDO", "OPERACAO", "LIDERANCA", "COLABORADOR"], ascending=[False, True, True, True])
 
-# "Card" + tabela
 st.subheader("🔴 Atenção: Skap Vencida")
 if len(vencida_df) == 0:
     st.info("Nenhuma etapa vencida (Não realizado) com os filtros atuais.")
 else:
     st.write(f"Total de etapas vencidas no filtro atual: **{len(vencida_df)}**")
 
-    def destacar_dias_vermelho(df):
-        # deixa a coluna DIAS VENCIDO em vermelho
-        return df.style.applymap(lambda v: "color: red; font-weight: 700;", subset=["DIAS VENCIDO"])
-
+    # DIAS VENCIDO em vermelho
     st.dataframe(
-        centralizar_tabela(vencida_df).applymap(lambda v: "color: red; font-weight:700;", subset=["DIAS VENCIDO"]),
+        centralizar_tabela(vencida_df).applymap(
+            lambda v: "color: red; font-weight:700;", subset=["DIAS VENCIDO"]
+        ),
         use_container_width=True
     )
 
-# =========================
-# Exportar pendentes (filtrados)
-# - Pendentes = qualquer etapa que NÃO esteja Realizado (No prazo ou Não realizado)
-# =========================
-pendentes_df = base_f[
-    (base_f["STATUS TECNICAS"] != "Realizado") |
-    (base_f["STATUS ESPECIFICAS"] != "Realizado")
-].copy()
-
-def preparar_excel_para_download(df: pd.DataFrame) -> bytes:
-    export_df = df.copy()
-
-    # formatar percentuais como texto no arquivo exportado
-    for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
-        if c in export_df.columns:
-            export_df[c] = pd.to_numeric(export_df[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
-
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        export_df.to_excel(writer, index=False, sheet_name="Pendentes")
-    return output.getvalue()
-
-st.subheader("📤 Exportação")
-col_a, col_b = st.columns([1, 2])
-with col_a:
-    st.write(f"Pendentes no filtro atual: **{len(pendentes_df)}**")
-
-if len(pendentes_df) == 0:
-    st.info("Sem pendentes para exportar com os filtros atuais.")
-else:
-    excel_bytes = preparar_excel_para_download(pendentes_df)
+    # Exportação - Skap vencida (logo abaixo)
+    excel_vencida = preparar_excel_para_download(vencida_df, sheet_name="Skap_vencida")
     st.download_button(
-        label="⬇️ Baixar Excel (pendentes filtrados)",
-        data=excel_bytes,
-        file_name="pendentes_filtrados_skap.xlsx",
+        label="⬇️ Baixar Excel (Skap vencida)",
+        data=excel_vencida,
+        file_name="skap_vencida.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
@@ -493,11 +479,10 @@ st.subheader("📋 Detalhamento Individual")
 
 tabela = base_f.copy()
 
-# Ordenar por DATA ADMISSAO (convertendo de texto dd/mm/aaaa -> datetime)
+# Ordenar por DATA ADMISSAO (dd/mm/aaaa)
 if "DATA ADMISSAO" in tabela.columns:
     tabela["_DATA_ADMISSAO_DT"] = pd.to_datetime(tabela["DATA ADMISSAO"], errors="coerce", dayfirst=True)
     tabela = tabela.sort_values("_DATA_ADMISSAO_DT", ascending=True).drop(columns=["_DATA_ADMISSAO_DT"])
-
 
 # Percentuais como texto (97%)
 for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
@@ -520,5 +505,12 @@ for c in ["STATUS TECNICAS", "STATUS ESPECIFICAS"]:
 
 st.dataframe(centralizar_tabela(tabela), use_container_width=True)
 
-
-
+# Exportação - Detalhamento individual (logo abaixo)
+excel_detalhe = preparar_excel_para_download(tabela, sheet_name="Detalhamento")
+st.download_button(
+    label="⬇️ Baixar Excel (Detalhamento individual)",
+    data=excel_detalhe,
+    file_name="detalhamento_individual_skap.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    use_container_width=True
+)
