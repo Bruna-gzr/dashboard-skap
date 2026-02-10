@@ -56,10 +56,6 @@ def opcoes(df_, col):
     )
     return sorted(vals)
 
-def centralizar_styler(df_):
-    return df_.style.set_properties(**{"text-align": "center"}) \
-        .set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
-
 def to_datetime_safe(s: pd.Series) -> pd.Series:
     # texto BR + serial excel (blindado)
     dt_txt = pd.to_datetime(s, errors="coerce", dayfirst=True)
@@ -76,22 +72,45 @@ def to_datetime_safe(s: pd.Series) -> pd.Series:
         )
     return dt_txt.fillna(dt_excel)
 
+def fmt_data(d: pd.Series) -> pd.Series:
+    # dd/mm/yyyy (vazio quando NaT)
+    return pd.to_datetime(d, errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
+
+def fmt_datahora(d: pd.Series) -> pd.Series:
+    # dd/mm/yyyy HH:MM (se tiver horário; se não tiver, mostra dd/mm/yyyy 00:00)
+    x = pd.to_datetime(d, errors="coerce")
+    return x.dt.strftime("%d/%m/%Y %H:%M").fillna("")
+
 # =========================
-# Garantir colunas necessárias
+# Garantir colunas básicas
 # =========================
-for col in [
-    "COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA",
-    "PROGRESSO GERAL", "REACAO INTEGRACAO", "DT REACAO INTEGRACAO", "LIMITE REACAO INTEGRACAO"
-]:
-    df = garantir_coluna(df, col, "")
+base_cols = [
+    "COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "PROGRESSO GERAL"
+]
+for c in base_cols:
+    df = garantir_coluna(df, c, "")
+
+# Garantir colunas das etapas
+etapas = [
+    # (nome_da_aba, status_col, limite_col, dt_col, dt_e_datahora?)
+    ("Reação Integração", "REACAO INTEGRACAO", "LIMITE REACAO INTEGRACAO", "DT REACAO INTEGRACAO", False),
+    ("Satisfação I", "SATISFACAO COM A INTEGRACAO I", "LIMITE SATISF. I", "DT HR SATISF. I", True),
+    ("AVD", "AVD", "LIMITE AVD", "DT HR AVD", True),
+    ("Feedback AVD", "FEEDBACK AVD", "LIMITE FEEDBACK", "DT HR FEEDBACK", True),
+    ("Cadastro PDI", "CADASTRO PDI", "LIMITE PDI", "DT PDI", False),
+    ("Satisfação II", "SATISFACAO COM A INTEGRACAO II", "LIMITE SATISFACAO II", "DT SATISFACAO II", False),
+    ("Follow", "FOLLOW", "LIMITE FOLLOW", "DATA HR FOLLOW", True),
+]
+
+for _, status_col, limite_col, dt_col, _ in etapas:
+    df = garantir_coluna(df, status_col, "")
+    df = garantir_coluna(df, limite_col, "")
+    df = garantir_coluna(df, dt_col, "")
 
 # =========================
 # Datas + tempo de casa
 # =========================
 df["ADMISSAO"] = to_datetime_safe(df["ADMISSAO"])
-df["DT REACAO INTEGRACAO"] = to_datetime_safe(df["DT REACAO INTEGRACAO"])
-df["LIMITE REACAO INTEGRACAO"] = to_datetime_safe(df["LIMITE REACAO INTEGRACAO"])
-
 hoje = pd.to_datetime(datetime.today().date())
 
 td = pd.to_numeric(df["TEMPO DE CASA"], errors="coerce")
@@ -103,9 +122,13 @@ df["TEMPO DE CASA"] = pd.to_numeric(df["TEMPO DE CASA"], errors="coerce").fillna
 
 # Progresso geral como número (0..1 ou 0..100)
 pg = pd.to_numeric(df["PROGRESSO GERAL"], errors="coerce")
-# se vier em 0..100, normaliza para 0..1
 df["PROGRESSO_GERAL_NUM"] = np.where(pg.notna() & (pg > 1.0), pg / 100.0, pg).astype(float)
 df["PROGRESSO_GERAL_NUM"] = np.nan_to_num(df["PROGRESSO_GERAL_NUM"], nan=0.0)
+
+# Converter colunas de limite/dt para datetime
+for _, _, limite_col, dt_col, _ in etapas:
+    df[limite_col] = to_datetime_safe(df[limite_col])
+    df[dt_col] = to_datetime_safe(df[dt_col])
 
 # =========================
 # Sidebar filtros (somente Operação / Atividade)
@@ -121,22 +144,6 @@ if f_atividade:
     df_f = df_f[df_f["ATIVIDADE"].isin(f_atividade)]
 
 # =========================
-# Coluna DIAS (regra NOVA)
-# Se DT vazia -> HOJE - LIMITE
-# Se DT preenchida -> LIMITE - DT
-# =========================
-dt = df_f["DT REACAO INTEGRACAO"]
-lim = df_f["LIMITE REACAO INTEGRACAO"]
-
-dias = np.where(
-    dt.isna(),
-    (hoje - lim).dt.days,
-    (lim - dt).dt.days
-)
-
-df_f["DIAS"] = pd.to_numeric(dias, errors="coerce")
-
-# =========================
 # Cards
 # =========================
 total = len(df_f)
@@ -147,50 +154,10 @@ c2.metric("Média Tempo de Casa", int(df_f["TEMPO DE CASA"].mean()) if total els
 st.divider()
 
 # =========================
-# Preparar visual (datas em texto + %)
+# Estilos (cores + centralização)
 # =========================
-df_view = df_f.copy()
-
-df_view["ADMISSAO"] = pd.to_datetime(df_view["ADMISSAO"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
-df_view["LIMITE REACAO INTEGRACAO"] = pd.to_datetime(df_view["LIMITE REACAO INTEGRACAO"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
-df_view["DT REACAO INTEGRACAO"] = pd.to_datetime(df_view["DT REACAO INTEGRACAO"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
-
-# Progresso em %
-df_view["PROGRESSO GERAL"] = df_view["PROGRESSO_GERAL_NUM"].map(lambda x: f"{x:.0%}")
-
-# Ordem das colunas
-ordem = [
-    "COLABORADOR",
-    "OPERACAO",
-    "ATIVIDADE",
-    "ADMISSAO",
-    "TEMPO DE CASA",
-    "PROGRESSO GERAL",
-    "REACAO INTEGRACAO",
-    "LIMITE REACAO INTEGRACAO",
-    "DT REACAO INTEGRACAO",
-    "DIAS",
-]
-df_view = df_view[[c for c in ordem if c in df_view.columns]].copy()
-
-# =========================
-# Estilos (cores)
-# =========================
-def estilo_dias(v):
-    try:
-        v = float(v)
-    except Exception:
-        return "text-align: center;"
-    # (mantive o padrão que você tinha antes: >0 verde, <0 vermelho)
-    # com a NOVA regra, pode acontecer de "faltando" ser negativo e "atraso" positivo.
-    if v > 0:
-        return "color: #00c853; font-weight: 700; text-align: center;"
-    if v < 0:
-        return "color: #ff1744; font-weight: 700; text-align: center;"
-    return "font-weight: 700; text-align: center;"
-
 def estilo_progresso(v):
-    # v vem como "90%" etc
+    # v vem como "90%"
     try:
         n = float(str(v).replace("%", "").strip())
     except Exception:
@@ -206,38 +173,90 @@ def estilo_status(v):
 
     if s == "realizada":
         return "color: #00c853; font-weight: 700; text-align: center;"   # verde
-    if s == "não realizada" or s == "nao realizada":
+    if s in ["não realizada", "nao realizada"]:
         return "color: #ff1744; font-weight: 700; text-align: center;"   # vermelho
     if s == "realizada - fora do prazo":
         return "color: #ff9100; font-weight: 700; text-align: center;"   # laranja
     if s == "no prazo":
         return "color: #ffd600; font-weight: 700; text-align: center;"   # amarelo
-    if s == "n/a" or s == "na":
+    if s in ["n/a", "na"]:
         return "color: #ffffff; font-weight: 700; text-align: center;"   # branco
 
     return "text-align: center;"
 
+def estilo_dias(v):
+    try:
+        v = int(v)
+    except Exception:
+        return "text-align: center;"
+    # Como DIAS = LIMITE - HOJE (ou LIMITE - DT):
+    # positivo = ainda faltam dias -> verde
+    # negativo = passou do limite -> vermelho
+    if v > 0:
+        return "color: #00c853; font-weight: 700; text-align: center;"
+    if v < 0:
+        return "color: #ff1744; font-weight: 700; text-align: center;"
+    return "color: #ffd600; font-weight: 700; text-align: center;"  # 0 = vence hoje (amarelo)
+
 # =========================
-# Render
+# Função para montar tabela por etapa
 # =========================
-st.subheader("📋 Detalhamento — Reação Integração")
+def tabela_etapa(nome_aba, status_col, limite_col, dt_col, dt_e_datahora: bool):
+    tmp = df_f.copy()
 
-styler = df_view.style
+    # DIAS: se dt vazia -> limite - hoje; se dt preenchida -> limite - dt
+    dt = tmp[dt_col]
+    lim = tmp[limite_col]
 
-# centralizar tudo
-styler = styler.set_properties(**{"text-align": "center"})
-styler = styler.set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
+    dias = np.where(
+        dt.isna(),
+        (lim - hoje).dt.days,
+        (lim - dt).dt.days
+    )
 
-# cores por coluna
-if "DIAS" in df_view.columns:
-    styler = styler.applymap(estilo_dias, subset=["DIAS"])
-if "PROGRESSO GERAL" in df_view.columns:
+    tmp["DIAS"] = pd.to_numeric(dias, errors="coerce").round(0).astype("Int64")
+
+    # Formata datas para exibição
+    tmp["ADMISSAO"] = fmt_data(tmp["ADMISSAO"])
+    tmp[limite_col] = fmt_data(tmp[limite_col])
+    tmp[dt_col] = fmt_datahora(tmp[dt_col]) if dt_e_datahora else fmt_data(tmp[dt_col])
+
+    # Progresso em %
+    tmp["PROGRESSO GERAL"] = tmp["PROGRESSO_GERAL_NUM"].map(lambda x: f"{x:.0%}")
+
+    # Ordem das colunas (base + etapa + Dias)
+    view = tmp[
+        [
+            "COLABORADOR",
+            "OPERACAO",
+            "ATIVIDADE",
+            "ADMISSAO",
+            "TEMPO DE CASA",
+            "PROGRESSO GERAL",
+            status_col,
+            limite_col,
+            dt_col,
+            "DIAS",
+        ]
+    ].copy()
+
+    # Styler: centralização + cores
+    styler = view.style
+    styler = styler.set_properties(**{"text-align": "center"})
+    styler = styler.set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
+
     styler = styler.applymap(estilo_progresso, subset=["PROGRESSO GERAL"])
-if "REACAO INTEGRACAO" in df_view.columns:
-    styler = styler.applymap(estilo_status, subset=["REACAO INTEGRACAO"])
+    styler = styler.applymap(estilo_status, subset=[status_col])
+    styler = styler.applymap(estilo_dias, subset=["DIAS"])
 
-st.dataframe(
-    styler,
-    use_container_width=True,
-    height=700
-)
+    st.subheader(f"📋 Detalhamento — {nome_aba}")
+    st.dataframe(styler, use_container_width=True, height=700)
+
+# =========================
+# Abas
+# =========================
+abas = st.tabs([e[0] for e in etapas])
+
+for tab, (nome_aba, status_col, limite_col, dt_col, dt_e_datahora) in zip(abas, etapas):
+    with tab:
+        tabela_etapa(nome_aba, status_col, limite_col, dt_col, dt_e_datahora)
