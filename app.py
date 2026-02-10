@@ -106,8 +106,9 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
 # Upload + recarregar
 # =========================
 if modo_admin:
-    if modo_admin:
     st.sidebar.header("📥 Atualização de dados")
+
+
 
 
 
