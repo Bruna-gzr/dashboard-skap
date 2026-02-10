@@ -58,26 +58,20 @@ def opcoes(df_, col):
     )
     return sorted(vals)
 
-# ✅ mais robusta: limpa texto, aceita NBSP, hífen, serial excel com fração de dia
 def to_datetime_safe(s: pd.Series) -> pd.Series:
     if pd.api.types.is_datetime64_any_dtype(s):
         return pd.to_datetime(s, errors="coerce")
 
     s2 = s.copy()
-
     s_str = (
         s2.astype(str)
-        .str.replace("\u00a0", " ", regex=False)  # NBSP (espaço invisível)
+        .str.replace("\u00a0", " ", regex=False)
         .str.strip()
     )
-    s_str = s_str.replace(
-        {"": pd.NA, "nan": pd.NA, "None": pd.NA, "NaT": pd.NA, "-": pd.NA}
-    )
+    s_str = s_str.replace({"": pd.NA, "nan": pd.NA, "None": pd.NA, "NaT": pd.NA, "-": pd.NA})
 
-    # 1) tenta parse texto BR
     dt_txt = pd.to_datetime(s_str, errors="coerce", dayfirst=True)
 
-    # 2) tenta serial excel (inclui fração de dia)
     num = pd.to_numeric(s_str, errors="coerce").replace([np.inf, -np.inf], np.nan)
     mask = num.notna() & np.isfinite(num) & (num >= 20000) & (num <= 80000)
 
@@ -93,7 +87,6 @@ def to_datetime_safe(s: pd.Series) -> pd.Series:
     return dt_txt.fillna(dt_excel)
 
 def fmt_data(d: pd.Series) -> pd.Series:
-    # sempre dd/mm/aaaa (sem hora)
     return pd.to_datetime(d, errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 
 def normalizar_status(s) -> str:
@@ -129,9 +122,7 @@ def preparar_excel_para_download(df_: pd.DataFrame, sheet_name="Dados") -> bytes
 # =========================
 # Colunas e etapas
 # =========================
-base_cols = [
-    "COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "PROGRESSO GERAL"
-]
+base_cols = ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "PROGRESSO GERAL"]
 for c in base_cols:
     df = garantir_coluna(df, c, "")
 
@@ -156,7 +147,6 @@ for _, status_col, limite_col, dt_col in etapas:
 df["ADMISSAO"] = to_datetime_safe(df["ADMISSAO"])
 hoje = pd.to_datetime(datetime.today().date())
 
-# Ignorar admitidos antes de 01/01/2025
 cutoff = pd.to_datetime("2025-01-01")
 df = df[df["ADMISSAO"].notna() & (df["ADMISSAO"] >= cutoff)].copy()
 
@@ -167,22 +157,19 @@ else:
     df["TEMPO DE CASA"] = td
 df["TEMPO DE CASA"] = pd.to_numeric(df["TEMPO DE CASA"], errors="coerce").fillna(0).astype(int)
 
-# Progresso geral como número (0..1 ou 0..100)
 pg = pd.to_numeric(df["PROGRESSO GERAL"], errors="coerce")
 df["PROGRESSO_GERAL_NUM"] = np.where(pg.notna() & (pg > 1.0), pg / 100.0, pg).astype(float)
 df["PROGRESSO_GERAL_NUM"] = np.nan_to_num(df["PROGRESSO_GERAL_NUM"], nan=0.0)
 
-# Converter limite/dt para datetime
 for _, _, limite_col, dt_col in etapas:
     df[limite_col] = to_datetime_safe(df[limite_col])
     df[dt_col] = to_datetime_safe(df[dt_col])
 
-# Normalizar status
 for _, status_col, _, _ in etapas:
     df[status_col] = df[status_col].apply(normalizar_status)
 
 # =========================
-# Sidebar filtros (Operação / Atividade / Status / Período Admissão)
+# Sidebar filtros
 # =========================
 st.sidebar.header("Filtros")
 
@@ -193,18 +180,13 @@ f_status = st.sidebar.multiselect(
     ["Realizada", "Não Realizada", "Realizada - Fora do Prazo", "N/A", "No prazo"]
 )
 
-# filtro por período de admissão
 min_adm = df["ADMISSAO"].min()
 max_adm = df["ADMISSAO"].max()
 if pd.isna(min_adm) or pd.isna(max_adm):
     min_adm = pd.to_datetime("2025-01-01")
     max_adm = hoje
 
-dt_ini, dt_fim = st.sidebar.date_input(
-    "Período de admissão",
-    value=(min_adm.date(), max_adm.date()),
-)
-
+dt_ini, dt_fim = st.sidebar.date_input("Período de admissão", value=(min_adm.date(), max_adm.date()))
 dt_ini = pd.to_datetime(dt_ini)
 dt_fim = pd.to_datetime(dt_fim)
 if dt_fim < dt_ini:
@@ -218,16 +200,6 @@ if f_operacao:
 if f_atividade:
     df_f = df_f[df_f["ATIVIDADE"].isin(f_atividade)]
 
-# ✅ DEBUG opcional (não aparece a menos que você marque)
-if st.sidebar.checkbox("DEBUG: checar datas que viraram NaT", value=False):
-    st.write("Linhas filtradas:", len(df_f))
-    for nome_aba, status_col, limite_col, dt_col in etapas:
-        st.write(f"### {nome_aba}")
-        st.write("Limite NaT:", int(df_f[limite_col].isna().sum()), "de", len(df_f))
-        st.write("Dt NaT:", int(df_f[dt_col].isna().sum()), "de", len(df_f))
-        exemplo = df_f[df_f[limite_col].isna()][["COLABORADOR", status_col, limite_col, dt_col]].head(5)
-        st.dataframe(exemplo, use_container_width=True)
-
 # =========================
 # Cards globais
 # =========================
@@ -238,13 +210,11 @@ for _, status_col, limite_col, _ in etapas:
     st_col = df_f[status_col].fillna("")
     lim = df_f[limite_col]
 
-    # No prazo vencendo em até 3 dias
     mask_np = (st_col == "No prazo") & lim.notna()
     dias_para_vencer = (lim - hoje).dt.days
     mask_venc3 = mask_np & (dias_para_vencer >= 0) & (dias_para_vencer <= 3)
     no_prazo_vencendo_ids.update(df_f.loc[mask_venc3, "COLABORADOR"].astype(str).tolist())
 
-    # Não Realizada em alguma etapa
     mask_nr = (st_col == "Não Realizada")
     nao_realizada_ids.update(df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist())
 
@@ -256,7 +226,7 @@ c3.metric("🔴 Com alguma etapa Não Realizada", len(nao_realizada_ids))
 st.divider()
 
 # =========================
-# Gráfico: % médio de Progresso Geral por Operação (em %)
+# Gráfico: % médio de Progresso Geral por Operação
 # =========================
 st.subheader("📈 Progresso Geral médio por Operação")
 
@@ -299,6 +269,32 @@ if len(top5_global) == 0:
 else:
     st.dataframe(top5_global, use_container_width=True)
 
+# ✅ Card / lista abaixo do Top 5 global: No prazo vencendo até 3 dias
+st.subheader("🟡 No prazo vencendo em até 3 dias (geral)")
+
+no_prazo_3d_ids = set()
+for _, status_col, limite_col, _ in etapas:
+    st_col = df_f[status_col].fillna("")
+    lim = df_f[limite_col]
+
+    mask_np = (st_col == "No prazo") & lim.notna()
+    dias_para_vencer = (lim - hoje).dt.days
+    mask_venc3 = mask_np & (dias_para_vencer >= 0) & (dias_para_vencer <= 3)
+
+    no_prazo_3d_ids.update(df_f.loc[mask_venc3, "COLABORADOR"].astype(str).tolist())
+
+st.metric("Colaboradores com alguma etapa 'No prazo' vencendo em até 3 dias", len(no_prazo_3d_ids))
+
+if len(no_prazo_3d_ids) > 0:
+    df_np = df_f[df_f["COLABORADOR"].astype(str).isin(no_prazo_3d_ids)][
+        ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]
+    ].copy()
+    df_np = df_np.sort_values("ADMISSAO", ascending=True)
+    df_np["ADMISSAO"] = fmt_data(df_np["ADMISSAO"])
+    st.dataframe(df_np, use_container_width=True, height=350)
+else:
+    st.info("Nenhum colaborador com etapa 'No prazo' vencendo em até 3 dias com os filtros atuais.")
+
 st.divider()
 
 # =========================
@@ -334,7 +330,6 @@ def estilo_dias(v):
         v = int(v)
     except Exception:
         return "text-align: center;"
-    # positivo = faltam dias; negativo = atrasado
     if v > 0:
         return "color: #00c853; font-weight: 700; text-align: center;"
     if v < 0:
@@ -346,11 +341,10 @@ def estilo_dias(v):
 # =========================
 def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     tmp = df_f.copy()
-    tmp = df_f.copy()
-tmp = tmp.sort_values("ADMISSAO", ascending=True)
 
+    # ✅ entender a ordem por ADMISSAO (data real)
+    tmp = tmp.sort_values("ADMISSAO", ascending=True)
 
-    # Aplicar filtro de status (apenas na etapa da aba)
     if f_status:
         tmp = tmp[tmp[status_col].isin(f_status)].copy()
 
@@ -358,24 +352,16 @@ tmp = tmp.sort_values("ADMISSAO", ascending=True)
     lim = tmp[limite_col]
     status = tmp[status_col].fillna("")
 
-    # DIAS:
-    # - padrão: limite - hoje
-    # - se tiver dt preenchida: limite - dt
-    # - se status == "No prazo": sempre limite - hoje
     dias = (lim - hoje).dt.days
     dias_dt = (lim - dt).dt.days
     dias = dias.where(dt.isna(), dias_dt)
     dias = dias.where(status != "No prazo", (lim - hoje).dt.days)
 
-    # garante inteiro e nunca None
     tmp["DIAS"] = pd.to_numeric(dias, errors="coerce").fillna(0).astype(int)
 
-    # Formatação: datas só com dd/mm/aaaa
     tmp["ADMISSAO"] = fmt_data(tmp["ADMISSAO"])
     tmp[limite_col] = fmt_data(tmp[limite_col])
     tmp[dt_col] = fmt_data(tmp[dt_col])
-    
-    tmp = tmp.sort_values("ADMISSAO", ascending=True)
 
     tmp["PROGRESSO GERAL"] = tmp["PROGRESSO_GERAL_NUM"].map(lambda x: f"{x:.0%}")
 
@@ -394,7 +380,6 @@ tmp = tmp.sort_values("ADMISSAO", ascending=True)
         ]
     ].copy()
 
-    # Top 5 operações com mais "Não Realizada" NESTA etapa
     st.write("**Top 5 operações com mais 'Não Realizada' (nesta etapa)**")
     top5_etapa = (
         tmp[tmp[status_col] == "Não Realizada"]
@@ -410,7 +395,6 @@ tmp = tmp.sort_values("ADMISSAO", ascending=True)
     else:
         st.dataframe(top5_etapa, use_container_width=True)
 
-    # Exportação: aba atual
     st.write("**Exportação (respeita filtros + etapa + status selecionado)**")
     excel_bytes = preparar_excel_para_download(view, sheet_name=nome_aba)
     st.download_button(
