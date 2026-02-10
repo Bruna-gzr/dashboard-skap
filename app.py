@@ -9,15 +9,36 @@ st.set_page_config(layout="wide")
 st.title("📊 Painel SKAP - Gestão de Desenvolvimento")
 
 # =========================
-# MODO ADMIN
+# Atualização (cache)
 # =========================
-admin = st.sidebar.text_input("", type="password", placeholder="Modo administrador")
+st.sidebar.header("Atualização")
+if st.sidebar.button("🔄 Recarregar dados"):
+    st.cache_data.clear()
+    st.rerun()
 
-modo_admin = admin == "rhadmin"
+# =========================
+# Carregamento automático (pasta data/)
+# =========================
+DATA_DIR = Path(__file__).parent / "data"
+ARQ_SKAP = DATA_DIR / "Skap.xlsx"
+ARQ_COM  = DATA_DIR / "Skap - comentarios.xlsx"
 
+@st.cache_data(show_spinner=True)
+def carregar_dados():
+    if not ARQ_SKAP.exists():
+        raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_SKAP}")
+    if not ARQ_COM.exists():
+        raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_COM}")
+    skap_df = pd.read_excel(ARQ_SKAP)
+    com_df = pd.read_excel(ARQ_COM)
+    return skap_df, com_df
 
-modo_admin = admin == "rhadmin"
-
+try:
+    skap, comentarios = carregar_dados()
+except Exception as e:
+    st.error(f"❌ Erro ao carregar os arquivos da pasta /data: {e}")
+    st.info("✅ Verifique se existem exatamente estes arquivos no GitHub: data/Skap.xlsx e data/Skap - comentarios.xlsx")
+    st.stop()
 
 # =========================
 # Utils
@@ -66,19 +87,14 @@ def consolidar_xy(df: pd.DataFrame, nome: str) -> pd.DataFrame:
 
 def tratar_data_adm(df: pd.DataFrame, col_data: str = "DATA ULT. ADM") -> pd.DataFrame:
     df = garantir_coluna(df, col_data, "")
-
     df[f"{col_data}_RAW"] = df[col_data]
 
-    # 1) parse como texto BR
+    # 1) parse texto BR
     dt_txt = pd.to_datetime(df[col_data], errors="coerce", dayfirst=True)
 
-    # 2) parse como serial Excel, mas só para valores plausíveis
+    # 2) serial Excel somente em faixa plausível (evita overflow)
     num = pd.to_numeric(df[col_data], errors="coerce")
-
-    # intervalo plausível de serial Excel (dias desde 1899-12-30):
-    # ~1954-10-17 = 20000 | ~2119-01-01 = ~80000
-    num_ok = num.where((num >= 20000) & (num <= 80000))
-
+    num_ok = num.where((num >= 20000) & (num <= 80000))  # ~1954 a ~2119
     dt_excel = pd.to_datetime(num_ok, unit="D", origin="1899-12-30", errors="coerce")
 
     df[col_data] = dt_txt.fillna(dt_excel)
@@ -101,42 +117,6 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
         .tolist()
     )
     return sorted(vals)
-
-# =========================
-# Upload + recarregar
-# =========================
-if modo_admin:
-    st.sidebar.header("📥 Atualização de dados")
-
-
-
-
-
-if modo_admin:
-    upload_skap = st.sidebar.file_uploader("Enviar Skap.xlsx", type=["xlsx"])
-    upload_com = st.sidebar.file_uploader("Enviar Skap - comentarios.xlsx", type=["xlsx"])
-else:
-    upload_skap = None
-    upload_com = None
-
-
-if modo_admin:
-    st.sidebar.button("Atualizar dados")
-
-
-@st.cache_data(show_spinner=False)
-def carregar_dados(upload1, upload2):
-    if upload1 is None or upload2 is None:
-        raise ValueError("Envie os 2 arquivos: Skap.xlsx e Skap - comentarios.xlsx.")
-    skap_df = pd.read_excel(upload1)
-    com_df = pd.read_excel(upload2)
-    return skap_df, com_df
-
-try:
-    skap, comentarios = carregar_dados(upload_skap, upload_com)
-except Exception as e:
-    st.info("➡️ Envie os 2 arquivos no menu lateral para carregar o painel.")
-    st.stop()
 
 # =========================
 # Normalização + colunas mínimas
@@ -164,7 +144,7 @@ for col in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS"]:
 skap["PRAZO TECNICAS"] = (skap["DATA ULT. ADM"] + pd.Timedelta(days=30)).dt.strftime("%d/%m/%Y").fillna("")
 skap["PRAZO ESPECIFICAS"] = (skap["DATA ULT. ADM"] + pd.Timedelta(days=60)).dt.strftime("%d/%m/%Y").fillna("")
 
-# Status
+# Status (suas regras)
 def status_tecnicas(row):
     if row["HABILIDADES TECNICAS"] > 0:
         return "Realizado"
@@ -191,7 +171,7 @@ for c in ["CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA"]:
     base = consolidar_xy(base, c)
 
 # =========================
-# Ordem das colunas
+# Ordem das colunas (EXATA)
 # =========================
 ordem = [
     "COLABORADOR",
