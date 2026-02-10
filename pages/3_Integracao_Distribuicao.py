@@ -182,6 +182,16 @@ base = base[~(op_norm.str.contains("CD PETROPOLIS", na=False) & (adm_date == dat
 
 # Se na sua base vier "PETRÓPOLIS" sem o "CD", descomente esta linha:
 # base = base[~(op_norm.str.contains("PETROPOLIS", na=False) & (adm_date == data_excluir))]
+# --- EXCLUSÕES POR NOME (ignorar no controle) ---
+IGNORAR_NOMES = [
+    "JULIANO CASTEDO MENDES",
+    "CLEITON VINICIUS CESARIO DE CARVALHO",
+    "ALEXANDER DE SOUZA GOMES",
+]
+ignorar_up = set(normalizar_texto(x) for x in IGNORAR_NOMES)
+
+base = base[~base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ignorar_up)]
+
 
 base["DATA ADMISSAO"] = base["DATA_ADM_DT"].dt.strftime("%d/%m/%Y").fillna("")
 hoje = pd.to_datetime(datetime.today().date())
@@ -262,17 +272,18 @@ for _, r in base[base_cols].iterrows():
         status = calcular_status(realizado_dt, dias, lim_adiantado)
 
         linhas.append({
-            "COLABORADOR": r["COLABORADOR"],
-            "CARGO": r["CARGO"],
-            "OPERACAO": r["OPERACAO"],
-            "ADMISSAO": r["DATA ADMISSAO"],  # ✅ aparece na tabela
-            "ETAPA": etapa,
-            "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
-            "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
-            "REALIZADO": "" if pd.isna(realizado_dt) else realizado_dt.strftime("%d/%m/%Y"),
-            "DIAS": dias,
-            "STATUS": status,
-        })
+    "COLABORADOR": r["COLABORADOR"],
+    "CARGO": r["CARGO"],
+    "OPERACAO": r["OPERACAO"],
+    "ADMISSAO": r["DATA ADMISSAO"],
+    "ADMISSAO_DT": r["DATA_ADM_DT"],   # ✅ novo (para filtro)
+    "ETAPA": etapa,
+    "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
+    "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
+    "REALIZADO": "" if pd.isna(realizado_dt) else realizado_dt.strftime("%d/%m/%Y"),
+    "DIAS": dias,
+    "STATUS": status,
+})
 
 etapas_df = pd.DataFrame(linhas)
 
@@ -280,6 +291,24 @@ etapas_df = pd.DataFrame(linhas)
 # Filtros
 # =========================
 st.sidebar.header("Filtros")
+
+# Filtro por período de admissão (range)
+min_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").min()
+max_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").max()
+
+if pd.isna(min_adm) or pd.isna(max_adm):
+    # fallback (caso raro)
+    min_adm = pd.to_datetime("2024-09-01")
+    max_adm = pd.to_datetime(datetime.today().date())
+
+periodo = st.sidebar.date_input(
+    "Período de admissão",
+    value=(min_adm.date(), max_adm.date()),
+    min_value=min_adm.date(),
+    max_value=max_adm.date(),
+)
+data_ini, data_fim = periodo
+
 
 f_operacao = st.sidebar.multiselect("Operação", opcoes(etapas_df, "OPERACAO"))
 f_cargo = st.sidebar.multiselect("Cargo", opcoes(etapas_df, "CARGO"))
@@ -298,6 +327,13 @@ if f_etapa:
     df_f = df_f[df_f["ETAPA"].isin(f_etapa)]
 if f_status:
     df_f = df_f[df_f["STATUS"].isin(f_status)]
+    
+    # aplica filtro de período de admissão
+df_f = df_f[
+    (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date >= data_ini) &
+    (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date <= data_fim)
+]
+
 
 # =========================
 # Cards
@@ -309,14 +345,46 @@ conc_atraso = int((df_f["STATUS"] == "Concluido em atraso").sum())
 conc_ok = int((df_f["STATUS"] == "Conforme esperado").sum())
 conc_adiant = int((df_f["STATUS"] == "Concluido adiantado").sum())
 
-c1, c2, c3, c4, c5 = st.columns(5)
+# 👉 NOVO CARD
+no_prazo_vencendo_3 = int(
+    (
+        (df_f["STATUS"] == "Pendente mas no prazo") &
+        (df_f["DIAS"] >= 0) &
+        (df_f["DIAS"] <= 3)
+    ).sum()
+)
+
+c1, c2, c3, c4, c5, c6 = st.columns(6)
+
 c1.metric("Etapas (linhas)", total_linhas)
 c2.metric("🔴 Pendente em atraso", pend_atraso)
 c3.metric("🟡 Pendente no prazo", pend_prazo)
-c4.metric("🟢 Conforme esperado", conc_ok)
-c5.metric("⚡ Concluído adiantado", conc_adiant)
+c4.metric("🟡 No prazo vencendo em até 3 dias", no_prazo_vencendo_3)
+c5.metric("🟢 Conforme esperado", conc_ok)
+c6.metric("⚡ Concluído adiantado", conc_adiant)
 
 st.divider()
+
+# =========================
+# Aderência Média - Log20
+# =========================
+st.subheader("📌 Aderência Média - Log20")
+
+total_etapas = len(df_f)
+total_conforme = int((df_f["STATUS"] == "Conforme esperado").sum())
+
+aderencia_total = (
+    total_conforme / total_etapas
+    if total_etapas > 0 else 0
+)
+
+col_bar, col_pct = st.columns([8, 1])
+
+with col_bar:
+    st.progress(aderencia_total)
+
+with col_pct:
+    st.write(f"**{aderencia_total*100:.2f}%**")
 
 # =========================
 # Gráfico: Pendentes em atraso por Operação
