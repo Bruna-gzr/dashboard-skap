@@ -37,67 +37,134 @@ df.columns = (
 )
 
 # =========================
+# Garantir colunas (para não quebrar se faltar algo)
+# =========================
+def garantir_coluna(df_, col, default=""):
+    if col not in df_.columns:
+        df_[col] = default
+    return df_
+
+for col in [
+    "COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "PROGRESSO GERAL",
+    "REACAO INTEGRACAO", "DT REACAO INTEGRACAO", "LIMITE REACAO INTEGRACAO"
+]:
+    df = garantir_coluna(df, col, "")
+
+# =========================
 # Datas e tempo de casa
 # =========================
-if "ADMISSAO" in df.columns:
-    df["ADMISSAO"] = pd.to_datetime(df["ADMISSAO"], errors="coerce", dayfirst=True)
+# Datas principais (admissão e reação)
+df["ADMISSAO"] = pd.to_datetime(df["ADMISSAO"], errors="coerce", dayfirst=True)
+df["DT REACAO INTEGRACAO"] = pd.to_datetime(df["DT REACAO INTEGRACAO"], errors="coerce", dayfirst=True)
+df["LIMITE REACAO INTEGRACAO"] = pd.to_datetime(df["LIMITE REACAO INTEGRACAO"], errors="coerce", dayfirst=True)
 
 hoje = pd.to_datetime(datetime.today().date())
 
-if "TEMPO DE CASA" not in df.columns or df["TEMPO DE CASA"].isna().all():
+# Tempo de casa
+td = pd.to_numeric(df["TEMPO DE CASA"], errors="coerce")
+if td.isna().all():
     df["TEMPO DE CASA"] = (hoje - df["ADMISSAO"]).dt.days
+else:
+    df["TEMPO DE CASA"] = td
 
-df["TEMPO DE CASA"] = df["TEMPO DE CASA"].fillna(0).astype(int)
+df["TEMPO DE CASA"] = pd.to_numeric(df["TEMPO DE CASA"], errors="coerce").fillna(0).astype(int)
 
 # =========================
-# Sidebar filtros
+# Sidebar filtros (sem Regional / Empresa)
 # =========================
 st.sidebar.header("Filtros")
 
 def opcoes(col):
     if col not in df.columns:
         return []
-    return sorted(df[col].dropna().astype(str).unique())
+    vals = (
+        df[col].astype(str).str.strip()
+        .replace(["", "nan", "None"], pd.NA)
+        .dropna()
+        .unique()
+        .tolist()
+    )
+    return sorted(vals)
 
-f_regional = st.sidebar.multiselect("Regional", opcoes("REGIONAL"))
-f_empresa = st.sidebar.multiselect("Empresa", opcoes("EMPRESA"))
 f_operacao = st.sidebar.multiselect("Operação", opcoes("OPERACAO"))
 f_atividade = st.sidebar.multiselect("Atividade", opcoes("ATIVIDADE"))
 
 df_f = df.copy()
 
-if f_regional:
-    df_f = df_f[df_f["REGIONAL"].isin(f_regional)]
-if f_empresa:
-    df_f = df_f[df_f["EMPRESA"].isin(f_empresa)]
 if f_operacao:
     df_f = df_f[df_f["OPERACAO"].isin(f_operacao)]
 if f_atividade:
     df_f = df_f[df_f["ATIVIDADE"].isin(f_atividade)]
 
 # =========================
-# Cards
+# Coluna DIAS (regra que você pediu)
+# =========================
+# Se Dt Reação Integração vazia -> (Limite - hoje)
+# Se tiver valor -> (Dt - Limite)
+dt = df_f["DT REACAO INTEGRACAO"]
+lim = df_f["LIMITE REACAO INTEGRACAO"]
+
+dias = np.where(
+    dt.isna(),
+    (lim - hoje).dt.days,
+    (dt - lim).dt.days
+)
+
+df_f["DIAS"] = pd.to_numeric(dias, errors="coerce")
+
+# =========================
+# Cards (opcional: mantive simples)
 # =========================
 total = len(df_f)
-ate30 = len(df_f[df_f["TEMPO DE CASA"] <= 30])
-ate60 = len(df_f[(df_f["TEMPO DE CASA"] > 30) & (df_f["TEMPO DE CASA"] <= 60)])
-ate90 = len(df_f[(df_f["TEMPO DE CASA"] > 60) & (df_f["TEMPO DE CASA"] <= 90)])
-mais90 = len(df_f[df_f["TEMPO DE CASA"] > 90])
-
-c1, c2, c3, c4, c5 = st.columns(5)
+c1, c2 = st.columns(2)
 c1.metric("Total", total)
-c2.metric("Até 30 dias", ate30)
-c3.metric("31–60 dias", ate60)
-c4.metric("61–90 dias", ate90)
-c5.metric("+90 dias", mais90)
+c2.metric("Média Tempo de Casa", int(df_f["TEMPO DE CASA"].mean()) if total else 0)
 
 st.divider()
 
 # =========================
-# Tabela
+# Ordem das colunas (exatamente como você pediu)
 # =========================
-st.subheader("📋 Colaboradores em acompanhamento")
+df_view = df_f.copy()
 
-df_view = df_f.sort_values("TEMPO DE CASA")
+# versões texto das datas para mostrar bonito
+df_view["ADMISSAO"] = pd.to_datetime(df_view["ADMISSAO"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
+df_view["LIMITE REACAO INTEGRACAO"] = pd.to_datetime(df_view["LIMITE REACAO INTEGRACAO"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
+df_view["DT REACAO INTEGRACAO"] = pd.to_datetime(df_view["DT REACAO INTEGRACAO"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 
-st.dataframe(df_view, use_container_width=True)
+ordem = [
+    "COLABORADOR",
+    "OPERACAO",
+    "ATIVIDADE",
+    "ADMISSAO",
+    "TEMPO DE CASA",
+    "PROGRESSO GERAL",
+    "REACAO INTEGRACAO",
+    "LIMITE REACAO INTEGRACAO",
+    "DT REACAO INTEGRACAO",
+    "DIAS",
+]
+ordem = [c for c in ordem if c in df_view.columns]
+df_view = df_view[ordem].copy()
+
+# =========================
+# Cor da coluna DIAS
+# =========================
+def cor_dias(v):
+    try:
+        v = float(v)
+    except Exception:
+        return ""
+    if v > 0:
+        return "color: #00c853; font-weight: 700;"  # verde
+    if v < 0:
+        return "color: #ff1744; font-weight: 700;"  # vermelho
+    return "font-weight: 700;"
+
+st.subheader("📋 Detalhamento — Reação Integração")
+
+# Para garantir que o estilo apareça, usamos Styler
+st.dataframe(
+    df_view.style.applymap(cor_dias, subset=["DIAS"]),
+    use_container_width=True
+)
