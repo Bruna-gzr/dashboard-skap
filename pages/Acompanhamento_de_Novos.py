@@ -351,17 +351,21 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
         tmp = tmp[tmp[status_col].isin(f_status)].copy()
 
     dt = tmp[dt_col]
-    lim = tmp[limite_col]
+lim = tmp[limite_col]
+status = tmp[status_col].fillna("")
 
-    # DIAS: dt vazia -> limite - hoje | dt preenchida -> limite - dt
-    dias = np.where(
-        dt.isna(),
-        (lim - hoje).dt.days,
-        (lim - dt).dt.days
-    )
+# Base: dias = limite - hoje (padrão)
+dias = (lim - hoje).dt.days
 
-    tmp["DIAS"] = pd.to_numeric(pd.Series(dias), errors="coerce").replace([np.inf, -np.inf], np.nan)
-    tmp["DIAS"] = tmp["DIAS"].round(0).astype("Int64")
+# Se tiver dt preenchida, calcula limite - dt
+dias_dt = (lim - dt).dt.days
+dias = dias.where(dt.isna(), dias_dt)
+
+# Se status for "No prazo", força limite - hoje (independente do dt)
+dias = dias.where(status != "No prazo", (lim - hoje).dt.days)
+
+# Evita None/NaN: se ainda ficar NaN (ex: lim NaT), põe 0
+tmp["DIAS"] = pd.to_numeric(dias, errors="coerce").fillna(0).astype(int)
 
     tmp["ADMISSAO"] = fmt_data(tmp["ADMISSAO"])
     tmp[limite_col] = fmt_data(tmp[limite_col])
