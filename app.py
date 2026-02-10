@@ -314,5 +314,12 @@ styled = (
 )
 
 st.subheader("📋 Detalhamento Individual")
-st.dataframe(styled, use_container_width=True)
 
+tabela = base_f.copy()
+
+# Formatar percentuais como texto (97%)
+for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS"]:
+    if c in tabela.columns:
+        tabela[c] = pd.to_numeric(tabela[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
+
+st.dataframe(tabela, use_container_width=True)
