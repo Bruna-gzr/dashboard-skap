@@ -82,13 +82,24 @@ def tratar_data_adm(df: pd.DataFrame, col_data: str = "DATA ULT. ADM") -> pd.Dat
     df = garantir_coluna(df, col_data, "")
     df[f"{col_data}_RAW"] = df[col_data]
 
-    # 1) parse texto BR
+    # 1) tenta parse como texto (BR)
     dt_txt = pd.to_datetime(df[col_data], errors="coerce", dayfirst=True)
 
-    # 2) serial Excel somente em faixa plausível (evita overflow)
+    # 2) tenta serial do Excel, mas somente em valores válidos e finitos (sem overflow)
     num = pd.to_numeric(df[col_data], errors="coerce")
-    num_ok = num.where((num >= 20000) & (num <= 80000))  # ~1954 a ~2119
-    dt_excel = pd.to_datetime(num_ok, unit="D", origin="1899-12-30", errors="coerce")
+    num = num.replace([np.inf, -np.inf], np.nan)
+
+    mask = num.notna() & np.isfinite(num) & (num >= 20000) & (num <= 80000)
+
+    dt_excel = pd.Series(pd.NaT, index=df.index)
+    if mask.any():
+        # converter só as linhas válidas
+        dt_excel.loc[mask] = pd.to_datetime(
+            num.loc[mask].astype("int64"),
+            unit="D",
+            origin="1899-12-30",
+            errors="coerce",
+        )
 
     df[col_data] = dt_txt.fillna(dt_excel)
 
@@ -98,6 +109,7 @@ def tratar_data_adm(df: pd.DataFrame, col_data: str = "DATA ULT. ADM") -> pd.Dat
 
     df["DATA ADMISSAO"] = df[col_data].dt.strftime("%d/%m/%Y").fillna("")
     return df
+
 
 def opcoes(df: pd.DataFrame, col: str) -> list[str]:
     if col not in df.columns:
@@ -295,4 +307,3 @@ styled = (
 
 st.subheader("📋 Detalhamento Individual")
 st.dataframe(styled, use_container_width=True)
-
