@@ -5,6 +5,9 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 
+st.write("VERSAO NOVA - 09/02/2026 15:xx")
+
+
 # =========================
 # Config
 # =========================
@@ -327,3 +330,4 @@ for c in ["STATUS TECNICAS", "STATUS ESPECIFICAS"]:
         tabela[c] = tabela[c].astype(str).map(emoji_status)
 
 st.dataframe(tabela, use_container_width=True)
+
