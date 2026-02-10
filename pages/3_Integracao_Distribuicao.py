@@ -31,6 +31,11 @@ def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     ]
     return df
 
+def normalizar_texto(s: str) -> str:
+    s = "" if s is None else str(s)
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("utf-8")
+    return s.upper().strip()
+
 def limpar_texto(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     for c in cols:
         if c in df.columns:
@@ -72,6 +77,21 @@ def preparar_excel_para_download(df: pd.DataFrame, sheet_name: str = "Dados") ->
         df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
     return output.getvalue()
 
+def safe_filename(s: str) -> str:
+    s = normalizar_texto(s)
+    s = s.replace(" ", "_").replace("/", "-")
+    return s
+
+def opcoes(df: pd.DataFrame, col: str) -> list[str]:
+    if col not in df.columns:
+        return []
+    vals = (
+        df[col].astype(str).str.strip()
+        .replace(["", "nan", "None"], pd.NA)
+        .dropna().unique().tolist()
+    )
+    return sorted(vals)
+
 # =========================
 # Load
 # =========================
@@ -81,10 +101,10 @@ def carregar_bases():
         if not arq.exists():
             raise FileNotFoundError(f"Arquivo não encontrado: {arq}")
 
-    ativos = pd.read_excel(ARQ_ATIVOS)
-    ids = pd.read_excel(ARQ_IDS)
-    resp = pd.read_excel(ARQ_RESPOSTAS)
-    return ativos, ids, resp
+    ativos_ = pd.read_excel(ARQ_ATIVOS)
+    ids_ = pd.read_excel(ARQ_IDS)
+    resp_ = pd.read_excel(ARQ_RESPOSTAS)
+    return ativos_, ids_, resp_
 
 try:
     ativos, ids_logon, respostas = carregar_bases()
@@ -140,9 +160,10 @@ CARGOS_PERMITIDOS = [
     "Motorista Educador",
     "Motorista Entregador II",
 ]
-CARGOS_PERMITIDOS_UP = [c.strip().upper() for c in CARGOS_PERMITIDOS]
+CARGOS_PERMITIDOS_UP = [normalizar_texto(c) for c in CARGOS_PERMITIDOS]
 
-ativos["CARGO_UP"] = ativos["CARGO"].astype(str).str.strip().str.upper()
+ativos["CARGO_UP"] = ativos["CARGO"].astype(str).map(normalizar_texto)
+ativos["OPERACAO_UP"] = ativos["OPERACAO"].astype(str).map(normalizar_texto)
 
 ativos["DATA_ADM_DT"] = tratar_data_segura(ativos["DATA ULT. ADM"])
 limite = pd.to_datetime("2024-09-01")  # >= 01/09/2024
@@ -155,18 +176,16 @@ base = ativos[
 
 # --- EXCEÇÃO: CD PETRÓPOLIS com admissão em 16/07/2025 (ignorar) ---
 data_excluir = pd.to_datetime("2025-07-16").date()
-
-def normalizar_texto(s: str) -> str:
-    import unicodedata
-    s = "" if s is None else str(s)
-    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("utf-8")
-    return s.upper().strip()
-
 op_norm = base["OPERACAO"].astype(str).map(normalizar_texto)
-adm_date = base["DATA_ADM_DT"].dt.date  # tira hora, compara só a data
+adm_date = base["DATA_ADM_DT"].dt.date
+base = base[~(op_norm.str.contains("CD PETROPOLIS", na=False) & (adm_date == data_excluir))]
 
-base = base[~((op_norm.str.contains("CD PETROPOLIS", na=False)) & (adm_date == data_excluir))]
+# Se na sua base vier "PETRÓPOLIS" sem o "CD", descomente esta linha:
+# base = base[~(op_norm.str.contains("PETROPOLIS", na=False) & (adm_date == data_excluir))]
 
+base["DATA ADMISSAO"] = base["DATA_ADM_DT"].dt.strftime("%d/%m/%Y").fillna("")
+hoje = pd.to_datetime(datetime.today().date())
+base["TEMPO DE CASA"] = (hoje - base["DATA_ADM_DT"]).dt.days.fillna(0).astype(int)
 
 # =========================
 # IDs por colaborador
@@ -191,6 +210,7 @@ resp_min = (
 
 # =========================
 # Etapas + prazos
+# (etapa, offset_min, offset_max, limite_adiantado)
 # =========================
 ETAPAS = [
     ("Dia 01 - Distribuição Urbana", 0, 3, 3),
@@ -204,10 +224,10 @@ ETAPAS = [
 ]
 
 def calcular_status(realizado_dt: pd.Timestamp, dias: int, lim_adiantado: int) -> str:
+    # dias = (Prazo Max - hoje) se pendente
+    # dias = (Prazo Max - realizado) se concluído
     if pd.isna(realizado_dt):
-        if dias < 0:
-            return "Pendente em atraso"
-        return "Pendente mas no prazo"
+        return "Pendente em atraso" if dias < 0 else "Pendente mas no prazo"
     if dias < 0:
         return "Concluido em atraso"
     if dias > lim_adiantado:
@@ -242,17 +262,17 @@ for _, r in base[base_cols].iterrows():
         status = calcular_status(realizado_dt, dias, lim_adiantado)
 
         linhas.append({
-    "COLABORADOR": r["COLABORADOR"],
-    "CARGO": r["CARGO"],
-    "OPERACAO": r["OPERACAO"],
-    "ADMISSAO": r["DATA ADMISSAO"],  # ✅ NOVO
-    "ETAPA": etapa,
-    "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
-    "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
-    "REALIZADO": "" if pd.isna(realizado_dt) else realizado_dt.strftime("%d/%m/%Y"),
-    "DIAS": dias,
-    "STATUS": status,
-})
+            "COLABORADOR": r["COLABORADOR"],
+            "CARGO": r["CARGO"],
+            "OPERACAO": r["OPERACAO"],
+            "ADMISSAO": r["DATA ADMISSAO"],  # ✅ aparece na tabela
+            "ETAPA": etapa,
+            "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
+            "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
+            "REALIZADO": "" if pd.isna(realizado_dt) else realizado_dt.strftime("%d/%m/%Y"),
+            "DIAS": dias,
+            "STATUS": status,
+        })
 
 etapas_df = pd.DataFrame(linhas)
 
@@ -260,16 +280,6 @@ etapas_df = pd.DataFrame(linhas)
 # Filtros
 # =========================
 st.sidebar.header("Filtros")
-
-def opcoes(df, col):
-    if col not in df.columns:
-        return []
-    vals = (
-        df[col].astype(str).str.strip()
-        .replace(["", "nan", "None"], pd.NA)
-        .dropna().unique().tolist()
-    )
-    return sorted(vals)
 
 f_operacao = st.sidebar.multiselect("Operação", opcoes(etapas_df, "OPERACAO"))
 f_cargo = st.sidebar.multiselect("Cargo", opcoes(etapas_df, "CARGO"))
@@ -300,11 +310,11 @@ conc_ok = int((df_f["STATUS"] == "Conforme esperado").sum())
 conc_adiant = int((df_f["STATUS"] == "Concluido adiantado").sum())
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Linhas (etapas)", total_linhas)
+c1.metric("Etapas (linhas)", total_linhas)
 c2.metric("🔴 Pendente em atraso", pend_atraso)
 c3.metric("🟡 Pendente no prazo", pend_prazo)
 c4.metric("🟢 Conforme esperado", conc_ok)
-c5.metric("⚡ Adiantado", conc_adiant)
+c5.metric("⚡ Concluído adiantado", conc_adiant)
 
 st.divider()
 
@@ -330,104 +340,65 @@ else:
 st.divider()
 
 # =========================
-# Tabela principal
+# Abas por Curso/Etapa
 # =========================
 st.subheader("📋 Acompanhamento por Curso")
 
-# Ordem fixa das etapas
 ordem_etapas = [e[0] for e in ETAPAS]
+tabs = st.tabs(ordem_etapas)
 
-# Tabs: (opcional) primeira aba visão geral + uma para cada etapa
-tab_labels = ["📌 Visão Geral"] + ordem_etapas
-tabs = st.tabs(tab_labels)
+# Ordem final de colunas (ADMISSAO logo após OPERACAO)
+cols_ordem = [
+    "COLABORADOR",
+    "CARGO",
+    "OPERACAO",
+    "ADMISSAO",
+    "ETAPA",
+    "PRAZO MINIMO",
+    "PRAZO MAXIMO",
+    "REALIZADO",
+    "DIAS",
+    "STATUS",
+]
 
-# -------------------------
-# Aba 0: Visão Geral
-# -------------------------
-with tabs[0]:
-    st.write("Resumo do acompanhamento com os filtros atuais.")
-
-    # Cards rápidos por status (no contexto filtrado)
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Etapas", len(df_f))
-    c2.metric("🔴 Pendente em atraso", int((df_f["STATUS"] == "Pendente em atraso").sum()))
-    c3.metric("🟡 Pendente no prazo", int((df_f["STATUS"] == "Pendente mas no prazo").sum()))
-    c4.metric("🟢 Conforme esperado", int((df_f["STATUS"] == "Conforme esperado").sum()))
-    c5.metric("⚡ Concluído adiantado", int((df_f["STATUS"] == "Concluido adiantado").sum()))
-
-    st.divider()
-
-    # Lista geral (todas as etapas)
-    df_view = df_f.copy()
-    df_view["ETAPA"] = pd.Categorical(df_view["ETAPA"], categories=ordem_etapas, ordered=True)
-    df_view = df_view.sort_values(["OPERACAO", "COLABORADOR", "ETAPA"])
-
-    if len(df_view) == 0:
-        st.info("Sem dados para exibir com os filtros atuais.")
-    else:
-        # DIAS em vermelho apenas quando pendente em atraso
-        def colorir_dias(row):
-            return "color: red; font-weight:700;" if row["STATUS"] == "Pendente em atraso" else ""
-
-        sty = centralizar_tabela(df_view).apply(
-            lambda col: [colorir_dias(r) if col.name == "DIAS" else "" for _, r in df_view.iterrows()],
-            axis=0
-        )
-        st.dataframe(sty, use_container_width=True)
-
-        excel_bytes = preparar_excel_para_download(df_view, sheet_name="Visao_Geral")
-        st.download_button(
-            label="⬇️ Baixar Excel (Visão Geral)",
-            data=excel_bytes,
-            file_name="integracao_distribuicao_visao_geral.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-
-# -------------------------
-# Abas por etapa/curso
-# -------------------------
-for i, etapa in enumerate(ordem_etapas, start=1):
+for i, etapa in enumerate(ordem_etapas):
     with tabs[i]:
-        st.write(f"Etapa: **{etapa}**")
-
         df_etapa = df_f[df_f["ETAPA"] == etapa].copy()
-        # ordenar por admissão e reorganizar colunas
-df_etapa["_ADM_DT"] = pd.to_datetime(df_etapa["ADMISSAO"], dayfirst=True, errors="coerce")
-df_etapa = df_etapa.sort_values(["OPERACAO", "_ADM_DT", "COLABORADOR"]).drop(columns=["_ADM_DT"])
-
-cols_ordem = ["COLABORADOR", "CARGO", "OPERACAO", "ADMISSAO", "ETAPA", "PRAZO MINIMO", "PRAZO MAXIMO", "REALIZADO", "DIAS", "STATUS"]
-df_etapa = df_etapa[[c for c in cols_ordem if c in df_etapa.columns]]
-
-        df_etapa = df_etapa.sort_values(["OPERACAO", "COLABORADOR"])
 
         if len(df_etapa) == 0:
             st.info("Sem dados para esta etapa com os filtros atuais.")
-        else:
-            # cards por etapa
-            cc1, cc2, cc3 = st.columns(3)
-            cc1.metric("Registros", len(df_etapa))
-            cc2.metric("🔴 Pendente em atraso", int((df_etapa["STATUS"] == "Pendente em atraso").sum()))
-            cc3.metric("🟡 Pendente no prazo", int((df_etapa["STATUS"] == "Pendente mas no prazo").sum()))
+            continue
 
-            # DIAS em vermelho apenas quando pendente em atraso
-            def colorir_dias(row):
-                return "color: red; font-weight:700;" if row["STATUS"] == "Pendente em atraso" else ""
+        # Ordenar por data de admissão (dentro da operação)
+        df_etapa["_ADM_DT"] = pd.to_datetime(df_etapa["ADMISSAO"], dayfirst=True, errors="coerce")
+        df_etapa = df_etapa.sort_values(["OPERACAO", "_ADM_DT", "COLABORADOR"]).drop(columns=["_ADM_DT"])
 
-            sty = centralizar_tabela(df_etapa).apply(
-                lambda col: [colorir_dias(r) if col.name == "DIAS" else "" for _, r in df_etapa.iterrows()],
-                axis=0
-            )
-            st.dataframe(sty, use_container_width=True)
+        # Reordenar colunas
+        df_etapa = df_etapa[[c for c in cols_ordem if c in df_etapa.columns]]
 
-            # Exportação logo abaixo (por etapa)
-            excel_etapa = preparar_excel_para_download(df_etapa, sheet_name=etapa)
-            nome_arquivo = etapa.replace("/", "-").replace("ª", "a").replace("°", "o").replace(" ", "_")
-            st.download_button(
-                label=f"⬇️ Baixar Excel ({etapa})",
-                data=excel_etapa,
-                file_name=f"integracao_{nome_arquivo}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+        # Mini-cards por aba
+        cc1, cc2, cc3 = st.columns(3)
+        cc1.metric("Registros", len(df_etapa))
+        cc2.metric("🔴 Pendente em atraso", int((df_etapa["STATUS"] == "Pendente em atraso").sum()))
+        cc3.metric("🟡 Pendente no prazo", int((df_etapa["STATUS"] == "Pendente mas no prazo").sum()))
 
+        # DIAS em vermelho somente quando "Pendente em atraso"
+        def style_dias(row):
+            return "color: red; font-weight:700;" if row["STATUS"] == "Pendente em atraso" else ""
+
+        sty = centralizar_tabela(df_etapa).apply(
+            lambda col: [style_dias(r) if col.name == "DIAS" else "" for _, r in df_etapa.iterrows()],
+            axis=0
+        )
+
+        st.dataframe(sty, use_container_width=True)
+
+        # Exportação por etapa (logo abaixo)
+        excel_etapa = preparar_excel_para_download(df_etapa, sheet_name="Etapa")
+        st.download_button(
+            label=f"⬇️ Baixar Excel ({etapa})",
+            data=excel_etapa,
+            file_name=f"integracao_{safe_filename(etapa)}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
