@@ -209,16 +209,14 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col, dt_e_datahora: bool):
     lim = tmp[limite_col]
 
     dias = np.where(
-    dt.isna(),
-    (lim - hoje).dt.days,
-    (lim - dt).dt.days
-)
+        dt.isna(),
+        (lim - hoje).dt.days,
+        (lim - dt).dt.days
+    )
 
-# robusto: converte, mantém NaN, e usa inteiro sem quebrar
-tmp["DIAS"] = pd.to_numeric(pd.Series(dias), errors="coerce")
-tmp["DIAS"] = tmp["DIAS"].round(0)
-tmp["DIAS"] = tmp["DIAS"].astype("Int64")  # permite <NA>
-
+    # robusto: converte, mantém NaN, inteiro sem quebrar
+    tmp["DIAS"] = pd.to_numeric(pd.Series(dias), errors="coerce").replace([np.inf, -np.inf], np.nan)
+    tmp["DIAS"] = tmp["DIAS"].round(0).astype("Int64")
 
     # Formata datas para exibição
     tmp["ADMISSAO"] = fmt_data(tmp["ADMISSAO"])
@@ -255,6 +253,7 @@ tmp["DIAS"] = tmp["DIAS"].astype("Int64")  # permite <NA>
 
     st.subheader(f"📋 Detalhamento — {nome_aba}")
     st.dataframe(styler, use_container_width=True, height=700)
+
 
 # =========================
 # Abas
