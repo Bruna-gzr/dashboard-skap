@@ -304,22 +304,29 @@ def cor_status(val):
         return "color: orange; font-weight: bold;"
     return ""
 
-styled = (
-    base_f.style
-    .format({
-        "HABILIDADES TECNICAS": "{:.0%}",
-        "HABILIDADES ESPECIFICAS": "{:.0%}",
-    })
-    .applymap(cor_status, subset=["STATUS TECNICAS", "STATUS ESPECIFICAS"])
-)
 
 st.subheader("📋 Detalhamento Individual")
 
 tabela = base_f.copy()
 
-# Formatar percentuais como texto (97%)
+# Percentuais como texto (97%)
 for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS"]:
     if c in tabela.columns:
         tabela[c] = pd.to_numeric(tabela[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
 
+# Status com emoji (fica visual sem precisar de Styler)
+def emoji_status(s):
+    if s == "Não realizado":
+        return "🔴 Não realizado"
+    if s == "Realizado":
+        return "🟢 Realizado"
+    if s == "No prazo":
+        return "🟡 No prazo"
+    return s
+
+for c in ["STATUS TECNICAS", "STATUS ESPECIFICAS"]:
+    if c in tabela.columns:
+        tabela[c] = tabela[c].astype(str).map(emoji_status)
+
 st.dataframe(tabela, use_container_width=True)
+
