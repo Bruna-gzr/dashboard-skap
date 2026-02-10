@@ -272,30 +272,48 @@ else:
 # ✅ Card / lista abaixo do Top 5 global: No prazo vencendo até 3 dias
 st.subheader("🟡 No prazo vencendo em até 3 dias (geral)")
 
-no_prazo_3d_ids = set()
-for _, status_col, limite_col, _ in etapas:
+linhas = []
+
+for nome_aba, status_col, limite_col, dt_col in etapas:
     st_col = df_f[status_col].fillna("")
     lim = df_f[limite_col]
 
+    # somente "No prazo" com limite válido
     mask_np = (st_col == "No prazo") & lim.notna()
+
     dias_para_vencer = (lim - hoje).dt.days
     mask_venc3 = mask_np & (dias_para_vencer >= 0) & (dias_para_vencer <= 3)
 
-    no_prazo_3d_ids.update(df_f.loc[mask_venc3, "COLABORADOR"].astype(str).tolist())
+    if mask_venc3.any():
+        tmp_np = df_f.loc[mask_venc3, ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
+        tmp_np["ETAPA"] = nome_aba
+        tmp_np["DATA LIMITE"] = df_f.loc[mask_venc3, limite_col].copy()
+        tmp_np["DIAS"] = dias_para_vencer.loc[mask_venc3].astype(int).values
+        linhas.append(tmp_np)
 
-st.metric("Colaboradores com alguma etapa 'No prazo' vencendo em até 3 dias", len(no_prazo_3d_ids))
+if linhas:
+    df_alerta = pd.concat(linhas, ignore_index=True)
 
-if len(no_prazo_3d_ids) > 0:
-    df_np = df_f[df_f["COLABORADOR"].astype(str).isin(no_prazo_3d_ids)][
-        ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]
-    ].copy()
-    df_np = df_np.sort_values("ADMISSAO", ascending=True)
-    df_np["ADMISSAO"] = fmt_data(df_np["ADMISSAO"])
-    st.dataframe(df_np, use_container_width=True, height=350)
+    # ordena: primeiro quem vence antes, depois por admissão
+    df_alerta = df_alerta.sort_values(["DIAS", "ADMISSAO"], ascending=[True, True])
+
+    # formata datas sem hora
+    df_alerta["ADMISSAO"] = fmt_data(df_alerta["ADMISSAO"])
+    df_alerta["DATA LIMITE"] = fmt_data(df_alerta["DATA LIMITE"])
+
+    st.metric("Registros 'No prazo' vencendo em até 3 dias", len(df_alerta))
+
+    st.dataframe(
+        df_alerta[
+            ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "ETAPA", "DATA LIMITE", "DIAS"]
+        ],
+        use_container_width=True,
+        height=420
+    )
 else:
+    st.metric("Registros 'No prazo' vencendo em até 3 dias", 0)
     st.info("Nenhum colaborador com etapa 'No prazo' vencendo em até 3 dias com os filtros atuais.")
 
-st.divider()
 
 # =========================
 # Estilos
