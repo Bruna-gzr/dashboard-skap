@@ -366,6 +366,29 @@ c6.metric("⚡ Concluído adiantado", conc_adiant)
 st.divider()
 
 # =========================
+# 🟡 No prazo vencendo em até 3 dias (lista)
+# =========================
+vencendo_3_df = df_f[
+    (df_f["STATUS"] == "Pendente mas no prazo") &
+    (df_f["DIAS"] >= 0) &
+    (df_f["DIAS"] <= 3)
+].copy()
+
+# colunas pedidas
+cols_alerta = ["COLABORADOR", "CARGO", "OPERACAO", "ADMISSAO", "ETAPA", "PRAZO MAXIMO", "DIAS"]
+vencendo_3_df = vencendo_3_df[[c for c in cols_alerta if c in vencendo_3_df.columns]]
+
+# ordenação (mais urgente primeiro)
+if len(vencendo_3_df) > 0:
+    vencendo_3_df = vencendo_3_df.sort_values(["DIAS", "OPERACAO", "COLABORADOR"], ascending=[True, True, True])
+
+st.subheader("🟡 No prazo vencendo em até 3 dias")
+if len(vencendo_3_df) == 0:
+    st.info("Nenhuma etapa 'Pendente mas no prazo' vencendo em até 3 dias com os filtros atuais.")
+else:
+    st.dataframe(centralizar_tabela(vencendo_3_df), use_container_width=True)
+
+# =========================
 # Aderência Média - Log20
 # =========================
 st.subheader("📌 Aderência Média - Log20")
@@ -381,7 +404,38 @@ aderencia_total = (
 col_bar, col_pct = st.columns([8, 1])
 
 with col_bar:
-    st.progress(aderencia_total)
+    # =========================
+# Aderência Média - Log20 (barra com cor por faixa)
+# =========================
+st.subheader("📌 Aderência Média - Log20")
+
+total_etapas = len(df_f)
+total_conforme = int((df_f["STATUS"] == "Conforme esperado").sum())
+aderencia_total = (total_conforme / total_etapas) if total_etapas > 0 else 0.0
+pct = aderencia_total * 100
+
+# cor por faixa
+if pct >= 100:
+    cor = "#22c55e"  # verde
+elif pct >= 80:
+    cor = "#facc15"  # amarelo
+else:
+    cor = "#ef4444"  # vermelho
+
+col_bar, col_pct = st.columns([8, 1])
+
+with col_bar:
+    st.markdown(
+        f"""
+        <div style="width: 100%; background: #2a2f3a; border-radius: 999px; height: 12px; overflow: hidden;">
+          <div style="width: {min(pct, 100):.2f}%; background: {cor}; height: 12px;"></div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with col_pct:
+    st.write(f"**{pct:.2f}%**")
 
 with col_pct:
     st.write(f"**{aderencia_total*100:.2f}%**")
