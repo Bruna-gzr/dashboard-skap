@@ -92,6 +92,14 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
     )
     return sorted(vals)
 
+STATUS_STYLE = {
+    "Conforme esperado": "background-color: #22c55e; color: white; font-weight:700;",
+    "Pendente mas no prazo": "background-color: #facc15; color: black; font-weight:700;",
+    "Pendente em atraso": "background-color: #ef4444; color: white; font-weight:700;",
+    "Concluido em atraso": "background-color: #fb923c; color: black; font-weight:700;",   # laranja
+    "Concluido adiantado": "background-color: #fecaca; color: black; font-weight:700;",  # vermelho clarinho
+}
+
 # =========================
 # Load
 # =========================
@@ -320,11 +328,9 @@ if f_etapa:
 if f_status:
     df_f = df_f[df_f["STATUS"].isin(f_status)]
 
-# aplica filtro de período de admissão
-df_f = df_f[
-    (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date >= data_ini) &
-    (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date <= data_fim)
-]
+# Ordenação geral por admissão
+df_f["_ADM_DT"] = pd.to_datetime(df_f["ADMISSAO_DT"], errors="coerce")
+df_f = df_f.sort_values(["_ADM_DT", "OPERACAO", "COLABORADOR", "ETAPA"]).drop(columns=["_ADM_DT"])
 
 # =========================
 # Cards
@@ -367,7 +373,18 @@ if len(vencendo_3_df) == 0:
 else:
     vencendo_3_df = vencendo_3_df.sort_values(["DIAS", "OPERACAO", "COLABORADOR"], ascending=[True, True, True])
     st.subheader("🟡 No prazo vencendo em até 3 dias")
+    if "STATUS" in vencendo_3_df.columns:
+    sty_alerta = centralizar_tabela(vencendo_3_df).apply(
+        lambda col: [
+            (STATUS_STYLE.get(r["STATUS"], "") if col.name == "STATUS" else "")
+            for _, r in vencendo_3_df.iterrows()
+        ],
+        axis=0
+    )
+    st.dataframe(sty_alerta, use_container_width=True)
+else:
     st.dataframe(centralizar_tabela(vencendo_3_df), use_container_width=True)
+
 
 st.divider()
 
@@ -376,10 +393,8 @@ st.divider()
 # =========================
 st.subheader("📌 Aderência Média - Log20")
 
-total_etapas = len(df_f)
-total_conforme = int((df_f["STATUS"] == "Conforme esperado").sum())
-aderencia_total = (total_conforme / total_etapas) if total_etapas > 0 else 0.0
-pct = aderencia_total * 100
+total_ok = int(((df_f["STATUS"] == "Conforme esperado") | (df_f["STATUS"] == "Pendente mas no prazo")).sum())
+aderencia_total = (total_ok / total_etapas) if total_etapas > 0 else 0.0
 
 if pct >= 100:
     cor = "#22c55e"  # verde
@@ -430,13 +445,14 @@ ader_oper = (
     df_f.groupby("OPERACAO", dropna=False)
     .agg(
         TOTAL=("STATUS", "size"),
-        CONFORME=("STATUS", lambda s: (s == "Conforme esperado").sum())
+        OK=("STATUS", lambda s: ((s == "Conforme esperado") | (s == "Pendente mas no prazo")).sum())
     )
     .reset_index()
 )
+
 ader_oper["ADERENCIA_%"] = np.where(
     ader_oper["TOTAL"] > 0,
-    (ader_oper["CONFORME"] / ader_oper["TOTAL"]) * 100,
+    (ader_oper["OK"] / ader_oper["TOTAL"]) * 100,
     0
 )
 ader_oper = ader_oper.sort_values("ADERENCIA_%", ascending=False)
@@ -485,7 +501,7 @@ for i, etapa in enumerate(ordem_etapas):
             continue
 
         df_etapa["_ADM_DT"] = pd.to_datetime(df_etapa["ADMISSAO"], dayfirst=True, errors="coerce")
-        df_etapa = df_etapa.sort_values(["OPERACAO", "_ADM_DT", "COLABORADOR"]).drop(columns=["_ADM_DT"])
+        df_etapa = df_etapa.sort_values(["_ADM_DT", "OPERACAO", "COLABORADOR"]).drop(columns=["_ADM_DT"])
         df_etapa = df_etapa[[c for c in cols_ordem if c in df_etapa.columns]]
 
         cc1, cc2, cc3 = st.columns(3)
@@ -493,13 +509,19 @@ for i, etapa in enumerate(ordem_etapas):
         cc2.metric("🔴 Pendente em atraso", int((df_etapa["STATUS"] == "Pendente em atraso").sum()))
         cc3.metric("🟡 Pendente no prazo", int((df_etapa["STATUS"] == "Pendente mas no prazo").sum()))
 
-        def style_dias(row):
-            return "color: red; font-weight:700;" if row["STATUS"] == "Pendente em atraso" else ""
+        def style_row(r):
+    # DIAS em vermelho só quando pendente em atraso
+    dias_style = "color: red; font-weight:800;" if r["STATUS"] == "Pendente em atraso" else ""
+    status_style = STATUS_STYLE.get(r["STATUS"], "")
+    return dias_style, status_style
 
-        sty = centralizar_tabela(df_etapa).apply(
-            lambda col: [style_dias(r) if col.name == "DIAS" else "" for _, r in df_etapa.iterrows()],
-            axis=0
-        )
+sty = centralizar_tabela(df_etapa).apply(
+    lambda col: [
+        (style_row(r)[0] if col.name == "DIAS" else (style_row(r)[1] if col.name == "STATUS" else ""))
+        for _, r in df_etapa.iterrows()
+    ],
+    axis=0
+)
 
         st.dataframe(sty, use_container_width=True)
 
