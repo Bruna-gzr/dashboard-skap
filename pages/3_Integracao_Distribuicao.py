@@ -11,24 +11,6 @@ import plotly.express as px
 # Página
 # =========================
 st.title("🚚 Integração Distribuição")
-# =========================
-# Última atualização dos dados
-# =========================
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
-try:
-    arquivos = [
-        arquivos = [ARQ_ATIVOS, ARQ_IDS, ARQ_RESPOSTAS]
-    ]
-
-    last_mtime = max(a.stat().st_mtime for a in arquivos if a.exists())
-    dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
-
-    st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
-except:
-    st.caption("🕒 Última atualização: não disponível")
-
 
 # =========================
 # Arquivos (pasta data/)
@@ -38,6 +20,28 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 ARQ_IDS = DATA_DIR / "Base IDs Logon.xlsx"
 ARQ_RESPOSTAS = DATA_DIR / "Respostas Logon.xlsx"
+
+# =========================
+# Arquivos (pasta data/)
+# =========================
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+
+ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
+ARQ_IDS = DATA_DIR / "Base IDs Logon.xlsx"
+ARQ_RESPOSTAS = DATA_DIR / "Respostas Logon.xlsx"
+
+# =========================
+# Última atualização dos dados (APENAS desta página)
+# =========================
+from zoneinfo import ZoneInfo
+
+try:
+    arquivos = [ARQ_ATIVOS, ARQ_IDS, ARQ_RESPOSTAS]
+    last_mtime = max(a.stat().st_mtime for a in arquivos if a.exists())
+    dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
+    st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
+except Exception:
+    st.caption("🕒 Última atualização: não disponível")
 
 # =========================
 # Utils
@@ -219,7 +223,8 @@ base = base[~base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ignorar_
 
 # Datas derivadas
 base["DATA ADMISSAO"] = base["DATA_ADM_DT"].dt.strftime("%d/%m/%Y").fillna("")
-hoje = pd.to_datetime(datetime.today().date()).normalize()
+hoje = pd.Timestamp.now(tz=ZoneInfo("America/Sao_Paulo")).normalize().tz_localize(None)
+
 
 # =========================
 # IDs por colaborador
