@@ -5,31 +5,12 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 from io import BytesIO
+from zoneinfo import ZoneInfo
 
 # =========================
 # Config
 # =========================
 st.title("📊 Painel SKAP")
-# =========================
-# Última atualização dos dados
-# =========================
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
-try:
-    arquivos = [ARQ_SKAP, ARQ_COM]
-    ]
-
-    last_mtime = max(a.stat().st_mtime for a in arquivos if a.exists())
-    dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
-
-    st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
-except:
-    st.caption("🕒 Última atualização: não disponível")
-
-except:
-    st.caption("🕒 Última atualização: não disponível")
-
 
 # =========================
 # Carregamento automático (pasta data/)
@@ -37,6 +18,17 @@ except:
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 ARQ_SKAP = DATA_DIR / "Skap.xlsx"
 ARQ_COM = DATA_DIR / "Skap - comentarios.xlsx"
+
+# =========================
+# Última atualização dos dados (CORRIGIDO)
+# =========================
+try:
+    arquivos = [ARQ_SKAP, ARQ_COM]
+    last_mtime = max(a.stat().st_mtime for a in arquivos if a.exists())
+    dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
+    st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
+except Exception:
+    st.caption("🕒 Última atualização: não disponível")
 
 @st.cache_data(show_spinner=True)
 def carregar_dados():
@@ -119,14 +111,11 @@ def tratar_data_adm(df: pd.DataFrame, col_data: str = "DATA ULT. ADM") -> pd.Dat
     df = garantir_coluna(df, col_data, "")
     df[f"{col_data}_RAW"] = df[col_data]
 
-    # 1) tenta parse como texto (BR)
     dt_txt = pd.to_datetime(df[col_data], errors="coerce", dayfirst=True)
 
-    # 2) serial do Excel (blindado)
     num = pd.to_numeric(df[col_data], errors="coerce")
     num = num.replace([np.inf, -np.inf], np.nan)
-
-    mask = num.notna() & np.isfinite(num) & (num >= 20000) & (num <= 80000)  # ~1954 a ~2119
+    mask = num.notna() & np.isfinite(num) & (num >= 20000) & (num <= 80000)
 
     dt_excel = pd.Series(pd.NaT, index=df.index)
     if mask.any():
@@ -164,18 +153,15 @@ def percent_str(x) -> str:
     except Exception:
         return "0%"
 
-# Exportação genérica
 def preparar_excel_para_download(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
     export_df = df.copy()
-
-    # formatar percentuais como texto no arquivo exportado (se existirem)
     for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
         if c in export_df.columns:
             export_df[c] = pd.to_numeric(export_df[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
 
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        export_df.to_excel(writer, index=False, sheet_name=sheet_name[:31])  # limite Excel
+        export_df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
     return output.getvalue()
 
 # =========================
@@ -184,7 +170,6 @@ def preparar_excel_para_download(df: pd.DataFrame, sheet_name: str = "Dados") ->
 skap = normalizar_colunas(skap)
 comentarios = normalizar_colunas(comentarios)
 
-# garante colunas mínimas no SKAP
 for col in [
     "COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "DATA ULT. ADM",
     "HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO",
@@ -200,19 +185,16 @@ comentarios = limpar_texto(comentarios, ["COLABORADOR", "CARGO", "OPERACAO", "AT
 # =========================
 skap = tratar_data_adm(skap, "DATA ULT. ADM")
 
-# Percentuais (como número 0..1)
 for col in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
     skap = garantir_coluna(skap, col, 0)
     skap[col] = pd.to_numeric(skap[col], errors="coerce").fillna(0)
 
-# Prazos (data real + versão texto)
 skap["PRAZO_TECNICAS_DT"] = skap["DATA ULT. ADM"] + pd.Timedelta(days=30)
 skap["PRAZO_ESPECIFICAS_DT"] = skap["DATA ULT. ADM"] + pd.Timedelta(days=60)
 
 skap["PRAZO TECNICAS"] = skap["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y").fillna("")
 skap["PRAZO ESPECIFICAS"] = skap["PRAZO_ESPECIFICAS_DT"].dt.strftime("%d/%m/%Y").fillna("")
 
-# Status (suas regras)
 def status_tecnicas(row):
     if row["HABILIDADES TECNICAS"] > 0:
         return "Realizado"
@@ -381,7 +363,6 @@ tmp = tmp.merge(
 
 alertas = []
 
-# Técnicas vencendo
 mask_tec = (tmp["STATUS TECNICAS"] != "Realizado") & tmp["PRAZO_TECNICAS_DT"].notna()
 dias_tec = (tmp.loc[mask_tec, "PRAZO_TECNICAS_DT"] - hoje).dt.days
 tmp_tec = tmp.loc[mask_tec].copy()
@@ -393,7 +374,6 @@ if len(tmp_tec) > 0:
     tmp_tec["DATA VENCIMENTO"] = tmp_tec["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y")
     alertas.append(tmp_tec[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS PARA VENCER"]])
 
-# Específicas vencendo
 mask_esp = (tmp["STATUS ESPECIFICAS"] != "Realizado") & tmp["PRAZO_ESPECIFICAS_DT"].notna()
 dias_esp = (tmp.loc[mask_esp, "PRAZO_ESPECIFICAS_DT"] - hoje).dt.days
 tmp_esp = tmp.loc[mask_esp].copy()
@@ -418,7 +398,6 @@ if len(alerta_df) == 0:
 else:
     st.dataframe(centralizar_tabela(alerta_df), use_container_width=True)
 
-    # Exportação - Vencimento próximo (logo abaixo)
     excel_alerta = preparar_excel_para_download(alerta_df, sheet_name="Vencimento_proximo")
     st.download_button(
         label="⬇️ Baixar Excel (Vencimento próximo)",
@@ -435,9 +414,8 @@ st.divider()
 # =========================
 vencidas = []
 
-# Técnicas vencidas
 mask_vtec = (tmp["STATUS TECNICAS"] == "Não realizado") & tmp["PRAZO_TECNICAS_DT"].notna()
-dias_vtec = (hoje - tmp.loc[mask_vtec, "PRAZO_TECNICAS_DT"]).dt.days  # >0 = vencido
+dias_vtec = (hoje - tmp.loc[mask_vtec, "PRAZO_TECNICAS_DT"]).dt.days
 tmp_vtec = tmp.loc[mask_vtec].copy()
 tmp_vtec["DIAS VENCIDO"] = dias_vtec.values
 tmp_vtec = tmp_vtec[tmp_vtec["DIAS VENCIDO"] > 0]
@@ -447,7 +425,6 @@ if len(tmp_vtec) > 0:
     tmp_vtec["DATA VENCIMENTO"] = tmp_vtec["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y")
     vencidas.append(tmp_vtec[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS VENCIDO"]])
 
-# Específicas vencidas
 mask_vesp = (tmp["STATUS ESPECIFICAS"] == "Não realizado") & tmp["PRAZO_ESPECIFICAS_DT"].notna()
 dias_vesp = (hoje - tmp.loc[mask_vesp, "PRAZO_ESPECIFICAS_DT"]).dt.days
 tmp_vesp = tmp.loc[mask_vesp].copy()
@@ -472,7 +449,6 @@ if len(vencida_df) == 0:
 else:
     st.write(f"Total de etapas vencidas no filtro atual: **{len(vencida_df)}**")
 
-    # DIAS VENCIDO em vermelho
     st.dataframe(
         centralizar_tabela(vencida_df).applymap(
             lambda v: "color: red; font-weight:700;", subset=["DIAS VENCIDO"]
@@ -480,7 +456,6 @@ else:
         use_container_width=True
     )
 
-    # Exportação - Skap vencida (logo abaixo)
     excel_vencida = preparar_excel_para_download(vencida_df, sheet_name="Skap_vencida")
     st.download_button(
         label="⬇️ Baixar Excel (Skap vencida)",
@@ -493,23 +468,20 @@ else:
 st.divider()
 
 # =========================
-# Tabela principal (sem Styler)
+# Tabela principal
 # =========================
 st.subheader("📋 Detalhamento Individual")
 
 tabela = base_f.copy()
 
-# Ordenar por DATA ADMISSAO (dd/mm/aaaa)
 if "DATA ADMISSAO" in tabela.columns:
     tabela["_DATA_ADMISSAO_DT"] = pd.to_datetime(tabela["DATA ADMISSAO"], errors="coerce", dayfirst=True)
     tabela = tabela.sort_values("_DATA_ADMISSAO_DT", ascending=True).drop(columns=["_DATA_ADMISSAO_DT"])
 
-# Percentuais como texto (97%)
 for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
     if c in tabela.columns:
         tabela[c] = pd.to_numeric(tabela[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
 
-# Status com emoji (visual e simples)
 def emoji_status(s):
     if s == "Não realizado":
         return "🔴 Não realizado"
@@ -525,7 +497,6 @@ for c in ["STATUS TECNICAS", "STATUS ESPECIFICAS"]:
 
 st.dataframe(centralizar_tabela(tabela), use_container_width=True)
 
-# Exportação - Detalhamento individual (logo abaixo)
 excel_detalhe = preparar_excel_para_download(tabela, sheet_name="Detalhamento")
 st.download_button(
     label="⬇️ Baixar Excel (Detalhamento individual)",
