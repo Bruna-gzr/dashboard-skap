@@ -5,32 +5,28 @@ from datetime import datetime
 from pathlib import Path
 from io import BytesIO
 import plotly.express as px
-
-st.title("🆕 Acompanhamento de Novos")
-# =========================
-# Última atualização dos dados
-# =========================
-from datetime import datetime
 from zoneinfo import ZoneInfo
 
-try:
-    arquivos = [ARQ_ACOMP, ARQ_BASE]
-    ]
-
-    last_mtime = max(a.stat().st_mtime for a in arquivos if a.exists())
-    dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
-
-    st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
-except:
-    st.caption("🕒 Última atualização: não disponível")
-
-
+st.title("🆕 Acompanhamento de Novos")
 
 # =========================
 # Arquivo
 # =========================
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 ARQ_NOVOS = DATA_DIR / "Acomp novos.xlsx"
+
+# =========================
+# Última atualização dos dados (APENAS desta página)
+# =========================
+try:
+    if ARQ_NOVOS.exists():
+        last_mtime = ARQ_NOVOS.stat().st_mtime
+        dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
+        st.caption(f"🕒 Última atualização (dados): {dt.strftime('%d/%m/%Y %H:%M')}")
+    else:
+        st.caption("🕒 Última atualização (dados): arquivo não encontrado em /data")
+except:
+    st.caption("🕒 Última atualização (dados): não disponível")
 
 @st.cache_data(show_spinner=True)
 def carregar_novos():
@@ -159,7 +155,9 @@ for _, status_col, limite_col, dt_col in etapas:
 # Datas + tempo de casa
 # =========================
 df["ADMISSAO"] = to_datetime_safe(df["ADMISSAO"])
-hoje = pd.to_datetime(datetime.today().date())
+
+# hoje no fuso BR (evita +1 dia no Streamlit Cloud)
+hoje = pd.Timestamp.now(tz=ZoneInfo("America/Sao_Paulo")).normalize().tz_localize(None)
 
 cutoff = pd.to_datetime("2025-01-01")
 df = df[df["ADMISSAO"].notna() & (df["ADMISSAO"] >= cutoff)].copy()
@@ -381,7 +379,6 @@ for nome_aba, status_col, limite_col, dt_col in etapas:
     st_col = df_f[status_col].fillna("")
     lim = df_f[limite_col]
 
-    # ✅ SOMENTE "No prazo"
     mask_np = (st_col == "No prazo") & lim.notna()
     dias_para_vencer = (lim - hoje).dt.days
     mask_venc3 = mask_np & dias_para_vencer.between(0, 3)
@@ -424,10 +421,6 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     lim = tmp[limite_col]
     status = tmp[status_col].fillna("")
 
-    # DIAS:
-    # - padrão: limite - hoje
-    # - se tiver dt preenchida: limite - dt
-    # - se status == "No prazo": força limite - hoje
     dias = (lim - hoje).dt.days
     dias_dt = (lim - dt).dt.days
     dias = dias.where(dt.isna(), dias_dt)
