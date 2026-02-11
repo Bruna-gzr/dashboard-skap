@@ -92,6 +92,9 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
     )
     return sorted(vals)
 
+# =========================
+# Status colors (coluna STATUS)
+# =========================
 STATUS_STYLE = {
     "Conforme esperado": "background-color: #22c55e; color: white; font-weight:700;",
     "Pendente mas no prazo": "background-color: #facc15; color: black; font-weight:700;",
@@ -172,6 +175,7 @@ CARGOS_PERMITIDOS_UP = [normalizar_texto(c) for c in CARGOS_PERMITIDOS]
 
 ativos["CARGO_UP"] = ativos["CARGO"].astype(str).map(normalizar_texto)
 ativos["DATA_ADM_DT"] = tratar_data_segura(ativos["DATA ULT. ADM"])
+
 limite = pd.to_datetime("2024-09-01")  # >= 01/09/2024
 
 base = ativos[
@@ -198,7 +202,6 @@ base = base[~base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ignorar_
 # Datas derivadas
 base["DATA ADMISSAO"] = base["DATA_ADM_DT"].dt.strftime("%d/%m/%Y").fillna("")
 hoje = pd.to_datetime(datetime.today().date())
-base["TEMPO DE CASA"] = (hoje - base["DATA_ADM_DT"]).dt.days.fillna(0).astype(int)
 
 # =========================
 # IDs por colaborador
@@ -237,8 +240,6 @@ ETAPAS = [
 ]
 
 def calcular_status(realizado_dt: pd.Timestamp, dias: int, lim_adiantado: int) -> str:
-    # dias = (Prazo Max - hoje) se pendente
-    # dias = (Prazo Max - realizado) se concluído
     if pd.isna(realizado_dt):
         return "Pendente em atraso" if dias < 0 else "Pendente mas no prazo"
     if dias < 0:
@@ -279,7 +280,7 @@ for _, r in base[base_cols].iterrows():
             "CARGO": r["CARGO"],
             "OPERACAO": r["OPERACAO"],
             "ADMISSAO": r["DATA ADMISSAO"],
-            "ADMISSAO_DT": r["DATA_ADM_DT"],  # para filtro
+            "ADMISSAO_DT": r["DATA_ADM_DT"],
             "ETAPA": etapa,
             "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
             "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
@@ -295,7 +296,6 @@ etapas_df = pd.DataFrame(linhas)
 # =========================
 st.sidebar.header("Filtros")
 
-# Período de admissão
 min_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").min()
 max_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").max()
 if pd.isna(min_adm) or pd.isna(max_adm):
@@ -328,9 +328,16 @@ if f_etapa:
 if f_status:
     df_f = df_f[df_f["STATUS"].isin(f_status)]
 
-# Ordenação geral por admissão
+df_f = df_f[
+    (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date >= data_ini) &
+    (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date <= data_fim)
+]
+
+# =========================
+# Ordenação geral por ADMISSAO
+# =========================
 df_f["_ADM_DT"] = pd.to_datetime(df_f["ADMISSAO_DT"], errors="coerce")
-df_f = df_f.sort_values(["_ADM_DT", "OPERACAO", "COLABORADOR", "ETAPA"]).drop(columns=["_ADM_DT"])
+df_f = df_f.sort_values(["_ADM_DT", "COLABORADOR", "ETAPA"]).drop(columns=["_ADM_DT"])
 
 # =========================
 # Cards
@@ -357,6 +364,7 @@ st.divider()
 
 # =========================
 # 🟡 No prazo vencendo em até 3 dias (lista)
+# Colunas: Colaborador / Cargo / Operacao / Admissao / Etapa / Prazo Máximo / Dias
 # =========================
 vencendo_3_df = df_f[
     (df_f["STATUS"] == "Pendente mas no prazo") &
@@ -367,34 +375,24 @@ vencendo_3_df = df_f[
 cols_alerta = ["COLABORADOR", "CARGO", "OPERACAO", "ADMISSAO", "ETAPA", "PRAZO MAXIMO", "DIAS"]
 vencendo_3_df = vencendo_3_df[[c for c in cols_alerta if c in vencendo_3_df.columns]]
 
+st.subheader("🟡 No prazo vencendo em até 3 dias")
 if len(vencendo_3_df) == 0:
-    st.subheader("🟡 No prazo vencendo em até 3 dias")
     st.info("Nenhuma etapa 'Pendente mas no prazo' vencendo em até 3 dias com os filtros atuais.")
 else:
-    vencendo_3_df = vencendo_3_df.sort_values(["DIAS", "OPERACAO", "COLABORADOR"], ascending=[True, True, True])
-    st.subheader("🟡 No prazo vencendo em até 3 dias")
-    if "STATUS" in vencendo_3_df.columns:
-    sty_alerta = centralizar_tabela(vencendo_3_df).apply(
-        lambda col: [
-            (STATUS_STYLE.get(r["STATUS"], "") if col.name == "STATUS" else "")
-            for _, r in vencendo_3_df.iterrows()
-        ],
-        axis=0
-    )
-    st.dataframe(sty_alerta, use_container_width=True)
-else:
+    vencendo_3_df = vencendo_3_df.sort_values(["ADMISSAO", "COLABORADOR", "DIAS"], ascending=[True, True, True])
     st.dataframe(centralizar_tabela(vencendo_3_df), use_container_width=True)
-
 
 st.divider()
 
 # =========================
-# Aderência Média - Log20 (barra com cor)
+# Aderência Média - Log20 (OK = Conforme + Pendente no prazo)
 # =========================
 st.subheader("📌 Aderência Média - Log20")
 
+total_etapas = len(df_f)
 total_ok = int(((df_f["STATUS"] == "Conforme esperado") | (df_f["STATUS"] == "Pendente mas no prazo")).sum())
 aderencia_total = (total_ok / total_etapas) if total_etapas > 0 else 0.0
+pct = aderencia_total * 100
 
 if pct >= 100:
     cor = "#22c55e"  # verde
@@ -438,14 +436,15 @@ else:
     st.plotly_chart(fig, use_container_width=True)
 
 # =========================
-# Gráfico: Aderência por Operação
+# Gráfico: Aderência por Operação (OK = Conforme + Pendente no prazo)
 # =========================
-st.subheader("📊 Aderência por Operação (Conforme esperado / Total de etapas)")
+st.subheader("📊 Aderência por Operação (OK / Total de etapas)")
+
 ader_oper = (
     df_f.groupby("OPERACAO", dropna=False)
     .agg(
         TOTAL=("STATUS", "size"),
-        OK=("STATUS", lambda s: ((s == "Conforme esperado") | (s == "Pendente mas no prazo")).sum())
+        OK=("STATUS", lambda s: ((s == "Conforme esperado") | (s == "Pendente mas no prazo")).sum()),
     )
     .reset_index()
 )
@@ -500,8 +499,9 @@ for i, etapa in enumerate(ordem_etapas):
             st.info("Sem dados para esta etapa com os filtros atuais.")
             continue
 
-        df_etapa["_ADM_DT"] = pd.to_datetime(df_etapa["ADMISSAO"], dayfirst=True, errors="coerce")
-        df_etapa = df_etapa.sort_values(["_ADM_DT", "OPERACAO", "COLABORADOR"]).drop(columns=["_ADM_DT"])
+        # Ordenar por ADMISSAO (data), depois nome
+        df_etapa["_ADM_DT"] = pd.to_datetime(df_etapa["ADMISSAO_DT"], errors="coerce")
+        df_etapa = df_etapa.sort_values(["_ADM_DT", "COLABORADOR"]).drop(columns=["_ADM_DT"])
         df_etapa = df_etapa[[c for c in cols_ordem if c in df_etapa.columns]]
 
         cc1, cc2, cc3 = st.columns(3)
@@ -509,19 +509,18 @@ for i, etapa in enumerate(ordem_etapas):
         cc2.metric("🔴 Pendente em atraso", int((df_etapa["STATUS"] == "Pendente em atraso").sum()))
         cc3.metric("🟡 Pendente no prazo", int((df_etapa["STATUS"] == "Pendente mas no prazo").sum()))
 
-        def style_row(r):
-    # DIAS em vermelho só quando pendente em atraso
-    dias_style = "color: red; font-weight:800;" if r["STATUS"] == "Pendente em atraso" else ""
-    status_style = STATUS_STYLE.get(r["STATUS"], "")
-    return dias_style, status_style
+        # Styles: STATUS colorido + DIAS vermelho se pendente em atraso
+        def style_cell(col_name: str, row: pd.Series) -> str:
+            if col_name == "STATUS":
+                return STATUS_STYLE.get(str(row["STATUS"]), "")
+            if col_name == "DIAS" and str(row["STATUS"]) == "Pendente em atraso":
+                return "color: red; font-weight:800;"
+            return ""
 
-sty = centralizar_tabela(df_etapa).apply(
-    lambda col: [
-        (style_row(r)[0] if col.name == "DIAS" else (style_row(r)[1] if col.name == "STATUS" else ""))
-        for _, r in df_etapa.iterrows()
-    ],
-    axis=0
-)
+        sty = centralizar_tabela(df_etapa).apply(
+            lambda col: [style_cell(col.name, r) for _, r in df_etapa.iterrows()],
+            axis=0
+        )
 
         st.dataframe(sty, use_container_width=True)
 
