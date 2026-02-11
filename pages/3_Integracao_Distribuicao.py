@@ -111,7 +111,7 @@ try:
 except Exception as e:
     st.error(f"❌ Erro ao carregar arquivos da pasta /data: {e}")
     st.info(
-        "✅ Suba estes arquivos no GitHub na pasta /data (com .xlsx):\n"
+        "✅ Confira se existem exatamente estes arquivos no GitHub na pasta /data (com .xlsx):\n"
         "- Base colaboradores ativos.xlsx\n"
         "- Base IDs Logon.xlsx\n"
         "- Respostas Logon.xlsx"
@@ -163,8 +163,6 @@ CARGOS_PERMITIDOS = [
 CARGOS_PERMITIDOS_UP = [normalizar_texto(c) for c in CARGOS_PERMITIDOS]
 
 ativos["CARGO_UP"] = ativos["CARGO"].astype(str).map(normalizar_texto)
-ativos["OPERACAO_UP"] = ativos["OPERACAO"].astype(str).map(normalizar_texto)
-
 ativos["DATA_ADM_DT"] = tratar_data_segura(ativos["DATA ULT. ADM"])
 limite = pd.to_datetime("2024-09-01")  # >= 01/09/2024
 
@@ -180,8 +178,6 @@ op_norm = base["OPERACAO"].astype(str).map(normalizar_texto)
 adm_date = base["DATA_ADM_DT"].dt.date
 base = base[~(op_norm.str.contains("CD PETROPOLIS", na=False) & (adm_date == data_excluir))]
 
-# Se na sua base vier "PETRÓPOLIS" sem o "CD", descomente esta linha:
-# base = base[~(op_norm.str.contains("PETROPOLIS", na=False) & (adm_date == data_excluir))]
 # --- EXCLUSÕES POR NOME (ignorar no controle) ---
 IGNORAR_NOMES = [
     "JULIANO CASTEDO MENDES",
@@ -189,10 +185,9 @@ IGNORAR_NOMES = [
     "ALEXANDER DE SOUZA GOMES",
 ]
 ignorar_up = set(normalizar_texto(x) for x in IGNORAR_NOMES)
-
 base = base[~base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ignorar_up)]
 
-
+# Datas derivadas
 base["DATA ADMISSAO"] = base["DATA_ADM_DT"].dt.strftime("%d/%m/%Y").fillna("")
 hoje = pd.to_datetime(datetime.today().date())
 base["TEMPO DE CASA"] = (hoje - base["DATA_ADM_DT"]).dt.days.fillna(0).astype(int)
@@ -272,18 +267,18 @@ for _, r in base[base_cols].iterrows():
         status = calcular_status(realizado_dt, dias, lim_adiantado)
 
         linhas.append({
-    "COLABORADOR": r["COLABORADOR"],
-    "CARGO": r["CARGO"],
-    "OPERACAO": r["OPERACAO"],
-    "ADMISSAO": r["DATA ADMISSAO"],
-    "ADMISSAO_DT": r["DATA_ADM_DT"],   # ✅ novo (para filtro)
-    "ETAPA": etapa,
-    "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
-    "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
-    "REALIZADO": "" if pd.isna(realizado_dt) else realizado_dt.strftime("%d/%m/%Y"),
-    "DIAS": dias,
-    "STATUS": status,
-})
+            "COLABORADOR": r["COLABORADOR"],
+            "CARGO": r["CARGO"],
+            "OPERACAO": r["OPERACAO"],
+            "ADMISSAO": r["DATA ADMISSAO"],
+            "ADMISSAO_DT": r["DATA_ADM_DT"],  # para filtro
+            "ETAPA": etapa,
+            "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
+            "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
+            "REALIZADO": "" if pd.isna(realizado_dt) else realizado_dt.strftime("%d/%m/%Y"),
+            "DIAS": dias,
+            "STATUS": status,
+        })
 
 etapas_df = pd.DataFrame(linhas)
 
@@ -292,12 +287,10 @@ etapas_df = pd.DataFrame(linhas)
 # =========================
 st.sidebar.header("Filtros")
 
-# Filtro por período de admissão (range)
+# Período de admissão
 min_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").min()
 max_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").max()
-
 if pd.isna(min_adm) or pd.isna(max_adm):
-    # fallback (caso raro)
     min_adm = pd.to_datetime("2024-09-01")
     max_adm = pd.to_datetime(datetime.today().date())
 
@@ -308,7 +301,6 @@ periodo = st.sidebar.date_input(
     max_value=max_adm.date(),
 )
 data_ini, data_fim = periodo
-
 
 f_operacao = st.sidebar.multiselect("Operação", opcoes(etapas_df, "OPERACAO"))
 f_cargo = st.sidebar.multiselect("Cargo", opcoes(etapas_df, "CARGO"))
@@ -327,13 +319,12 @@ if f_etapa:
     df_f = df_f[df_f["ETAPA"].isin(f_etapa)]
 if f_status:
     df_f = df_f[df_f["STATUS"].isin(f_status)]
-    
-    # aplica filtro de período de admissão
+
+# aplica filtro de período de admissão
 df_f = df_f[
     (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date >= data_ini) &
     (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date <= data_fim)
 ]
-
 
 # =========================
 # Cards
@@ -341,21 +332,14 @@ df_f = df_f[
 total_linhas = len(df_f)
 pend_atraso = int((df_f["STATUS"] == "Pendente em atraso").sum())
 pend_prazo = int((df_f["STATUS"] == "Pendente mas no prazo").sum())
-conc_atraso = int((df_f["STATUS"] == "Concluido em atraso").sum())
 conc_ok = int((df_f["STATUS"] == "Conforme esperado").sum())
 conc_adiant = int((df_f["STATUS"] == "Concluido adiantado").sum())
 
-# 👉 NOVO CARD
 no_prazo_vencendo_3 = int(
-    (
-        (df_f["STATUS"] == "Pendente mas no prazo") &
-        (df_f["DIAS"] >= 0) &
-        (df_f["DIAS"] <= 3)
-    ).sum()
+    ((df_f["STATUS"] == "Pendente mas no prazo") & (df_f["DIAS"] >= 0) & (df_f["DIAS"] <= 3)).sum()
 )
 
 c1, c2, c3, c4, c5, c6 = st.columns(6)
-
 c1.metric("Etapas (linhas)", total_linhas)
 c2.metric("🔴 Pendente em atraso", pend_atraso)
 c3.metric("🟡 Pendente no prazo", pend_prazo)
@@ -374,38 +358,21 @@ vencendo_3_df = df_f[
     (df_f["DIAS"] <= 3)
 ].copy()
 
-# colunas pedidas
 cols_alerta = ["COLABORADOR", "CARGO", "OPERACAO", "ADMISSAO", "ETAPA", "PRAZO MAXIMO", "DIAS"]
 vencendo_3_df = vencendo_3_df[[c for c in cols_alerta if c in vencendo_3_df.columns]]
 
-# ordenação (mais urgente primeiro)
-if len(vencendo_3_df) > 0:
-    vencendo_3_df = vencendo_3_df.sort_values(["DIAS", "OPERACAO", "COLABORADOR"], ascending=[True, True, True])
-
-st.subheader("🟡 No prazo vencendo em até 3 dias")
 if len(vencendo_3_df) == 0:
+    st.subheader("🟡 No prazo vencendo em até 3 dias")
     st.info("Nenhuma etapa 'Pendente mas no prazo' vencendo em até 3 dias com os filtros atuais.")
 else:
+    vencendo_3_df = vencendo_3_df.sort_values(["DIAS", "OPERACAO", "COLABORADOR"], ascending=[True, True, True])
+    st.subheader("🟡 No prazo vencendo em até 3 dias")
     st.dataframe(centralizar_tabela(vencendo_3_df), use_container_width=True)
 
+st.divider()
+
 # =========================
-# Aderência Média - Log20
-# =========================
-st.subheader("📌 Aderência Média - Log20")
-
-total_etapas = len(df_f)
-total_conforme = int((df_f["STATUS"] == "Conforme esperado").sum())
-
-aderencia_total = (
-    total_conforme / total_etapas
-    if total_etapas > 0 else 0
-)
-
-col_bar, col_pct = st.columns([8, 1])
-
-with col_bar:
-    # =========================
-# Aderência Média - Log20 (barra com cor por faixa)
+# Aderência Média - Log20 (barra com cor)
 # =========================
 st.subheader("📌 Aderência Média - Log20")
 
@@ -414,7 +381,6 @@ total_conforme = int((df_f["STATUS"] == "Conforme esperado").sum())
 aderencia_total = (total_conforme / total_etapas) if total_etapas > 0 else 0.0
 pct = aderencia_total * 100
 
-# cor por faixa
 if pct >= 100:
     cor = "#22c55e"  # verde
 elif pct >= 80:
@@ -423,7 +389,6 @@ else:
     cor = "#ef4444"  # vermelho
 
 col_bar, col_pct = st.columns([8, 1])
-
 with col_bar:
     st.markdown(
         f"""
@@ -433,12 +398,10 @@ with col_bar:
         """,
         unsafe_allow_html=True
     )
-
 with col_pct:
     st.write(f"**{pct:.2f}%**")
 
-with col_pct:
-    st.write(f"**{aderencia_total*100:.2f}%**")
+st.divider()
 
 # =========================
 # Gráfico: Pendentes em atraso por Operação
@@ -459,6 +422,37 @@ else:
     fig.update_layout(xaxis={"categoryorder": "total descending"})
     st.plotly_chart(fig, use_container_width=True)
 
+# =========================
+# Gráfico: Aderência por Operação
+# =========================
+st.subheader("📊 Aderência por Operação (Conforme esperado / Total de etapas)")
+ader_oper = (
+    df_f.groupby("OPERACAO", dropna=False)
+    .agg(
+        TOTAL=("STATUS", "size"),
+        CONFORME=("STATUS", lambda s: (s == "Conforme esperado").sum())
+    )
+    .reset_index()
+)
+ader_oper["ADERENCIA_%"] = np.where(
+    ader_oper["TOTAL"] > 0,
+    (ader_oper["CONFORME"] / ader_oper["TOTAL"]) * 100,
+    0
+)
+ader_oper = ader_oper.sort_values("ADERENCIA_%", ascending=False)
+
+if len(ader_oper) == 0:
+    st.info("Sem dados para calcular aderência com os filtros atuais.")
+else:
+    fig_ad = px.bar(
+        ader_oper,
+        x="OPERACAO",
+        y="ADERENCIA_%",
+        text=ader_oper["ADERENCIA_%"].map(lambda x: f"{x:.2f}%"),
+    )
+    fig_ad.update_layout(yaxis_title="Aderência (%)", xaxis={"categoryorder": "total descending"})
+    st.plotly_chart(fig_ad, use_container_width=True)
+
 st.divider()
 
 # =========================
@@ -469,7 +463,6 @@ st.subheader("📋 Acompanhamento por Curso")
 ordem_etapas = [e[0] for e in ETAPAS]
 tabs = st.tabs(ordem_etapas)
 
-# Ordem final de colunas (ADMISSAO logo após OPERACAO)
 cols_ordem = [
     "COLABORADOR",
     "CARGO",
@@ -491,20 +484,15 @@ for i, etapa in enumerate(ordem_etapas):
             st.info("Sem dados para esta etapa com os filtros atuais.")
             continue
 
-        # Ordenar por data de admissão (dentro da operação)
         df_etapa["_ADM_DT"] = pd.to_datetime(df_etapa["ADMISSAO"], dayfirst=True, errors="coerce")
         df_etapa = df_etapa.sort_values(["OPERACAO", "_ADM_DT", "COLABORADOR"]).drop(columns=["_ADM_DT"])
-
-        # Reordenar colunas
         df_etapa = df_etapa[[c for c in cols_ordem if c in df_etapa.columns]]
 
-        # Mini-cards por aba
         cc1, cc2, cc3 = st.columns(3)
         cc1.metric("Registros", len(df_etapa))
         cc2.metric("🔴 Pendente em atraso", int((df_etapa["STATUS"] == "Pendente em atraso").sum()))
         cc3.metric("🟡 Pendente no prazo", int((df_etapa["STATUS"] == "Pendente mas no prazo").sum()))
 
-        # DIAS em vermelho somente quando "Pendente em atraso"
         def style_dias(row):
             return "color: red; font-weight:700;" if row["STATUS"] == "Pendente em atraso" else ""
 
@@ -515,7 +503,6 @@ for i, etapa in enumerate(ordem_etapas):
 
         st.dataframe(sty, use_container_width=True)
 
-        # Exportação por etapa (logo abaixo)
         excel_etapa = preparar_excel_para_download(df_etapa, sheet_name="Etapa")
         st.download_button(
             label=f"⬇️ Baixar Excel ({etapa})",
