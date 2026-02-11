@@ -15,20 +15,17 @@ st.title("🚚 Integração Distribuição")
 # Última atualização dos dados
 # =========================
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 try:
-    ultima_atualizacao = max(
-        ARQ_ATIVOS.stat().st_mtime,
-        ARQ_IDS.stat().st_mtime,
-        ARQ_RESPOSTAS.stat().st_mtime,
-    )
+    arquivos = [
+        arquivos = [ARQ_ATIVOS, ARQ_IDS, ARQ_RESPOSTAS]
+    ]
 
-    ultima_atualizacao = datetime.fromtimestamp(ultima_atualizacao)
+    last_mtime = max(a.stat().st_mtime for a in arquivos if a.exists())
+    dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
 
-    st.caption(
-        f"🕒 Última atualização dos dados: "
-        f"{ultima_atualizacao.strftime('%d/%m/%Y %H:%M')}"
-    )
+    st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
 except:
     st.caption("🕒 Última atualização: não disponível")
 
