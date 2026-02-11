@@ -201,7 +201,7 @@ base = base[~base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ignorar_
 
 # Datas derivadas
 base["DATA ADMISSAO"] = base["DATA_ADM_DT"].dt.strftime("%d/%m/%Y").fillna("")
-hoje = pd.to_datetime(datetime.today().date())
+hoje = pd.to_datetime(datetime.today().date()).normalize()
 
 # =========================
 # IDs por colaborador
@@ -226,27 +226,18 @@ resp_min = (
 
 # =========================
 # Etapas + prazos
-# (etapa, offset_min, offset_max, limite_adiantado)
+# (etapa, offset_min, offset_max)
 # =========================
 ETAPAS = [
-    ("Dia 01 - Distribuição Urbana", 0, 3, 3),
-    ("Dia 02 - Distribuição Urbana", 1, 3, 2),
-    ("Dia 03 - Distribuição Urbana", 2, 4, 2),
-    ("Dia 04 - Distribuição Urbana", 3, 5, 2),
-    ("Dia 05 - Distribuição Urbana", 4, 7, 3),
-    ("Gradativa - Distribuição Urbana", 10, 14, 3),
-    ("1ª Quinzena - Distribuição Urbana", 12, 18, 6),
-    ("1° Mês - Distribuição Urbana", 24, 34, 10),
+    ("Dia 01 - Distribuição Urbana", 0, 3),
+    ("Dia 02 - Distribuição Urbana", 1, 3),
+    ("Dia 03 - Distribuição Urbana", 2, 4),
+    ("Dia 04 - Distribuição Urbana", 3, 5),
+    ("Dia 05 - Distribuição Urbana", 4, 7),
+    ("Gradativa - Distribuição Urbana", 10, 14),
+    ("1ª Quinzena - Distribuição Urbana", 12, 18),
+    ("1° Mês - Distribuição Urbana", 24, 34),
 ]
-
-def calcular_status(realizado_dt: pd.Timestamp, dias: int, lim_adiantado: int) -> str:
-    if pd.isna(realizado_dt):
-        return "Pendente em atraso" if dias < 0 else "Pendente mas no prazo"
-    if dias < 0:
-        return "Concluido em atraso"
-    if dias > lim_adiantado:
-        return "Concluido adiantado"
-    return "Conforme esperado"
 
 # =========================
 # Montagem da base LONGA (1 linha por etapa por colaborador)
@@ -255,12 +246,12 @@ linhas = []
 base_cols = ["COLABORADOR", "CARGO", "OPERACAO", "DATA ADMISSAO", "DATA_ADM_DT", "ID"]
 
 for _, r in base[base_cols].iterrows():
-    adm = r["DATA_ADM_DT"]
+    adm = pd.to_datetime(r["DATA_ADM_DT"]).normalize()
     _id = r["ID"]
 
-    for (etapa, off_min, off_max, lim_adiantado) in ETAPAS:
-        prazo_min_dt = adm + pd.Timedelta(days=off_min)
-        prazo_max_dt = adm + pd.Timedelta(days=off_max)
+    for (etapa, off_min, off_max) in ETAPAS:
+        prazo_min_dt = (adm + pd.Timedelta(days=off_min)).normalize()
+        prazo_max_dt = (adm + pd.Timedelta(days=off_max)).normalize()
 
         realizado_dt = pd.NaT
         if pd.notna(_id):
@@ -268,23 +259,34 @@ for _, r in base[base_cols].iterrows():
             if len(hit) > 0:
                 realizado_dt = hit["DATA_ENTREGA_DT"].iloc[0]
 
-        if pd.isna(realizado_dt):
-            dias = int((prazo_max_dt - hoje).days)
-        else:
-            dias = int((prazo_max_dt - realizado_dt).days)
+        if pd.notna(realizado_dt):
+            realizado_dt = pd.to_datetime(realizado_dt).normalize()
 
-        status = calcular_status(realizado_dt, dias, lim_adiantado)
+        # DIAS (saldo do Prazo Máximo)
+        if pd.isna(realizado_dt):
+            dias = int((prazo_max_dt - hoje).days)  # pendente
+            status = "Pendente em atraso" if hoje > prazo_max_dt else "Pendente mas no prazo"
+            realizado_txt = ""
+        else:
+            dias = int((prazo_max_dt - realizado_dt).days)  # concluído (adiantado positivo, atraso negativo)
+            if realizado_dt < prazo_min_dt:
+                status = "Concluido adiantado"
+            elif realizado_dt > prazo_max_dt:
+                status = "Concluido em atraso"
+            else:
+                status = "Conforme esperado"
+            realizado_txt = realizado_dt.strftime("%d/%m/%Y")
 
         linhas.append({
             "COLABORADOR": r["COLABORADOR"],
             "CARGO": r["CARGO"],
             "OPERACAO": r["OPERACAO"],
             "ADMISSAO": r["DATA ADMISSAO"],
-            "ADMISSAO_DT": r["DATA_ADM_DT"],
+            "ADMISSAO_DT": adm,
             "ETAPA": etapa,
             "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
             "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
-            "REALIZADO": "" if pd.isna(realizado_dt) else realizado_dt.strftime("%d/%m/%Y"),
+            "REALIZADO": realizado_txt,
             "DIAS": dias,
             "STATUS": status,
         })
@@ -300,7 +302,7 @@ min_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").min()
 max_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").max()
 if pd.isna(min_adm) or pd.isna(max_adm):
     min_adm = pd.to_datetime("2024-09-01")
-    max_adm = pd.to_datetime(datetime.today().date())
+    max_adm = pd.to_datetime(datetime.today().date()).normalize()
 
 periodo = st.sidebar.date_input(
     "Período de admissão",
@@ -432,12 +434,11 @@ else:
 st.divider()
 
 # =========================
-# 3 - 🔴 Pendentes em atraso (tabela)
+# 3 - 🔴 Pendentes em atraso (tabela) - ordem por ADMISSAO crescente
 # =========================
 st.subheader("🔴 Pendentes em atraso")
 
 atraso_df = df_f[df_f["STATUS"] == "Pendente em atraso"].copy()
-
 cols_atraso = ["COLABORADOR", "CARGO", "OPERACAO", "ADMISSAO", "ETAPA", "PRAZO MAXIMO", "DIAS"]
 atraso_df = atraso_df[[c for c in cols_atraso if c in atraso_df.columns]]
 
@@ -451,7 +452,7 @@ else:
 st.divider()
 
 # =========================
-# 4 - 🟡 No prazo vencendo em até 3 dias (ordem por ADMISSAO crescente)
+# 4 - 🟡 No prazo vencendo em até 3 dias (tabela) - ordem por ADMISSAO crescente
 # =========================
 vencendo_3_df = df_f[
     (df_f["STATUS"] == "Pendente mas no prazo") &
@@ -501,7 +502,6 @@ for i, etapa in enumerate(ordem_etapas):
             st.info("Sem dados para esta etapa com os filtros atuais.")
             continue
 
-        # Ordenar por ADMISSAO (crescente), depois nome
         df_etapa["_ADM_DT"] = pd.to_datetime(df_etapa["ADMISSAO_DT"], errors="coerce")
         df_etapa = df_etapa.sort_values(["_ADM_DT", "COLABORADOR"]).drop(columns=["_ADM_DT"])
         df_etapa = df_etapa[[c for c in cols_ordem if c in df_etapa.columns]]
@@ -511,7 +511,6 @@ for i, etapa in enumerate(ordem_etapas):
         cc2.metric("🔴 Pendente em atraso", int((df_etapa["STATUS"] == "Pendente em atraso").sum()))
         cc3.metric("🟡 Pendente no prazo", int((df_etapa["STATUS"] == "Pendente mas no prazo").sum()))
 
-        # Styles: STATUS colorido + DIAS vermelho se pendente em atraso
         def style_cell(col_name: str, row: pd.Series) -> str:
             if col_name == "STATUS":
                 return STATUS_STYLE.get(str(row["STATUS"]), "")
