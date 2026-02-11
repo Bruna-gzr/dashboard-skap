@@ -334,7 +334,7 @@ df_f = df_f[
 ]
 
 # =========================
-# Ordenação geral por ADMISSAO
+# Ordenação geral por ADMISSAO (crescente)
 # =========================
 df_f["_ADM_DT"] = pd.to_datetime(df_f["ADMISSAO_DT"], errors="coerce")
 df_f = df_f.sort_values(["_ADM_DT", "COLABORADOR", "ETAPA"]).drop(columns=["_ADM_DT"])
@@ -363,29 +363,8 @@ c6.metric("⚡ Concluído adiantado", conc_adiant)
 st.divider()
 
 # =========================
-# 🟡 No prazo vencendo em até 3 dias (lista)
-# Colunas: Colaborador / Cargo / Operacao / Admissao / Etapa / Prazo Máximo / Dias
-# =========================
-vencendo_3_df = df_f[
-    (df_f["STATUS"] == "Pendente mas no prazo") &
-    (df_f["DIAS"] >= 0) &
-    (df_f["DIAS"] <= 3)
-].copy()
-
-cols_alerta = ["COLABORADOR", "CARGO", "OPERACAO", "ADMISSAO", "ETAPA", "PRAZO MAXIMO", "DIAS"]
-vencendo_3_df = vencendo_3_df[[c for c in cols_alerta if c in vencendo_3_df.columns]]
-
-st.subheader("🟡 No prazo vencendo em até 3 dias")
-if len(vencendo_3_df) == 0:
-    st.info("Nenhuma etapa 'Pendente mas no prazo' vencendo em até 3 dias com os filtros atuais.")
-else:
-    vencendo_3_df = vencendo_3_df.sort_values(["ADMISSAO", "COLABORADOR", "DIAS"], ascending=[True, True, True])
-    st.dataframe(centralizar_tabela(vencendo_3_df), use_container_width=True)
-
-st.divider()
-
-# =========================
-# Aderência Média - Log20 (OK = Conforme + Pendente no prazo)
+# 1 - 📌 Aderência Média - Log20
+# OK = Conforme esperado + Pendente mas no prazo
 # =========================
 st.subheader("📌 Aderência Média - Log20")
 
@@ -417,28 +396,9 @@ with col_pct:
 st.divider()
 
 # =========================
-# Gráfico: Pendentes em atraso por Operação
+# 2 - Aderência por Operação
 # =========================
-st.subheader("🔴 Pendentes em atraso por Operação")
-g = (
-    df_f[df_f["STATUS"] == "Pendente em atraso"]
-    .groupby("OPERACAO", dropna=False)
-    .size()
-    .sort_values(ascending=False)
-    .reset_index(name="Quantidade")
-)
-
-if len(g) == 0:
-    st.info("Sem pendências em atraso com os filtros atuais.")
-else:
-    fig = px.bar(g, x="OPERACAO", y="Quantidade", text="Quantidade")
-    fig.update_layout(xaxis={"categoryorder": "total descending"})
-    st.plotly_chart(fig, use_container_width=True)
-
-# =========================
-# Gráfico: Aderência por Operação (OK = Conforme + Pendente no prazo)
-# =========================
-st.subheader("📊 Aderência por Operação (OK / Total de etapas)")
+st.subheader("📊 Aderência por Operação")
 
 ader_oper = (
     df_f.groupby("OPERACAO", dropna=False)
@@ -454,6 +414,7 @@ ader_oper["ADERENCIA_%"] = np.where(
     (ader_oper["OK"] / ader_oper["TOTAL"]) * 100,
     0
 )
+
 ader_oper = ader_oper.sort_values("ADERENCIA_%", ascending=False)
 
 if len(ader_oper) == 0:
@@ -471,9 +432,50 @@ else:
 st.divider()
 
 # =========================
-# Abas por Curso/Etapa
+# 3 - 🔴 Pendentes em atraso (tabela)
 # =========================
-st.subheader("📋 Acompanhamento por Curso")
+st.subheader("🔴 Pendentes em atraso")
+
+atraso_df = df_f[df_f["STATUS"] == "Pendente em atraso"].copy()
+
+cols_atraso = ["COLABORADOR", "CARGO", "OPERACAO", "ADMISSAO", "ETAPA", "PRAZO MAXIMO", "DIAS"]
+atraso_df = atraso_df[[c for c in cols_atraso if c in atraso_df.columns]]
+
+if len(atraso_df) == 0:
+    st.info("Nenhuma etapa em atraso com os filtros atuais.")
+else:
+    atraso_df["_ADM_DT"] = pd.to_datetime(atraso_df["ADMISSAO"], dayfirst=True, errors="coerce")
+    atraso_df = atraso_df.sort_values(["_ADM_DT", "COLABORADOR", "ETAPA"]).drop(columns=["_ADM_DT"])
+    st.dataframe(centralizar_tabela(atraso_df), use_container_width=True)
+
+st.divider()
+
+# =========================
+# 4 - 🟡 No prazo vencendo em até 3 dias (ordem por ADMISSAO crescente)
+# =========================
+vencendo_3_df = df_f[
+    (df_f["STATUS"] == "Pendente mas no prazo") &
+    (df_f["DIAS"] >= 0) &
+    (df_f["DIAS"] <= 3)
+].copy()
+
+cols_alerta = ["COLABORADOR", "CARGO", "OPERACAO", "ADMISSAO", "ETAPA", "PRAZO MAXIMO", "DIAS"]
+vencendo_3_df = vencendo_3_df[[c for c in cols_alerta if c in vencendo_3_df.columns]]
+
+st.subheader("🟡 No prazo vencendo em até 3 dias")
+if len(vencendo_3_df) == 0:
+    st.info("Nenhuma etapa 'Pendente mas no prazo' vencendo em até 3 dias com os filtros atuais.")
+else:
+    vencendo_3_df["_ADM_DT"] = pd.to_datetime(vencendo_3_df["ADMISSAO"], dayfirst=True, errors="coerce")
+    vencendo_3_df = vencendo_3_df.sort_values(["_ADM_DT", "COLABORADOR", "DIAS"]).drop(columns=["_ADM_DT"])
+    st.dataframe(centralizar_tabela(vencendo_3_df), use_container_width=True)
+
+st.divider()
+
+# =========================
+# 5 - 📋 Acompanhamento por Etapa
+# =========================
+st.subheader("📋 Acompanhamento por Etapa")
 
 ordem_etapas = [e[0] for e in ETAPAS]
 tabs = st.tabs(ordem_etapas)
@@ -499,7 +501,7 @@ for i, etapa in enumerate(ordem_etapas):
             st.info("Sem dados para esta etapa com os filtros atuais.")
             continue
 
-        # Ordenar por ADMISSAO (data), depois nome
+        # Ordenar por ADMISSAO (crescente), depois nome
         df_etapa["_ADM_DT"] = pd.to_datetime(df_etapa["ADMISSAO_DT"], errors="coerce")
         df_etapa = df_etapa.sort_values(["_ADM_DT", "COLABORADOR"]).drop(columns=["_ADM_DT"])
         df_etapa = df_etapa[[c for c in cols_ordem if c in df_etapa.columns]]
