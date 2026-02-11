@@ -7,6 +7,27 @@ from io import BytesIO
 import plotly.express as px
 
 st.title("🆕 Acompanhamento de Novos")
+# =========================
+# Última atualização dos dados
+# =========================
+from datetime import datetime
+
+try:
+    ultima_atualizacao = max(
+        ARQ_ATIVOS.stat().st_mtime,
+        ARQ_IDS.stat().st_mtime,
+        ARQ_RESPOSTAS.stat().st_mtime,
+    )
+
+    ultima_atualizacao = datetime.fromtimestamp(ultima_atualizacao)
+
+    st.caption(
+        f"🕒 Última atualização dos dados: "
+        f"{ultima_atualizacao.strftime('%d/%m/%Y %H:%M')}"
+    )
+except:
+    st.caption("🕒 Última atualização: não disponível")
+
 
 # =========================
 # Arquivo
