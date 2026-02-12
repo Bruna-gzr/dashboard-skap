@@ -513,18 +513,28 @@ with st.expander("🔧 Diagnóstico"):
     st.caption("Se quiser ativar o match aproximado, instale no ambiente: pip install rapidfuzz")
 
 # =========================
-# FAROL
+# FAROL (com filtros + aderência nova + datas dd/mm/aaaa)
 # =========================
+
 st.header("🚦 ADERÊNCIA — PROCESSO PADRINHOS (FAROL)")
 
-# =========================
-# FILTROS (Operação / Data Admissão / Cargo / Status)
-# =========================
+# ---------- Filtros ----------
 st.subheader("🔎 Filtros")
 
-# base_oper precisa existir aqui (pipeline já rodou)
-ops_all = sorted([x for x in base_oper["Operação"].fillna("").astype(str).unique().tolist() if x.strip() != ""])
-cargos_all = sorted([x for x in base_oper["Cargo"].fillna("").astype(str).unique().tolist() if x.strip() != ""])
+# garantir Data_dt para filtro de admissão
+if "Data_dt" not in base_oper.columns:
+    base_oper["Data_dt"] = pd.to_datetime(base_oper["Data"], errors="coerce", dayfirst=True)
+
+ops_all = sorted([x for x in base_oper["Operação"].fillna("").astype(str).unique().tolist() if x.strip()])
+cargos_all = sorted([x for x in base_oper["Cargo"].fillna("").astype(str).unique().tolist() if x.strip()])
+
+status_options = [
+    "Não realizado - Fora do prazo",
+    "Não realizado - Atenção",
+    "Realizado fora do prazo",
+    "Realizado no prazo",
+    "Realizado antes do prazo",
+]
 
 colf1, colf2, colf3, colf4 = st.columns([2, 2, 2, 2])
 
@@ -532,12 +542,12 @@ with colf1:
     filtro_ops = st.multiselect("Operação", options=ops_all, default=[])
 
 with colf2:
-    # intervalo de datas de admissão
     data_min = pd.to_datetime(base_oper["Data_dt"], errors="coerce").min()
     data_max = pd.to_datetime(base_oper["Data_dt"], errors="coerce").max()
-    # fallback se vier NaT
-    if pd.isna(data_min): data_min = pd.Timestamp("2024-10-03")
-    if pd.isna(data_max): data_max = pd.Timestamp(datetime.now().date())
+    if pd.isna(data_min):
+        data_min = pd.Timestamp("2024-10-03")
+    if pd.isna(data_max):
+        data_max = pd.Timestamp(datetime.now().date())
 
     dt_ini, dt_fim = st.date_input(
         "Data de admissão (intervalo)",
@@ -550,16 +560,119 @@ with colf3:
     filtro_cargos = st.multiselect("Cargo", options=cargos_all, default=[])
 
 with colf4:
-    status_options = [
-        "Não realizado - Fora do prazo",
-        "Não realizado - Atenção",
-        "Realizado fora do prazo",
-        "Realizado no prazo",
-        "Realizado antes do prazo",
-    ]
     filtro_status = st.multiselect("Status", options=status_options, default=[])
 
 
+def aplicar_filtros_farol(df_farol: pd.DataFrame) -> pd.DataFrame:
+    df = df_farol.copy()
+
+    # Operação
+    if filtro_ops:
+        df = df[df["Operação"].isin(filtro_ops)]
+
+    # Data de admissão
+    if "Data_dt" in df.columns:
+        df = df[(df["Data_dt"] >= dt_ini) & (df["Data_dt"] <= dt_fim)]
+
+    # Cargo
+    if filtro_cargos:
+        df = df[df["Cargo"].isin(filtro_cargos)]
+
+    # Status
+    if filtro_status:
+        df = df[df["Status"].isin(filtro_status)]
+
+    return df
+
+
+def formatar_datas_para_tabela(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    for c in ["Data Admissão", "Prazo Mín", "Prazo Máx", "Data Realização"]:
+        if c in out.columns:
+            out[c] = pd.to_datetime(out[c], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
+    return out
+
+
+# ---------- Ajuste render (aderência nova + datas formatadas) ----------
+def render_farol(df_farol: pd.DataFrame, titulo: str):
+    if df_farol.empty:
+        st.info("Sem dados para os filtros selecionados.")
+        return
+
+    df_farol = df_farol.copy()
+    df_farol["Operação"] = df_farol["Operação"].fillna("SEM OPERAÇÃO").astype(str).str.strip()
+    df_farol.loc[df_farol["Operação"].eq(""), "Operação"] = "SEM OPERAÇÃO"
+
+    st.markdown(
+        f'<div class="card">'
+        f'<h3 style="margin:0; text-align:center;">{titulo}</h3>'
+        f'<div class="small-muted" style="text-align:center;">Aderência por operação + lista de pendências</div>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+    total = len(df_farol)
+    pend_fora = int((df_farol["Status"] == "Não realizado - Fora do prazo").sum())
+    pend_atenc = int((df_farol["Status"] == "Não realizado - Atenção").sum())
+    realizados = int(df_farol["Status"].isin(["Realizado no prazo", "Realizado fora do prazo", "Realizado antes do prazo"]).sum())
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total", f"{total:,}".replace(",", "."))
+    c2.metric("Pend. fora do prazo", f"{pend_fora:,}".replace(",", "."))
+    c3.metric("Pend. atenção (no prazo)", f"{pend_atenc:,}".replace(",", "."))
+    c4.metric("Realizados", f"{realizados:,}".replace(",", "."))
+
+    st.markdown("<hr/>", unsafe_allow_html=True)
+
+    # ✅ ADERÊNCIA NOVA:
+    # OK = Realizado (qualquer) + Não realizado - Atenção
+    # RUIM = Não realizado - Fora do prazo
+    g = (
+        df_farol.assign(pend_fora=(df_farol["Status"] == "Não realizado - Fora do prazo"))
+        .groupby("Operação", as_index=False)
+        .agg(total=("Colaborador", "count"), pend_fora=("pend_fora", "sum"))
+    )
+    g["Aderência %"] = ((g["total"] - g["pend_fora"]) / g["total"]).fillna(0) * 100
+    g = g.sort_values("Aderência %", ascending=False)
+
+    fig = px.bar(
+        g,
+        x="Operação",
+        y="Aderência %",
+        text=g["Aderência %"].round(2).astype(str) + "%",
+    )
+    fig.update_layout(
+        height=330,
+        template="plotly_dark",
+        margin=dict(l=10, r=10, t=10, b=10),
+        yaxis=dict(range=[0, 100]),
+        xaxis_title="",
+        yaxis_title="",
+    )
+    fig.update_traces(textposition="outside", cliponaxis=False, marker_color="#f0d36b")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Lista de cobrança (pendências)
+    st.markdown(
+        '<div class="card"><h4 style="margin:0; text-align:center;">LISTA — PENDÊNCIAS PARA COBRANÇA</h4></div>',
+        unsafe_allow_html=True
+    )
+
+    pend = df_farol[df_farol["Status"].isin(["Não realizado - Fora do prazo", "Não realizado - Atenção"])].copy()
+
+    cols_show = [
+        "Operação", "Colaborador", "CPF", "Cargo",
+        "Data_dt", "Prazo Mín", "Prazo Máx", "Data Realização",
+        "Dias p/ Prazo Máx", "Status"
+    ]
+    cols_show = [c for c in cols_show if c in pend.columns]
+    pend = pend[cols_show].rename(columns={"Data_dt": "Data Admissão"})
+
+    pend = formatar_datas_para_tabela(pend)
+    st.dataframe(style_table(pend), use_container_width=True, height=340)
+
+
+# ---------- Executa farol ----------
 hoje = pd.Timestamp(datetime.now().date())
 farois = montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje=hoje)
 
@@ -574,25 +687,17 @@ tabs = st.tabs([
 
 with tabs[0]:
     df_all = pd.concat([farois[e["chave"]] for e in ETAPAS], ignore_index=True)
-    df_all = aplicar_filtros_farol(df_all, filtro_ops, dt_ini, dt_fim, filtro_cargos, filtro_status)
+    df_all = aplicar_filtros_farol(df_all)
     render_farol(df_all, "PROCESSO PADRINHOS — ADERÊNCIA GERAL")
 
 with tabs[1]:
-    df = aplicar_filtros_farol(farois["NPS_1_SEMANA"], filtro_ops, dt_ini, dt_fim, filtro_cargos, filtro_status)
+    df = aplicar_filtros_farol(farois["NPS_1_SEMANA"])
     render_farol(df, "NPS 1ª SEMANA")
 
 with tabs[2]:
-    df = aplicar_filtros_farol(farois["NPS_ULTIMA"], filtro_ops, dt_ini, dt_fim, filtro_cargos, filtro_status)
+    df = aplicar_filtros_farol(farois["NPS_ULTIMA"])
     render_farol(df, "NPS ÚLTIMA SEMANA")
 
 with tabs[3]:
-    df = aplicar_filtros_farol(farois["BP_2_SEMANA"], filtro_ops, dt_ini, dt_fim, filtro_cargos, filtro_status)
-    render_farol(df, "BATE-PAPO PADRINHO — 2ª SEMANA")
-
-with tabs[4]:
-    df = aplicar_filtros_farol(farois["BP_3_SEMANA"], filtro_ops, dt_ini, dt_fim, filtro_cargos, filtro_status)
-    render_farol(df, "BATE-PAPO PADRINHO — 3ª SEMANA")
-
-with tabs[5]:
-    df = aplicar_filtros_farol(farois["BP_ULTIMA"], filtro_ops, dt_ini, dt_fim, filtro_cargos, filtro_status)
-    render_farol(df, "BATE-PAPO PADRINHO — ÚLTIMA SEMANA")
+    df = aplicar_filtros_farol(farois["BP_2_SEMANA"])
+    render_farol(_
