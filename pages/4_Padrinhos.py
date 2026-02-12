@@ -2,6 +2,7 @@
 # Versão COMPLETA corrigida:
 # - Sem IndentationError
 # - Sem StreamlitDuplicateElementId (keys únicas em gráficos/tabelas)
+# - Sem TypeError no st.metric (não usa key)
 # - Aderência nova: OK = realizado (mesmo fora do prazo) + pendente ainda no prazo | RUIM = pendente fora do prazo
 # - Datas em dd/mm/aaaa (abreviado)
 # - Filtros: Operação / Data (admissão) / Cargo / Status
@@ -392,10 +393,10 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     realizados = int(df_farol["Status"].isin(["Realizado no prazo", "Realizado fora do prazo", "Realizado antes do prazo"]).sum())
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total", f"{total:,}".replace(",", "."), key=f"m_total_{key_prefix}")
-    c2.metric("Pend. fora do prazo", f"{pend_fora:,}".replace(",", "."), key=f"m_fora_{key_prefix}")
-    c3.metric("Pend. atenção (no prazo)", f"{pend_atenc:,}".replace(",", "."), key=f"m_atenc_{key_prefix}")
-    c4.metric("Realizados", f"{realizados:,}".replace(",", "."), key=f"m_real_{key_prefix}")
+    c1.metric("Total", f"{total:,}".replace(",", "."))
+    c2.metric("Pend. fora do prazo", f"{pend_fora:,}".replace(",", "."))
+    c3.metric("Pend. atenção (no prazo)", f"{pend_atenc:,}".replace(",", "."))
+    c4.metric("Realizados", f"{realizados:,}".replace(",", "."))
 
     st.markdown("<hr/>", unsafe_allow_html=True)
 
