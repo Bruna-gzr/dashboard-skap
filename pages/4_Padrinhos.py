@@ -255,21 +255,24 @@ ARQ_NPS = DATA_DIR / "NPS Mentor.xlsx"
 ARQ_BATEPAPO = DATA_DIR / "Bate papo mentor.xlsx"
 
 @st.cache_data(show_spinner=True)
-def carregar_excel(path: Path, sheet_name: str | None = None) -> pd.DataFrame:
+def carregar_excel(path: Path) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {path}")
-    return pd.read_excel(path, sheet_name=sheet_name)
 
-# Se suas planilhas estiverem todas em um único .xlsx com 4 abas,
-# troque o carregamento pra 1 arquivo só e use sheet_name.
+    # sempre pega a primeira aba (independente do nome)
+    xls = pd.ExcelFile(path)
+    return pd.read_excel(xls, sheet_name=xls.sheet_names[0])
+
 try:
-    admitidos = carregar_excel(ARQ_ADMITIDOS, sheet_name="Admitidos")
-    base_ativos = carregar_excel(ARQ_ATIVOS, sheet_name="Base colaboradores ativos")
-    nps = carregar_excel(ARQ_NPS, sheet_name="NPS Mentor")
-    batepapo = carregar_excel(ARQ_BATEPAPO, sheet_name="Bate papo mentor")
+    admitidos = carregar_excel(ARQ_ADMITIDOS)
+    base_ativos = carregar_excel(ARQ_ATIVOS)
+    nps = carregar_excel(ARQ_NPS)
+    batepapo = carregar_excel(ARQ_BATEPAPO)
+
 except Exception as e:
     st.error(f"Erro ao carregar arquivos: {e}")
     st.stop()
+
 
 # =========================
 # Processamento
