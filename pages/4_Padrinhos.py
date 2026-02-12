@@ -1,20 +1,20 @@
+# =========================
+# FAROL PADRINHOS (cole este bloco inteiro no seu app)
+# Pré-requisito: você já tem base_oper, df_nps e df_bp prontos (do pipeline de vínculo)
+# =========================
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 from datetime import datetime
 
-# =========================
+# -------------------------
 # Estilo (dark + dourado) - opcional
-# =========================
+# -------------------------
 st.markdown("""
 <style>
-/* fundo geral */
 .stApp { background: #0b0b0b; color: #f5f5f5; }
-
-/* títulos */
 h1, h2, h3 { color: #f0d36b !important; }
-
-/* cards */
 .card {
   background: #000000;
   border-radius: 18px;
@@ -23,35 +23,20 @@ h1, h2, h3 { color: #f0d36b !important; }
   box-shadow: 0 6px 20px rgba(0,0,0,0.35);
   margin-bottom: 14px;
 }
-
-/* subtítulo */
 .small-muted { color: #bdbdbd; font-size: 0.9rem; }
-
-/* divisor */
 hr { border: none; border-top: 1px solid #222; }
 </style>
 """, unsafe_allow_html=True)
 
-
-# =========================
-# Helpers Farol
-# =========================
+# -------------------------
+# Helpers
+# -------------------------
 def _to_date(df, col):
     if col in df.columns:
         df[col] = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
     return df
 
 def _status_prazo(data_realizacao, prazo_min, prazo_max, hoje):
-    """
-    Regras de status (padrão "Farol"):
-    - Se não realizou:
-        - Se hoje <= prazo_max  => Não realizado - Atenção
-        - Se hoje >  prazo_max  => Não realizado - Fora do prazo
-    - Se realizou:
-        - Se realizou < prazo_min => Realizado antes do prazo
-        - Se prazo_min <= realizou <= prazo_max => Realizado no prazo
-        - Se realizou > prazo_max => Realizado fora do prazo
-    """
     if pd.isna(data_realizacao):
         return "Não realizado - Atenção" if hoje <= prazo_max else "Não realizado - Fora do prazo"
     if data_realizacao < prazo_min:
@@ -66,7 +51,6 @@ def _dias_para_prazo_max(prazo_max, hoje):
     return (prazo_max.normalize() - hoje.normalize()).days
 
 def _cor_status(status):
-    # pra usar no dataframe style
     if status == "Realizado no prazo":
         return "background-color: #2e7d32; color: white;"
     if status == "Realizado antes do prazo":
@@ -80,22 +64,19 @@ def _cor_status(status):
     return ""
 
 def _style_farol_table(df):
-    # tabela com status colorido
     if "Status" in df.columns:
         return (df.style
                 .applymap(_cor_status, subset=["Status"])
-                .set_properties(**{"text-align": "center"})
-                )
+                .set_properties(**{"text-align": "center"}))
     return df
 
-
-# =========================
-# Config Etapas e prazos
-# =========================
+# -------------------------
+# Etapas e prazos (baseados em Data da Admitidos)
+# -------------------------
 ETAPAS = [
     {
         "chave": "NPS_1_SEMANA",
-        "titulo": "NPS 1ª semana",
+        "titulo": "NPS 1ª SEMANA",
         "tipo": "NPS",
         "campo_selecao": "Selecione a semana da avaliação:",
         "valor_selecao": "Primeira semana junto ao padrinho.",
@@ -104,7 +85,7 @@ ETAPAS = [
     },
     {
         "chave": "NPS_ULTIMA",
-        "titulo": "NPS última semana",
+        "titulo": "NPS ÚLTIMA SEMANA",
         "tipo": "NPS",
         "campo_selecao": "Selecione a semana da avaliação:",
         "valor_selecao": "Última semana junto ao padrinho.",
@@ -113,7 +94,7 @@ ETAPAS = [
     },
     {
         "chave": "BP_2_SEMANA",
-        "titulo": "Bate-papo 2ª semana",
+        "titulo": "BATE-PAPO PADRINHO — 2ª SEMANA",
         "tipo": "BP",
         "campo_selecao": "Selecione a semana do bate papo:",
         "valor_selecao": "Segunda Semana",
@@ -122,7 +103,7 @@ ETAPAS = [
     },
     {
         "chave": "BP_3_SEMANA",
-        "titulo": "Bate-papo 3ª semana",
+        "titulo": "BATE-PAPO PADRINHO — 3ª SEMANA",
         "tipo": "BP",
         "campo_selecao": "Selecione a semana do bate papo:",
         "valor_selecao": "Terceira Semana",
@@ -131,7 +112,7 @@ ETAPAS = [
     },
     {
         "chave": "BP_ULTIMA",
-        "titulo": "Bate-papo última semana",
+        "titulo": "BATE-PAPO PADRINHO — ÚLTIMA SEMANA",
         "tipo": "BP",
         "campo_selecao": "Selecione a semana do bate papo:",
         "valor_selecao": "Última Semana",
@@ -140,80 +121,62 @@ ETAPAS = [
     },
 ]
 
-
-# =========================
-# Construção do Farol por etapa
-# =========================
+# -------------------------
+# Montar farol por etapa
+# -------------------------
 def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje=None):
-    """
-    Retorna dict {chave_etapa: dataframe_farol}
-    """
     hoje = hoje or pd.Timestamp(datetime.now().date())
 
-    # garantir datas
     base = base_oper.copy()
-    base = _to_date(base, "Data_dt")  # já existe no seu pipeline, mas garante
+    # garantir colunas
     if "Data_dt" not in base.columns:
         base["Data_dt"] = pd.to_datetime(base["Data"], errors="coerce", dayfirst=True)
-
-    # Sugestão: usar uma coluna operação (se não existir, cria vazio)
     if "Operação" not in base.columns:
         base["Operação"] = ""
 
-    # datas de cadastro nos formulários
-    df_nps = df_nps.copy()
-    df_bp = df_bp.copy()
-    df_nps = _to_date(df_nps, "Data Cadastro")
-    df_bp = _to_date(df_bp, "Data Cadastro")
+    # garantir Data Cadastro nas bases de formulário
+    df_nps2 = df_nps.copy()
+    df_bp2 = df_bp.copy()
+    df_nps2 = _to_date(df_nps2, "Data Cadastro")
+    df_bp2 = _to_date(df_bp2, "Data Cadastro")
 
     farois = {}
 
     for etapa in ETAPAS:
-        # monta prazos na base
         tmp = base[["Colaborador", "CPF", "cpf_clean", "Operação", "Cargo", "Data_dt"]].copy()
         tmp["Etapa"] = etapa["titulo"]
         tmp["Prazo Mín"] = tmp["Data_dt"] + pd.to_timedelta(etapa["prazo_min_dias"], unit="D")
         tmp["Prazo Máx"] = tmp["Data_dt"] + pd.to_timedelta(etapa["prazo_max_dias"], unit="D")
 
-        # pega respostas do form certo (NPS ou BP) filtrando pela semana
-        if etapa["tipo"] == "NPS":
-            form = df_nps
-        else:
-            form = df_bp
-
+        form = df_nps2 if etapa["tipo"] == "NPS" else df_bp2
         campo = etapa["campo_selecao"]
         valor = etapa["valor_selecao"]
 
+        # se por algum motivo não existir, marca tudo como não realizado
         if campo not in form.columns:
-            # se ainda não existir a coluna (ou nome diferente), deixa sem match
             tmp["Data Realização"] = pd.NaT
-            tmp["Status"] = tmp.apply(lambda r: _status_prazo(pd.NaT, r["Prazo Mín"], r["Prazo Máx"], hoje), axis=1)
-            tmp["Dias p/ Prazo Máx"] = tmp["Prazo Máx"].apply(lambda d: _dias_para_prazo_max(d, hoje))
-            farois[etapa["chave"]] = tmp
-            continue
+        else:
+            form_et = form[form[campo].astype(str).str.strip().eq(valor)].copy()
+            # pega a primeira resposta (data mínima) por CPF
+            real = (form_et
+                    .dropna(subset=["Data Cadastro"])
+                    .groupby("cpf_clean", as_index=False)["Data Cadastro"]
+                    .min()
+                    .rename(columns={"Data Cadastro": "Data Realização"}))
+            tmp = tmp.merge(real, on="cpf_clean", how="left")
 
-        form_etapa = form[form[campo].astype(str).str.strip().eq(valor)].copy()
-
-        # escolhe data de realização: a primeira resposta (mínima) por cpf_clean
-        if "cpf_clean" not in form_etapa.columns:
-            form_etapa["cpf_clean"] = ""
-
-        real = (form_etapa
-                .dropna(subset=["Data Cadastro"])
-                .groupby("cpf_clean", as_index=False)["Data Cadastro"]
-                .min()
-                .rename(columns={"Data Cadastro": "Data Realização"}))
-
-        tmp = tmp.merge(real, on="cpf_clean", how="left")
-
-        # status e dias
         tmp["Status"] = tmp.apply(lambda r: _status_prazo(r["Data Realização"], r["Prazo Mín"], r["Prazo Máx"], hoje), axis=1)
         tmp["Dias p/ Prazo Máx"] = tmp["Prazo Máx"].apply(lambda d: _dias_para_prazo_max(d, hoje))
 
-        # ordenar por criticidade (fora do prazo primeiro, depois atenção)
         ordem = pd.CategoricalDtype(
-            categories=["Não realizado - Fora do prazo", "Não realizado - Atenção", "Realizado fora do prazo", "Realizado no prazo", "Realizado antes do prazo"],
-            ordered=True
+            categories=[
+                "Não realizado - Fora do prazo",
+                "Não realizado - Atenção",
+                "Realizado fora do prazo",
+                "Realizado no prazo",
+                "Realizado antes do prazo",
+            ],
+            ordered=True,
         )
         tmp["Status"] = tmp["Status"].astype(ordem)
         tmp = tmp.sort_values(["Status", "Dias p/ Prazo Máx"], ascending=[True, True])
@@ -222,20 +185,23 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje=None):
 
     return farois
 
+# -------------------------
+# Render (card + gráfico + lista)
+# -------------------------
+def render_farol_etapa(df_farol, titulo):
+    st.markdown(
+        f'<div class="card">'
+        f'<h3 style="margin:0; text-align:center;">{titulo}</h3>'
+        f'<div class="small-muted" style="text-align:center;">Aderência por operação + lista de pendências para cobrança</div>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
-# =========================
-# Render: um "card" por etapa (gráfico + lista)
-# =========================
-def render_farol_etapa(df_farol, titulo, key_prefix=""):
-    st.markdown(f'<div class="card"><h3 style="margin:0">{titulo}</h3>'
-                f'<div class="small-muted">Farol de pendentes e aderência por operação</div></div>', unsafe_allow_html=True)
-
-    # resumo
     total = len(df_farol)
-    pend_fora = (df_farol["Status"] == "Não realizado - Fora do prazo").sum()
-    pend_atenc = (df_farol["Status"] == "Não realizado - Atenção").sum()
-    ok = (df_farol["Status"] == "Realizado no prazo").sum()
-    fora_real = (df_farol["Status"] == "Realizado fora do prazo").sum()
+    pend_fora = int((df_farol["Status"] == "Não realizado - Fora do prazo").sum())
+    pend_atenc = int((df_farol["Status"] == "Não realizado - Atenção").sum())
+    ok = int((df_farol["Status"] == "Realizado no prazo").sum())
+    fora_real = int((df_farol["Status"] == "Realizado fora do prazo").sum())
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total", f"{total:,}".replace(",", "."))
@@ -246,12 +212,10 @@ def render_farol_etapa(df_farol, titulo, key_prefix=""):
 
     st.markdown("<hr/>", unsafe_allow_html=True)
 
-    # gráfico: aderência por operação (percentual de "Realizado no prazo")
-    # (você pode trocar pra "Realizado no prazo + antes" se quiser)
+    # gráfico: % realizado no prazo por operação
     g = (df_farol.assign(real_no_prazo=(df_farol["Status"] == "Realizado no prazo"))
-                  .groupby("Operação", as_index=False)
-                  .agg(total=("Colaborador", "count"),
-                       no_prazo=("real_no_prazo", "sum")))
+                .groupby("Operação", as_index=False)
+                .agg(total=("Colaborador", "count"), no_prazo=("real_no_prazo", "sum")))
     g["Aderência %"] = (g["no_prazo"] / g["total"]).fillna(0) * 100
     g = g.sort_values("Aderência %", ascending=False)
 
@@ -262,39 +226,58 @@ def render_farol_etapa(df_farol, titulo, key_prefix=""):
         text=g["Aderência %"].round(2).astype(str) + "%",
     )
     fig.update_layout(
-        height=320,
+        height=330,
         template="plotly_dark",
         margin=dict(l=10, r=10, t=10, b=10),
         yaxis=dict(range=[0, 100]),
+        xaxis_title="",
+        yaxis_title="",
     )
-    fig.update_traces(textposition="outside", cliponaxis=False)
-
+    fig.update_traces(textposition="outside", cliponaxis=False, marker_color="#f0d36b")  # dourado
     st.plotly_chart(fig, use_container_width=True)
 
-    # lista: foco pendências (fora do prazo + atenção)
-    st.markdown("<div class='card'><h4 style='margin:0'>Lista para cobrança (pendências)</h4></div>", unsafe_allow_html=True)
+    # lista pendências
+    st.markdown('<div class="card"><h4 style="margin:0; text-align:center;">LISTA — PENDÊNCIAS PARA COBRANÇA</h4></div>',
+                unsafe_allow_html=True)
 
     pend = df_farol[df_farol["Status"].isin(["Não realizado - Fora do prazo", "Não realizado - Atenção"])].copy()
     cols_show = ["Operação", "Colaborador", "CPF", "Cargo", "Data_dt", "Prazo Mín", "Prazo Máx", "Dias p/ Prazo Máx", "Status"]
-    for c in cols_show:
-        if c not in pend.columns:
-            pend[c] = pd.NA
-
     pend = pend[cols_show].rename(columns={"Data_dt": "Data Admissão"})
-    st.dataframe(_style_farol_table(pend), use_container_width=True, height=280)
 
+    st.dataframe(_style_farol_table(pend), use_container_width=True, height=340)
 
 # =========================
-# ✅ CHAME ISSO NO SEU APP
+# EXECUÇÃO DO FAROL
 # =========================
-st.header("🚦 Farol de pendentes de realização")
+st.header("🚦 ADERÊNCIA — PROCESSO PADRINHOS (FAROL)")
 
-# hoje (pode virar filtro depois)
 hoje = pd.Timestamp(datetime.now().date())
 farois = montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje=hoje)
 
-# Render por etapa (como teu Power BI: gráfico + lista em cada seção)
-for etapa in ETAPAS:
-    df_et = farois[etapa["chave"]]
-    render_farol_etapa(df_et, etapa["titulo"], key_prefix=etapa["chave"])
-    st.divider()
+tabs = st.tabs([
+    "PROCESSO PADRINHOS (GERAL)",
+    "NPS 1ª SEMANA",
+    "NPS ÚLTIMA SEMANA",
+    "BATE-PAPO 2ª SEMANA",
+    "BATE-PAPO 3ª SEMANA",
+    "BATE-PAPO ÚLTIMA SEMANA",
+])
+
+with tabs[0]:
+    df_all = pd.concat([farois[e["chave"]] for e in ETAPAS], ignore_index=True)
+    render_farol_etapa(df_all, "PROCESSO PADRINHOS — ADERÊNCIA GERAL")
+
+with tabs[1]:
+    render_farol_etapa(farois["NPS_1_SEMANA"], "NPS 1ª SEMANA")
+
+with tabs[2]:
+    render_farol_etapa(farois["NPS_ULTIMA"], "NPS ÚLTIMA SEMANA")
+
+with tabs[3]:
+    render_farol_etapa(farois["BP_2_SEMANA"], "BATE-PAPO PADRINHO — 2ª SEMANA")
+
+with tabs[4]:
+    render_farol_etapa(farois["BP_3_SEMANA"], "BATE-PAPO PADRINHO — 3ª SEMANA")
+
+with tabs[5]:
+    render_farol_etapa(farois["BP_ULTIMA"], "BATE-PAPO PADRINHO — ÚLTIMA SEMANA")
