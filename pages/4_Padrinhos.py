@@ -1,8 +1,4 @@
 # app_mentoria_farol.py
-# Streamlit completo: carrega 4 arquivos Excel (1 aba cada), filtra admitidos (>=03/10/2024),
-# cruza Cargo com Base Ativos para pegar Tipo Cargo e filtra OPERACIONAL LOGÍSTICO,
-# vincula NPS e Bate-papo por CPF (e fallback por nome, opcional com rapidfuzz),
-# e monta o FAROL com prazos + gráfico + lista por etapa.
 
 import re
 import unicodedata
@@ -89,7 +85,6 @@ def carregar_excel_primeira_aba(path: Path) -> pd.DataFrame:
 # Pipeline: Admitidos -> cruza Tipo Cargo -> filtra operacional
 # =========================
 def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame) -> pd.DataFrame:
-    # Validar colunas mínimas
     req_adm = ["Colaborador", "CPF", "Cargo", "Data", "Operação"]
     for c in req_adm:
         if c not in admitidos.columns:
@@ -154,7 +149,7 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
     return oper
 
 # =========================
-# Pipeline: vincular NPS/Bate-papo com base_oper (CPF + (opcional) fuzzy nome)
+# Pipeline: vincular NPS/Bate-papo (CPF + fuzzy nome opcional)
 # =========================
 def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.DataFrame) -> dict:
     base = base_oper.copy()
@@ -165,9 +160,8 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     # ---- NPS Mentor ----
     nps_df = nps.copy()
     nps_nome_col = "Informe seu nome completo:"
-    nps_cpf_col  = "Informe seu CPF:"
-    nps_op_col   = "Informe a operação que você trabalha:"
-    nps_semana_col = "Selecione a semana da avaliação:"
+    nps_cpf_col = "Informe seu CPF:"
+    nps_op_col = "Informe a operação que você trabalha:"
 
     for c in [nps_nome_col, nps_cpf_col, "Data Cadastro"]:
         if c not in nps_df.columns:
@@ -181,8 +175,7 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     # ---- Bate-papo mentor ----
     bp = batepapo.copy()
     bp_nome_col = "Insira o nome do colaborador:"
-    bp_cpf_col  = "Inserir o CPF do colaborador:"
-    bp_semana_col = "Selecione a semana do bate papo:"
+    bp_cpf_col = "Inserir o CPF do colaborador:"
 
     for c in [bp_nome_col, bp_cpf_col, "Data Cadastro"]:
         if c not in bp.columns:
@@ -190,18 +183,18 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
 
     bp["cpf_clean"] = bp[bp_cpf_col].apply(clean_cpf)
     bp["nome_norm"] = bp[bp_nome_col].apply(norm_text)
-    bp["op_norm"] = ""  # se um dia existir operação aqui, normaliza igual
+    bp["op_norm"] = ""
     bp["Data Cadastro"] = pd.to_datetime(bp["Data Cadastro"], errors="coerce", dayfirst=True)
 
     # match por CPF
     base_cols = ["cpf_clean", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "nome_norm", "op_norm"]
     nps_m = nps_df.merge(base[base_cols], on="cpf_clean", how="left", suffixes=("", "_base"))
-    bp_m  = bp.merge(base[base_cols], on="cpf_clean", how="left", suffixes=("", "_base"))
+    bp_m = bp.merge(base[base_cols], on="cpf_clean", how="left", suffixes=("", "_base"))
 
     nps_m["match_tipo"] = nps_m["Colaborador"].apply(lambda x: "CPF" if pd.notna(x) else "NAO_ENCONTRADO")
-    bp_m["match_tipo"]  = bp_m["Colaborador"].apply(lambda x: "CPF" if pd.notna(x) else "NAO_ENCONTRADO")
+    bp_m["match_tipo"] = bp_m["Colaborador"].apply(lambda x: "CPF" if pd.notna(x) else "NAO_ENCONTRADO")
     nps_m["match_score"] = pd.NA
-    bp_m["match_score"]  = pd.NA
+    bp_m["match_score"] = pd.NA
 
     # fallback por nome (fuzzy) — aceita automático score >= 90
     if RAPIDFUZZ_OK:
@@ -266,27 +259,25 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
 # FAROL — prazos
 # =========================
 ETAPAS = [
-    # NPS
-    {"chave":"NPS_1_SEMANA","titulo":"NPS 1ª SEMANA","tipo":"NPS",
-     "campo_selecao":"Selecione a semana da avaliação:","valor_selecao":"Primeira semana junto ao padrinho.",
-     "prazo_min_dias":11,"prazo_max_dias":14},
+    {"chave": "NPS_1_SEMANA", "titulo": "NPS 1ª SEMANA", "tipo": "NPS",
+     "campo_selecao": "Selecione a semana da avaliação:", "valor_selecao": "Primeira semana junto ao padrinho.",
+     "prazo_min_dias": 11, "prazo_max_dias": 14},
 
-    {"chave":"NPS_ULTIMA","titulo":"NPS ÚLTIMA SEMANA","tipo":"NPS",
-     "campo_selecao":"Selecione a semana da avaliação:","valor_selecao":"Última semana junto ao padrinho.",
-     "prazo_min_dias":20,"prazo_max_dias":32},
+    {"chave": "NPS_ULTIMA", "titulo": "NPS ÚLTIMA SEMANA", "tipo": "NPS",
+     "campo_selecao": "Selecione a semana da avaliação:", "valor_selecao": "Última semana junto ao padrinho.",
+     "prazo_min_dias": 20, "prazo_max_dias": 32},
 
-    # Bate-papo
-    {"chave":"BP_2_SEMANA","titulo":"BATE-PAPO — 2ª SEMANA","tipo":"BP",
-     "campo_selecao":"Selecione a semana do bate papo:","valor_selecao":"Segunda Semana",
-     "prazo_min_dias":11,"prazo_max_dias":14},
+    {"chave": "BP_2_SEMANA", "titulo": "BATE-PAPO — 2ª SEMANA", "tipo": "BP",
+     "campo_selecao": "Selecione a semana do bate papo:", "valor_selecao": "Segunda Semana",
+     "prazo_min_dias": 11, "prazo_max_dias": 14},
 
-    {"chave":"BP_3_SEMANA","titulo":"BATE-PAPO — 3ª SEMANA","tipo":"BP",
-     "campo_selecao":"Selecione a semana do bate papo:","valor_selecao":"Terceira Semana",
-     "prazo_min_dias":20,"prazo_max_dias":22},
+    {"chave": "BP_3_SEMANA", "titulo": "BATE-PAPO — 3ª SEMANA", "tipo": "BP",
+     "campo_selecao": "Selecione a semana do bate papo:", "valor_selecao": "Terceira Semana",
+     "prazo_min_dias": 20, "prazo_max_dias": 22},
 
-    {"chave":"BP_ULTIMA","titulo":"BATE-PAPO — ÚLTIMA SEMANA","tipo":"BP",
-     "campo_selecao":"Selecione a semana do bate papo:","valor_selecao":"Última Semana",
-     "prazo_min_dias":28,"prazo_max_dias":32},
+    {"chave": "BP_ULTIMA", "titulo": "BATE-PAPO — ÚLTIMA SEMANA", "tipo": "BP",
+     "campo_selecao": "Selecione a semana do bate papo:", "valor_selecao": "Última Semana",
+     "prazo_min_dias": 28, "prazo_max_dias": 32},
 ]
 
 def status_prazo(data_realizacao, prazo_min, prazo_max, hoje):
@@ -328,7 +319,7 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
 
     farois = {}
     for etapa in ETAPAS:
-        tmp = base[["Colaborador","CPF","cpf_clean","Operação","Cargo","Data_dt"]].copy()
+        tmp = base[["Colaborador", "CPF", "cpf_clean", "Operação", "Cargo", "Data_dt"]].copy()
         tmp["Prazo Mín"] = tmp["Data_dt"] + pd.to_timedelta(etapa["prazo_min_dias"], unit="D")
         tmp["Prazo Máx"] = tmp["Data_dt"] + pd.to_timedelta(etapa["prazo_max_dias"], unit="D")
 
@@ -340,13 +331,18 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
             tmp["Data Realização"] = pd.NaT
         else:
             form_et = form[form[campo].astype(str).str.strip().eq(valor)].copy()
-            real = (form_et.dropna(subset=["Data Cadastro"])
-                    .groupby("cpf_clean", as_index=False)["Data Cadastro"]
-                    .min()
-                    .rename(columns={"Data Cadastro":"Data Realização"}))
+            real = (
+                form_et.dropna(subset=["Data Cadastro"])
+                .groupby("cpf_clean", as_index=False)["Data Cadastro"]
+                .min()
+                .rename(columns={"Data Cadastro": "Data Realização"})
+            )
             tmp = tmp.merge(real, on="cpf_clean", how="left")
 
-        tmp["Status"] = tmp.apply(lambda r: status_prazo(r["Data Realização"], r["Prazo Mín"], r["Prazo Máx"], hoje), axis=1)
+        tmp["Status"] = tmp.apply(
+            lambda r: status_prazo(r["Data Realização"], r["Prazo Mín"], r["Prazo Máx"], hoje),
+            axis=1,
+        )
         tmp["Dias p/ Prazo Máx"] = tmp["Prazo Máx"].apply(lambda d: dias_para_prazo_max(d, hoje))
 
         ordem = pd.CategoricalDtype(
@@ -360,230 +356,11 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
             ordered=True,
         )
         tmp["Status"] = tmp["Status"].astype(ordem)
-        tmp = tmp.sort_values(["Status","Dias p/ Prazo Máx"], ascending=[True, True])
+        tmp = tmp.sort_values(["Status", "Dias p/ Prazo Máx"], ascending=[True, True])
+
         farois[etapa["chave"]] = tmp
 
-    def aplicar_filtros_farol(df_farol, filtro_ops, dt_ini, dt_fim, filtro_cargos, filtro_status):
-    df = df_farol.copy()
-
-    # Operação
-    if filtro_ops:
-        df = df[df["Operação"].isin(filtro_ops)]
-
-    # Data de admissão
-    if "Data_dt" in df.columns:
-        df = df[(df["Data_dt"] >= dt_ini) & (df["Data_dt"] <= dt_fim)]
-
-    # Cargo
-    if filtro_cargos:
-        df = df[df["Cargo"].isin(filtro_cargos)]
-
-    # Status
-    if filtro_status:
-        df = df[df["Status"].isin(filtro_status)]
-
-    return df
-
-
-def formatar_datas_para_tabela(df):
-    """Mantém datas datetime no df original (cálculos), mas na tabela mostra dd/mm/aaaa."""
-    out = df.copy()
-    for c in ["Data Admissão", "Prazo Mín", "Prazo Máx", "Data Realização"]:
-        if c in out.columns:
-            out[c] = pd.to_datetime(out[c], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
-    return out
-
     return farois
-
-def render_farol(df_farol, titulo):
-    df_farol = df_farol.copy()
-    df_farol["Operação"] = df_farol["Operação"].fillna("SEM OPERAÇÃO").astype(str).str.strip()
-    df_farol.loc[df_farol["Operação"].eq(""), "Operação"] = "SEM OPERAÇÃO"
-
-    st.markdown(
-        f'<div class="card">'
-        f'<h3 style="margin:0; text-align:center;">{titulo}</h3>'
-        f'<div class="small-muted" style="text-align:center;">Aderência por operação + lista de pendências</div>'
-        f'</div>',
-        unsafe_allow_html=True
-    )
-
-    total = len(df_farol)
-    pend_fora = int((df_farol["Status"] == "Não realizado - Fora do prazo").sum())
-    pend_atenc = int((df_farol["Status"] == "Não realizado - Atenção").sum())
-    ok = int((df_farol["Status"] == "Realizado no prazo").sum())
-    fora_real = int((df_farol["Status"] == "Realizado fora do prazo").sum())
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total", f"{total:,}".replace(",", "."))
-    c2.metric("Pend. fora do prazo", f"{pend_fora:,}".replace(",", "."))
-    c3.metric("Pend. atenção", f"{pend_atenc:,}".replace(",", "."))
-    c4.metric("Realizado no prazo", f"{ok:,}".replace(",", "."))
-    c5.metric("Realizado fora do prazo", f"{fora_real:,}".replace(",", "."))
-
-    st.markdown("<hr/>", unsafe_allow_html=True)
-
-    # Aderência nova:
-# OK = (Realizado em qualquer status) OU (Não realizado - Atenção)
-# Ruim = Não realizado - Fora do prazo
-g = (df_farol.assign(
-        pend_fora=(df_farol["Status"] == "Não realizado - Fora do prazo")
-     )
-     .groupby("Operação", as_index=False)
-     .agg(total=("Colaborador", "count"), pend_fora=("pend_fora", "sum"))
-)
-g["Aderência %"] = ((g["total"] - g["pend_fora"]) / g["total"]).fillna(0) * 100
-
-    g = g.sort_values("Aderência %", ascending=False)
-
-    fig = px.bar(g, x="Operação", y="Aderência %", text=g["Aderência %"].round(2).astype(str) + "%")
-    fig.update_layout(
-        height=330,
-        template="plotly_dark",
-        margin=dict(l=10, r=10, t=10, b=10),
-        yaxis=dict(range=[0, 100]),
-        xaxis_title="",
-        yaxis_title="",
-    )
-    fig.update_traces(textposition="outside", cliponaxis=False, marker_color="#f0d36b")
-    st.plotly_chart(fig, use_container_width=True)
-
-    # lista pendências
-    st.markdown('<div class="card"><h4 style="margin:0; text-align:center;">LISTA — PENDÊNCIAS PARA COBRANÇA</h4></div>',
-                unsafe_allow_html=True)
-
-    pend = df_farol[df_farol["Status"].isin(["Não realizado - Fora do prazo", "Não realizado - Atenção"])].copy()
-
-cols_show = ["Operação","Colaborador","CPF","Cargo","Data_dt","Prazo Mín","Prazo Máx","Dias p/ Prazo Máx","Status","Data Realização"]
-cols_show = [c for c in cols_show if c in pend.columns]
-
-pend = pend[cols_show].rename(columns={"Data_dt":"Data Admissão"})
-
-# Formatar datas pra exibição
-pend = formatar_datas_para_tabela(pend)
-
-st.dataframe(style_table(pend), use_container_width=True, height=340)
-
-
-# =========================
-# Paths (AJUSTE OS NOMES)
-# =========================
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-
-ARQ_ADMITIDOS = DATA_DIR / "Admitidos.xlsx"
-ARQ_ATIVOS    = DATA_DIR / "Base colaboradores ativos.xlsx"
-ARQ_NPS       = DATA_DIR / "NPS Mentor.xlsx"
-ARQ_BATEPAPO  = DATA_DIR / "Bate papo mentor.xlsx"
-
-# =========================
-# Carregar arquivos
-# =========================
-try:
-    admitidos = carregar_excel_primeira_aba(ARQ_ADMITIDOS)
-    base_ativos = carregar_excel_primeira_aba(ARQ_ATIVOS)
-    nps = carregar_excel_primeira_aba(ARQ_NPS)
-    batepapo = carregar_excel_primeira_aba(ARQ_BATEPAPO)
-except Exception as e:
-    st.error(f"Erro ao carregar arquivos: {e}")
-    st.stop()
-
-# =========================
-# Pipeline completo (gera base_oper, df_nps, df_bp)
-# =========================
-try:
-    base_oper = preparar_base_operacional(admitidos, base_ativos)
-    result = vincular_checks(base_oper, nps, batepapo)
-    df_nps = result["nps_vinculado"]
-    df_bp  = result["batepapo_vinculado"]
-except Exception as e:
-    st.error(f"Erro no pipeline de mentoria: {e}")
-    st.stop()
-
-# =========================
-# Top metrics
-# =========================
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Admitidos (arquivo)", f"{len(admitidos):,}".replace(",", "."))
-c2.metric("Operacional Logístico (>=03/10/2024)", f"{len(base_oper):,}".replace(",", "."))
-c3.metric("NPS (linhas)", f"{len(df_nps):,}".replace(",", "."))
-c4.metric("Bate-papo (linhas)", f"{len(df_bp):,}".replace(",", "."))
-
-with st.expander("🔧 Diagnóstico"):
-    st.write(f"rapidfuzz instalado? **{RAPIDFUZZ_OK}** (opcional, para match por nome/cargo)")
-    st.caption("Se quiser ativar o match aproximado, instale no ambiente: pip install rapidfuzz")
-
-# =========================
-# FAROL (com filtros + aderência nova + datas dd/mm/aaaa)
-# =========================
-
-st.header("🚦 ADERÊNCIA — PROCESSO PADRINHOS (FAROL)")
-
-# ---------- Filtros ----------
-st.subheader("🔎 Filtros")
-
-# garantir Data_dt para filtro de admissão
-if "Data_dt" not in base_oper.columns:
-    base_oper["Data_dt"] = pd.to_datetime(base_oper["Data"], errors="coerce", dayfirst=True)
-
-ops_all = sorted([x for x in base_oper["Operação"].fillna("").astype(str).unique().tolist() if x.strip()])
-cargos_all = sorted([x for x in base_oper["Cargo"].fillna("").astype(str).unique().tolist() if x.strip()])
-
-status_options = [
-    "Não realizado - Fora do prazo",
-    "Não realizado - Atenção",
-    "Realizado fora do prazo",
-    "Realizado no prazo",
-    "Realizado antes do prazo",
-]
-
-colf1, colf2, colf3, colf4 = st.columns([2, 2, 2, 2])
-
-with colf1:
-    filtro_ops = st.multiselect("Operação", options=ops_all, default=[])
-
-with colf2:
-    data_min = pd.to_datetime(base_oper["Data_dt"], errors="coerce").min()
-    data_max = pd.to_datetime(base_oper["Data_dt"], errors="coerce").max()
-    if pd.isna(data_min):
-        data_min = pd.Timestamp("2024-10-03")
-    if pd.isna(data_max):
-        data_max = pd.Timestamp(datetime.now().date())
-
-    dt_ini, dt_fim = st.date_input(
-        "Data de admissão (intervalo)",
-        value=(data_min.date(), data_max.date()),
-    )
-    dt_ini = pd.Timestamp(dt_ini)
-    dt_fim = pd.Timestamp(dt_fim)
-
-with colf3:
-    filtro_cargos = st.multiselect("Cargo", options=cargos_all, default=[])
-
-with colf4:
-    filtro_status = st.multiselect("Status", options=status_options, default=[])
-
-
-def aplicar_filtros_farol(df_farol: pd.DataFrame) -> pd.DataFrame:
-    df = df_farol.copy()
-
-    # Operação
-    if filtro_ops:
-        df = df[df["Operação"].isin(filtro_ops)]
-
-    # Data de admissão
-    if "Data_dt" in df.columns:
-        df = df[(df["Data_dt"] >= dt_ini) & (df["Data_dt"] <= dt_fim)]
-
-    # Cargo
-    if filtro_cargos:
-        df = df[df["Cargo"].isin(filtro_cargos)]
-
-    # Status
-    if filtro_status:
-        df = df[df["Status"].isin(filtro_status)]
-
-    return df
-
 
 def formatar_datas_para_tabela(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
@@ -592,8 +369,6 @@ def formatar_datas_para_tabela(df: pd.DataFrame) -> pd.DataFrame:
             out[c] = pd.to_datetime(out[c], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
     return out
 
-
-# ---------- Ajuste render (aderência nova + datas formatadas) ----------
 def render_farol(df_farol: pd.DataFrame, titulo: str):
     if df_farol.empty:
         st.info("Sem dados para os filtros selecionados.")
@@ -671,6 +446,116 @@ def render_farol(df_farol: pd.DataFrame, titulo: str):
     pend = formatar_datas_para_tabela(pend)
     st.dataframe(style_table(pend), use_container_width=True, height=340)
 
+# =========================
+# Paths (AJUSTE OS NOMES)
+# =========================
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+
+ARQ_ADMITIDOS = DATA_DIR / "Admitidos.xlsx"
+ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
+ARQ_NPS = DATA_DIR / "NPS Mentor.xlsx"
+ARQ_BATEPAPO = DATA_DIR / "Bate papo mentor.xlsx"
+
+# =========================
+# Carregar arquivos
+# =========================
+try:
+    admitidos = carregar_excel_primeira_aba(ARQ_ADMITIDOS)
+    base_ativos = carregar_excel_primeira_aba(ARQ_ATIVOS)
+    nps = carregar_excel_primeira_aba(ARQ_NPS)
+    batepapo = carregar_excel_primeira_aba(ARQ_BATEPAPO)
+except Exception as e:
+    st.error(f"Erro ao carregar arquivos: {e}")
+    st.stop()
+
+# =========================
+# Pipeline completo
+# =========================
+try:
+    base_oper = preparar_base_operacional(admitidos, base_ativos)
+    result = vincular_checks(base_oper, nps, batepapo)
+    df_nps = result["nps_vinculado"]
+    df_bp = result["batepapo_vinculado"]
+except Exception as e:
+    st.error(f"Erro no pipeline de mentoria: {e}")
+    st.stop()
+
+# =========================
+# Top metrics
+# =========================
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Admitidos (arquivo)", f"{len(admitidos):,}".replace(",", "."))
+c2.metric("Operacional Logístico (>=03/10/2024)", f"{len(base_oper):,}".replace(",", "."))
+c3.metric("NPS (linhas)", f"{len(df_nps):,}".replace(",", "."))
+c4.metric("Bate-papo (linhas)", f"{len(df_bp):,}".replace(",", "."))
+
+with st.expander("🔧 Diagnóstico"):
+    st.write(f"rapidfuzz instalado? **{RAPIDFUZZ_OK}** (opcional, para match por nome/cargo)")
+    st.caption("Se quiser ativar o match aproximado, instale no ambiente: pip install rapidfuzz")
+
+# =========================
+# FAROL (com filtros)
+# =========================
+st.header("🚦 ADERÊNCIA — PROCESSO PADRINHOS (FAROL)")
+st.subheader("🔎 Filtros")
+
+# garantir Data_dt para filtro de admissão
+if "Data_dt" not in base_oper.columns:
+    base_oper["Data_dt"] = pd.to_datetime(base_oper["Data"], errors="coerce", dayfirst=True)
+
+ops_all = sorted([x for x in base_oper["Operação"].fillna("").astype(str).unique().tolist() if x.strip()])
+cargos_all = sorted([x for x in base_oper["Cargo"].fillna("").astype(str).unique().tolist() if x.strip()])
+
+status_options = [
+    "Não realizado - Fora do prazo",
+    "Não realizado - Atenção",
+    "Realizado fora do prazo",
+    "Realizado no prazo",
+    "Realizado antes do prazo",
+]
+
+colf1, colf2, colf3, colf4 = st.columns([2, 2, 2, 2])
+
+with colf1:
+    filtro_ops = st.multiselect("Operação", options=ops_all, default=[])
+
+with colf2:
+    data_min = pd.to_datetime(base_oper["Data_dt"], errors="coerce").min()
+    data_max = pd.to_datetime(base_oper["Data_dt"], errors="coerce").max()
+    if pd.isna(data_min):
+        data_min = pd.Timestamp("2024-10-03")
+    if pd.isna(data_max):
+        data_max = pd.Timestamp(datetime.now().date())
+
+    dt_ini, dt_fim = st.date_input(
+        "Data de admissão (intervalo)",
+        value=(data_min.date(), data_max.date()),
+    )
+    dt_ini = pd.Timestamp(dt_ini)
+    dt_fim = pd.Timestamp(dt_fim)
+
+with colf3:
+    filtro_cargos = st.multiselect("Cargo", options=cargos_all, default=[])
+
+with colf4:
+    filtro_status = st.multiselect("Status", options=status_options, default=[])
+
+def aplicar_filtros_farol(df_farol: pd.DataFrame) -> pd.DataFrame:
+    df = df_farol.copy()
+
+    if filtro_ops:
+        df = df[df["Operação"].isin(filtro_ops)]
+
+    if "Data_dt" in df.columns:
+        df = df[(df["Data_dt"] >= dt_ini) & (df["Data_dt"] <= dt_fim)]
+
+    if filtro_cargos:
+        df = df[df["Cargo"].isin(filtro_cargos)]
+
+    if filtro_status:
+        df = df[df["Status"].isin(filtro_status)]
+
+    return df
 
 # ---------- Executa farol ----------
 hoje = pd.Timestamp(datetime.now().date())
@@ -700,4 +585,12 @@ with tabs[2]:
 
 with tabs[3]:
     df = aplicar_filtros_farol(farois["BP_2_SEMANA"])
-    render_farol(_
+    render_farol(df, "BATE-PAPO PADRINHO — 2ª SEMANA")
+
+with tabs[4]:
+    df = aplicar_filtros_farol(farois["BP_3_SEMANA"])
+    render_farol(df, "BATE-PAPO PADRINHO — 3ª SEMANA")
+
+with tabs[5]:
+    df = aplicar_filtros_farol(farois["BP_ULTIMA"])
+    render_farol(df, "BATE-PAPO PADRINHO — ÚLTIMA SEMANA")
