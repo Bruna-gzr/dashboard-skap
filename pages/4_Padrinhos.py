@@ -1,4 +1,10 @@
-# app_mentoria_farol.py
+# pages/4_Padrinhos.py
+# Versão COMPLETA corrigida:
+# - Sem IndentationError
+# - Sem StreamlitDuplicateElementId (keys únicas em gráficos/tabelas)
+# - Aderência nova: OK = realizado (mesmo fora do prazo) + pendente ainda no prazo | RUIM = pendente fora do prazo
+# - Datas em dd/mm/aaaa (abreviado)
+# - Filtros: Operação / Data (admissão) / Cargo / Status
 
 import re
 import unicodedata
@@ -98,12 +104,10 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
     adm = admitidos.copy()
     atv = base_ativos.copy()
 
-    # datas + filtro a partir de 03/10/2024
     adm["Data_dt"] = parse_date_br(adm["Data"])
     corte = pd.to_datetime("2024-10-03", dayfirst=True)
     adm = adm[adm["Data_dt"] >= corte].copy()
 
-    # normalizações
     adm["cpf_clean"] = adm["CPF"].apply(clean_cpf)
     adm["nome_norm"] = adm["Colaborador"].apply(norm_text)
     adm["cargo_norm"] = adm["Cargo"].apply(norm_text)
@@ -111,14 +115,12 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
 
     atv["cargo_norm"] = atv["Cargo"].apply(norm_text)
 
-    # merge determinístico por cargo_norm
     merged = adm.merge(
         atv[["cargo_norm", "Tipo Cargo"]].drop_duplicates(),
         on="cargo_norm",
         how="left",
     )
 
-    # fallback fuzzy para Tipo Cargo (quando cargo diverge entre bases)
     merged["cargo_match_score"] = pd.NA
     if RAPIDFUZZ_OK:
         falt = merged["Tipo Cargo"].isna()
@@ -186,7 +188,6 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     bp["op_norm"] = ""
     bp["Data Cadastro"] = pd.to_datetime(bp["Data Cadastro"], errors="coerce", dayfirst=True)
 
-    # match por CPF
     base_cols = ["cpf_clean", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "nome_norm", "op_norm"]
     nps_m = nps_df.merge(base[base_cols], on="cpf_clean", how="left", suffixes=("", "_base"))
     bp_m = bp.merge(base[base_cols], on="cpf_clean", how="left", suffixes=("", "_base"))
@@ -196,7 +197,6 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     nps_m["match_score"] = pd.NA
     bp_m["match_score"] = pd.NA
 
-    # fallback por nome (fuzzy) — aceita automático score >= 90
     if RAPIDFUZZ_OK:
         base_lookup = base.copy()
 
@@ -223,27 +223,27 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
                 return None, score
             return base_row.iloc[0], score
 
-        # NPS
+        # NPS fallback
         falt = nps_m["Colaborador"].isna()
         if falt.any():
             out = nps_m.loc[falt].apply(lambda r: fuzzy_match_nome(r), axis=1)
             nps_m.loc[falt, "match_score"] = out.apply(lambda t: t[1])
             idx_ok = nps_m.loc[falt].index[(nps_m.loc[falt, "match_score"].fillna(0) >= 90)]
             for idx in idx_ok:
-                base_row, score = fuzzy_match_nome(nps_m.loc[idx])
+                base_row, _score = fuzzy_match_nome(nps_m.loc[idx])
                 if base_row is not None:
                     for col in ["Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt"]:
                         nps_m.at[idx, col] = base_row[col]
                     nps_m.at[idx, "match_tipo"] = "NOME_FUZZY"
 
-        # BP
+        # BP fallback
         falt = bp_m["Colaborador"].isna()
         if falt.any():
             out = bp_m.loc[falt].apply(lambda r: fuzzy_match_nome(r), axis=1)
             bp_m.loc[falt, "match_score"] = out.apply(lambda t: t[1])
             idx_ok = bp_m.loc[falt].index[(bp_m.loc[falt, "match_score"].fillna(0) >= 90)]
             for idx in idx_ok:
-                base_row, score = fuzzy_match_nome(bp_m.loc[idx])
+                base_row, _score = fuzzy_match_nome(bp_m.loc[idx])
                 if base_row is not None:
                     for col in ["Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt"]:
                         bp_m.at[idx, col] = base_row[col]
@@ -369,7 +369,7 @@ def formatar_datas_para_tabela(df: pd.DataFrame) -> pd.DataFrame:
             out[c] = pd.to_datetime(out[c], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
     return out
 
-def render_farol(df_farol: pd.DataFrame, titulo: str):
+def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     if df_farol.empty:
         st.info("Sem dados para os filtros selecionados.")
         return
@@ -392,16 +392,13 @@ def render_farol(df_farol: pd.DataFrame, titulo: str):
     realizados = int(df_farol["Status"].isin(["Realizado no prazo", "Realizado fora do prazo", "Realizado antes do prazo"]).sum())
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total", f"{total:,}".replace(",", "."))
-    c2.metric("Pend. fora do prazo", f"{pend_fora:,}".replace(",", "."))
-    c3.metric("Pend. atenção (no prazo)", f"{pend_atenc:,}".replace(",", "."))
-    c4.metric("Realizados", f"{realizados:,}".replace(",", "."))
+    c1.metric("Total", f"{total:,}".replace(",", "."), key=f"m_total_{key_prefix}")
+    c2.metric("Pend. fora do prazo", f"{pend_fora:,}".replace(",", "."), key=f"m_fora_{key_prefix}")
+    c3.metric("Pend. atenção (no prazo)", f"{pend_atenc:,}".replace(",", "."), key=f"m_atenc_{key_prefix}")
+    c4.metric("Realizados", f"{realizados:,}".replace(",", "."), key=f"m_real_{key_prefix}")
 
     st.markdown("<hr/>", unsafe_allow_html=True)
 
-    # ✅ ADERÊNCIA NOVA:
-    # OK = Realizado (qualquer) + Não realizado - Atenção
-    # RUIM = Não realizado - Fora do prazo
     g = (
         df_farol.assign(pend_fora=(df_farol["Status"] == "Não realizado - Fora do prazo"))
         .groupby("Operação", as_index=False)
@@ -425,9 +422,8 @@ def render_farol(df_farol: pd.DataFrame, titulo: str):
         yaxis_title="",
     )
     fig.update_traces(textposition="outside", cliponaxis=False, marker_color="#f0d36b")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=f"chart_{key_prefix}")
 
-    # Lista de cobrança (pendências)
     st.markdown(
         '<div class="card"><h4 style="margin:0; text-align:center;">LISTA — PENDÊNCIAS PARA COBRANÇA</h4></div>',
         unsafe_allow_html=True
@@ -444,13 +440,12 @@ def render_farol(df_farol: pd.DataFrame, titulo: str):
     pend = pend[cols_show].rename(columns={"Data_dt": "Data Admissão"})
 
     pend = formatar_datas_para_tabela(pend)
-    st.dataframe(style_table(pend), use_container_width=True, height=340)
+    st.dataframe(style_table(pend), use_container_width=True, height=340, key=f"df_{key_prefix}")
 
 # =========================
 # Paths (AJUSTE OS NOMES)
 # =========================
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-
 ARQ_ADMITIDOS = DATA_DIR / "Admitidos.xlsx"
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 ARQ_NPS = DATA_DIR / "NPS Mentor.xlsx"
@@ -499,7 +494,6 @@ with st.expander("🔧 Diagnóstico"):
 st.header("🚦 ADERÊNCIA — PROCESSO PADRINHOS (FAROL)")
 st.subheader("🔎 Filtros")
 
-# garantir Data_dt para filtro de admissão
 if "Data_dt" not in base_oper.columns:
     base_oper["Data_dt"] = pd.to_datetime(base_oper["Data"], errors="coerce", dayfirst=True)
 
@@ -517,7 +511,7 @@ status_options = [
 colf1, colf2, colf3, colf4 = st.columns([2, 2, 2, 2])
 
 with colf1:
-    filtro_ops = st.multiselect("Operação", options=ops_all, default=[])
+    filtro_ops = st.multiselect("Operação", options=ops_all, default=[], key="f_ops")
 
 with colf2:
     data_min = pd.to_datetime(base_oper["Data_dt"], errors="coerce").min()
@@ -530,15 +524,16 @@ with colf2:
     dt_ini, dt_fim = st.date_input(
         "Data de admissão (intervalo)",
         value=(data_min.date(), data_max.date()),
+        key="f_dt",
     )
     dt_ini = pd.Timestamp(dt_ini)
     dt_fim = pd.Timestamp(dt_fim)
 
 with colf3:
-    filtro_cargos = st.multiselect("Cargo", options=cargos_all, default=[])
+    filtro_cargos = st.multiselect("Cargo", options=cargos_all, default=[], key="f_cargo")
 
 with colf4:
-    filtro_status = st.multiselect("Status", options=status_options, default=[])
+    filtro_status = st.multiselect("Status", options=status_options, default=[], key="f_status")
 
 def aplicar_filtros_farol(df_farol: pd.DataFrame) -> pd.DataFrame:
     df = df_farol.copy()
@@ -573,24 +568,24 @@ tabs = st.tabs([
 with tabs[0]:
     df_all = pd.concat([farois[e["chave"]] for e in ETAPAS], ignore_index=True)
     df_all = aplicar_filtros_farol(df_all)
-    render_farol(df_all, "PROCESSO PADRINHOS — ADERÊNCIA GERAL")
+    render_farol(df_all, "PROCESSO PADRINHOS — ADERÊNCIA GERAL", key_prefix="GERAL")
 
 with tabs[1]:
     df = aplicar_filtros_farol(farois["NPS_1_SEMANA"])
-    render_farol(df, "NPS 1ª SEMANA")
+    render_farol(df, "NPS 1ª SEMANA", key_prefix="NPS1")
 
 with tabs[2]:
     df = aplicar_filtros_farol(farois["NPS_ULTIMA"])
-    render_farol(df, "NPS ÚLTIMA SEMANA")
+    render_farol(df, "NPS ÚLTIMA SEMANA", key_prefix="NPSU")
 
 with tabs[3]:
     df = aplicar_filtros_farol(farois["BP_2_SEMANA"])
-    render_farol(df, "BATE-PAPO PADRINHO — 2ª SEMANA")
+    render_farol(df, "BATE-PAPO — 2ª SEMANA", key_prefix="BP2")
 
 with tabs[4]:
     df = aplicar_filtros_farol(farois["BP_3_SEMANA"])
-    render_farol(df, "BATE-PAPO PADRINHO — 3ª SEMANA")
+    render_farol(df, "BATE-PAPO — 3ª SEMANA", key_prefix="BP3")
 
 with tabs[5]:
     df = aplicar_filtros_farol(farois["BP_ULTIMA"])
-    render_farol(df, "BATE-PAPO PADRINHO — ÚLTIMA SEMANA")
+    render_farol(df, "BATE-PAPO — ÚLTIMA SEMANA", key_prefix="BPU")
