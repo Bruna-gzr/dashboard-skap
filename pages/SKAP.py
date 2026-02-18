@@ -569,12 +569,18 @@ st.divider()
 # =========================
 st.subheader("📋 Detalhamento Individual")
 
-tabela = base_f.copy()
+# 1) Base RAW (para exportar)
+tabela_raw = base_f.drop(columns=["_ADM_DT", "_ADM_ANO", "_ADM_MES"], errors="ignore").copy()
 
+# 2) Base DISPLAY (para mostrar na tela)
+tabela = tabela_raw.copy()
+
+# Ordenação por admissão (na tela)
 if "DATA ADMISSAO" in tabela.columns:
     tabela["_DATA_ADMISSAO_DT"] = pd.to_datetime(tabela["DATA ADMISSAO"], errors="coerce", dayfirst=True)
     tabela = tabela.sort_values("_DATA_ADMISSAO_DT", ascending=True).drop(columns=["_DATA_ADMISSAO_DT"])
 
+# Formatar % SOMENTE no display (tela)
 for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
     if c in tabela.columns:
         tabela[c] = pd.to_numeric(tabela[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
@@ -592,9 +598,11 @@ for c in ["STATUS TECNICAS", "STATUS ESPECIFICAS"]:
     if c in tabela.columns:
         tabela[c] = tabela[c].astype(str).map(emoji_status)
 
-st.dataframe(centralizar_tabela(tabela.drop(columns=["_ADM_DT", "_ADM_ANO", "_ADM_MES"], errors="ignore")), use_container_width=True)
+# Tela
+st.dataframe(centralizar_tabela(tabela), use_container_width=True)
 
-excel_detalhe = preparar_excel_para_download(tabela.drop(columns=["_ADM_DT", "_ADM_ANO", "_ADM_MES"], errors="ignore"), sheet_name="Detalhamento")
+# Excel: exporta o RAW (sem % em string)
+excel_detalhe = preparar_excel_para_download(tabela_raw, sheet_name="Detalhamento")
 st.download_button(
     label="⬇️ Baixar Excel (Detalhamento individual)",
     data=excel_detalhe,
