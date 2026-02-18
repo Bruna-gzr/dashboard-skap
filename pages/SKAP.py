@@ -20,7 +20,7 @@ ARQ_SKAP = DATA_DIR / "Skap.xlsx"
 ARQ_COM = DATA_DIR / "Skap - comentarios.xlsx"
 
 # =========================
-# Última atualização dos dados (CORRIGIDO)
+# Última atualização dos dados
 # =========================
 try:
     arquivos = [ARQ_SKAP, ARQ_COM]
@@ -147,12 +147,6 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
     )
     return sorted(vals)
 
-def percent_str(x) -> str:
-    try:
-        return f"{float(x):.0%}"
-    except Exception:
-        return "0%"
-
 def preparar_excel_para_download(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
     export_df = df.copy()
     for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
@@ -251,13 +245,48 @@ base = base[ordem].copy()
 # =========================
 st.sidebar.header("Filtros")
 
+# Novo: filtro por etapa
+etapas_map = {
+    "Técnicas": "TECNICAS",
+    "Específicas": "ESPECIFICAS",
+    "Empoderamento": "EMPODERAMENTO",
+}
+f_etapas = st.sidebar.multiselect(
+    "Etapa",
+    list(etapas_map.keys()),
+    default=list(etapas_map.keys())
+)
+
 f_operacao = st.sidebar.multiselect("Operação", opcoes(base, "OPERACAO"))
 f_lideranca = st.sidebar.multiselect("Liderança", opcoes(base, "LIDERANCA"))
 f_atividade = st.sidebar.multiselect("Atividade", opcoes(base, "ATIVIDADE"))
 f_niveis = st.sidebar.multiselect("Níveis", opcoes(base, "NIVEIS"))
-f_status = st.sidebar.multiselect("Status", ["Realizado", "Não realizado", "No prazo"])
 
+f_status = st.sidebar.multiselect("Status (Téc/Espec)", ["Realizado", "Não realizado", "No prazo"])
+
+# Novo: filtro por mês/ano baseado em DATA ADMISSAO
+meses_pt = {
+    1: "01 - Jan", 2: "02 - Fev", 3: "03 - Mar", 4: "04 - Abr",
+    5: "05 - Mai", 6: "06 - Jun", 7: "07 - Jul", 8: "08 - Ago",
+    9: "09 - Set", 10: "10 - Out", 11: "11 - Nov", 12: "12 - Dez"
+}
+
+base["_ADM_DT"] = pd.to_datetime(base["DATA ADMISSAO"], errors="coerce", dayfirst=True)
+base["_ADM_ANO"] = base["_ADM_DT"].dt.year
+base["_ADM_MES"] = base["_ADM_DT"].dt.month
+
+anos_disp = sorted([int(x) for x in base["_ADM_ANO"].dropna().unique().tolist()])
+anos_opts = ["Todos"] + anos_disp
+mes_opts = ["Todos"] + [meses_pt[m] for m in range(1, 13)]
+
+f_ano = st.sidebar.selectbox("Ano de admissão", anos_opts, index=0)
+f_mes_lbl = st.sidebar.selectbox("Mês de admissão", mes_opts, index=0)
+
+# -------------------------
+# Aplicação dos filtros
+# -------------------------
 base_f = base.copy()
+
 if f_operacao:
     base_f = base_f[base_f["OPERACAO"].isin(f_operacao)]
 if f_lideranca:
@@ -266,50 +295,136 @@ if f_atividade:
     base_f = base_f[base_f["ATIVIDADE"].isin(f_atividade)]
 if f_niveis:
     base_f = base_f[base_f["NIVEIS"].isin(f_niveis)]
-if f_status:
-    base_f = base_f[
-        base_f["STATUS TECNICAS"].isin(f_status) |
-        base_f["STATUS ESPECIFICAS"].isin(f_status)
-    ]
+
+# Filtro de ano/mês (DATA ADMISSAO)
+if f_ano != "Todos":
+    base_f = base_f[base_f["_ADM_ANO"] == int(f_ano)]
+
+if f_mes_lbl != "Todos":
+    mes_num = int(f_mes_lbl.split(" - ")[0])
+    base_f = base_f[base_f["_ADM_MES"] == mes_num]
+
+# Filtro de Status respeitando Etapa selecionada (somente Téc/Espec)
+considera_tec = "Técnicas" in f_etapas
+considera_esp = "Específicas" in f_etapas
+considera_emp = "Empoderamento" in f_etapas
+
+if f_status and (considera_tec or considera_esp):
+    mask = pd.Series(False, index=base_f.index)
+    if considera_tec:
+        mask = mask | base_f["STATUS TECNICAS"].isin(f_status)
+    if considera_esp:
+        mask = mask | base_f["STATUS ESPECIFICAS"].isin(f_status)
+    base_f = base_f[mask]
 
 # =========================
-# Cards
+# Helpers para cálculos por etapa
+# =========================
+def mask_pendencia(df: pd.DataFrame) -> pd.Series:
+    m = pd.Series(False, index=df.index)
+    if considera_tec:
+        m = m | (df["STATUS TECNICAS"] == "Não realizado")
+    if considera_esp:
+        m = m | (df["STATUS ESPECIFICAS"] == "Não realizado")
+    if considera_emp:
+        # empoderamento: considera pendente se % = 0
+        m = m | (pd.to_numeric(df["HABILIDADES EMPODERAMENTO"], errors="coerce").fillna(0) <= 0)
+    return m
+
+def mask_concluido(df: pd.DataFrame) -> pd.Series:
+    # concluído = todas as etapas selecionadas concluídas
+    m = pd.Series(True, index=df.index)
+    if considera_tec:
+        m = m & (df["STATUS TECNICAS"] == "Realizado")
+    if considera_esp:
+        m = m & (df["STATUS ESPECIFICAS"] == "Realizado")
+    if considera_emp:
+        m = m & (pd.to_numeric(df["HABILIDADES EMPODERAMENTO"], errors="coerce").fillna(0) > 0)
+    return m
+
+def mask_no_prazo(df: pd.DataFrame) -> pd.Series:
+    m = pd.Series(False, index=df.index)
+    if considera_tec:
+        m = m | (df["STATUS TECNICAS"] == "No prazo")
+    if considera_esp:
+        m = m | (df["STATUS ESPECIFICAS"] == "No prazo")
+    # empoderamento não tem "no prazo"
+    return m
+
+# =========================
+# Cards (agora respeitando Etapa)
 # =========================
 total = len(base_f)
-
-pend = len(base_f[
-    (base_f["STATUS TECNICAS"] == "Não realizado") |
-    (base_f["STATUS ESPECIFICAS"] == "Não realizado")
-])
-
-concl = len(base_f[
-    (base_f["STATUS TECNICAS"] == "Realizado") &
-    (base_f["STATUS ESPECIFICAS"] == "Realizado")
-])
-
-nop = len(base_f[
-    (base_f["STATUS TECNICAS"] == "No prazo") |
-    (base_f["STATUS ESPECIFICAS"] == "No prazo")
-])
+pend = int(mask_pendencia(base_f).sum())
+concl = int(mask_concluido(base_f).sum())
+nop = int(mask_no_prazo(base_f).sum())
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Total", total)
-c2.metric("✅ 100% concluídos", concl)
-c3.metric("🟡 No prazo", nop)
-c4.metric("🔴 Com pendência", pend)
+c2.metric("✅ Concluídos (Etapas sel.)", concl)
+c3.metric("🟡 No prazo (Téc/Espec)", nop)
+c4.metric("🔴 Com pendência (Etapas sel.)", pend)
 
 st.divider()
 
 # =========================
-# Gráficos (ordem decrescente)
+# NOVO: % de realização por Unidade e por Etapa
+# - Téc/Espec: (Realizado + No prazo) / total
+# - Emp: média do % realizado
 # =========================
-st.subheader("🔴 Pendências (Não realizado) por Operação")
+st.subheader("📈 % de realização por Unidade e por Etapa")
+
+def pct_tec(df):
+    if len(df) == 0:
+        return 0.0
+    return ((df["STATUS TECNICAS"].isin(["Realizado", "No prazo"])).sum()) / len(df)
+
+def pct_esp(df):
+    if len(df) == 0:
+        return 0.0
+    return ((df["STATUS ESPECIFICAS"].isin(["Realizado", "No prazo"])).sum()) / len(df)
+
+def pct_emp(df):
+    if len(df) == 0:
+        return 0.0
+    return pd.to_numeric(df["HABILIDADES EMPODERAMENTO"], errors="coerce").fillna(0).mean()
+
+linhas = []
+for op, g in base_f.groupby("OPERACAO", dropna=False):
+    if considera_tec:
+        linhas.append({"OPERACAO": op, "ETAPA": "Técnicas", "PERCENTUAL": pct_tec(g)})
+    if considera_esp:
+        linhas.append({"OPERACAO": op, "ETAPA": "Específicas", "PERCENTUAL": pct_esp(g)})
+    if considera_emp:
+        linhas.append({"OPERACAO": op, "ETAPA": "Empoderamento", "PERCENTUAL": pct_emp(g)})
+
+pct_df = pd.DataFrame(linhas)
+
+if pct_df.empty:
+    st.info("Sem dados para calcular o percentual com os filtros atuais.")
+else:
+    pct_df["PERCENTUAL_TXT"] = pct_df["PERCENTUAL"].map(lambda x: f"{x:.0%}")
+    fig_pct = px.bar(
+        pct_df.sort_values(["OPERACAO", "ETAPA"]),
+        x="OPERACAO",
+        y="PERCENTUAL",
+        color="ETAPA",
+        text="PERCENTUAL_TXT",
+        barmode="group",
+    )
+    fig_pct.update_layout(yaxis_tickformat=".0%")
+    st.plotly_chart(fig_pct, use_container_width=True)
+
+st.divider()
+
+# =========================
+# Gráficos de Pendência por Operação/Liderança (respeitando Etapa)
+# =========================
+st.subheader("🔴 Pendências por Operação (Etapas selecionadas)")
+
+pend_df = base_f[mask_pendencia(base_f)].copy()
 gop = (
-    base_f[
-        (base_f["STATUS TECNICAS"] == "Não realizado") |
-        (base_f["STATUS ESPECIFICAS"] == "Não realizado")
-    ]
-    .groupby("OPERACAO", dropna=False)
+    pend_df.groupby("OPERACAO", dropna=False)
     .size()
     .sort_values(ascending=False)
     .reset_index(name="Quantidade")
@@ -322,13 +437,9 @@ else:
     fig1.update_layout(xaxis={"categoryorder": "total descending"})
     st.plotly_chart(fig1, use_container_width=True)
 
-st.subheader("🔴 Pendências (Não realizado) por Liderança")
+st.subheader("🔴 Pendências por Liderança (Etapas selecionadas)")
 glid = (
-    base_f[
-        (base_f["STATUS TECNICAS"] == "Não realizado") |
-        (base_f["STATUS ESPECIFICAS"] == "Não realizado")
-    ]
-    .groupby("LIDERANCA", dropna=False)
+    pend_df.groupby("LIDERANCA", dropna=False)
     .size()
     .sort_values(ascending=False)
     .reset_index(name="Quantidade")
@@ -342,128 +453,137 @@ else:
     st.plotly_chart(fig2, use_container_width=True)
 
 # =========================
-# Atenção: Vencimento próximo (até 7 dias)
-# - Apenas etapas NÃO realizadas
+# Atenção: Vencimento próximo (até 7 dias) e Vencida
+# (Somente faz sentido se Téc/Espec estiverem selecionadas)
 # =========================
-hoje = pd.to_datetime(datetime.today().date())
+if considera_tec or considera_esp:
+    st.divider()
+    hoje = pd.to_datetime(datetime.today().date())
 
-tmp = skap[[
-    "COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA",
-    "HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS",
-    "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT",
-    "STATUS TECNICAS", "STATUS ESPECIFICAS"
-]].copy()
+    tmp = skap[[
+        "COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA",
+        "HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS",
+        "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT",
+        "STATUS TECNICAS", "STATUS ESPECIFICAS"
+    ]].copy()
 
-tmp = normalizar_colunas(tmp)
-tmp = tmp.merge(
-    base_f[["COLABORADOR"]].drop_duplicates(),
-    on="COLABORADOR",
-    how="inner"
-)
-
-alertas = []
-
-mask_tec = (tmp["STATUS TECNICAS"] != "Realizado") & tmp["PRAZO_TECNICAS_DT"].notna()
-dias_tec = (tmp.loc[mask_tec, "PRAZO_TECNICAS_DT"] - hoje).dt.days
-tmp_tec = tmp.loc[mask_tec].copy()
-tmp_tec["DIAS PARA VENCER"] = dias_tec.values
-tmp_tec = tmp_tec[(tmp_tec["DIAS PARA VENCER"] >= 0) & (tmp_tec["DIAS PARA VENCER"] <= 7)]
-
-if len(tmp_tec) > 0:
-    tmp_tec["ETAPA"] = "Técnicas"
-    tmp_tec["DATA VENCIMENTO"] = tmp_tec["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y")
-    alertas.append(tmp_tec[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS PARA VENCER"]])
-
-mask_esp = (tmp["STATUS ESPECIFICAS"] != "Realizado") & tmp["PRAZO_ESPECIFICAS_DT"].notna()
-dias_esp = (tmp.loc[mask_esp, "PRAZO_ESPECIFICAS_DT"] - hoje).dt.days
-tmp_esp = tmp.loc[mask_esp].copy()
-tmp_esp["DIAS PARA VENCER"] = dias_esp.values
-tmp_esp = tmp_esp[(tmp_esp["DIAS PARA VENCER"] >= 0) & (tmp_esp["DIAS PARA VENCER"] <= 7)]
-
-if len(tmp_esp) > 0:
-    tmp_esp["ETAPA"] = "Específicas"
-    tmp_esp["DATA VENCIMENTO"] = tmp_esp["PRAZO_ESPECIFICAS_DT"].dt.strftime("%d/%m/%Y")
-    alertas.append(tmp_esp[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS PARA VENCER"]])
-
-alerta_df = pd.concat(alertas, ignore_index=True) if alertas else pd.DataFrame(
-    columns=["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS PARA VENCER"]
-)
-
-if len(alerta_df) > 0:
-    alerta_df = alerta_df.sort_values(["DIAS PARA VENCER", "OPERACAO", "LIDERANCA", "COLABORADOR"], ascending=[True, True, True, True])
-
-st.subheader("⚠️ Atenção: Vencimento próximo")
-if len(alerta_df) == 0:
-    st.info("Nenhuma etapa vencendo nos próximos 7 dias com os filtros atuais.")
-else:
-    st.dataframe(centralizar_tabela(alerta_df), use_container_width=True)
-
-    excel_alerta = preparar_excel_para_download(alerta_df, sheet_name="Vencimento_proximo")
-    st.download_button(
-        label="⬇️ Baixar Excel (Vencimento próximo)",
-        data=excel_alerta,
-        file_name="vencimento_proximo_skap.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
+    tmp = normalizar_colunas(tmp)
+    tmp = tmp.merge(
+        base_f[["COLABORADOR"]].drop_duplicates(),
+        on="COLABORADOR",
+        how="inner"
     )
 
-st.divider()
+    # =========================
+    # Vencimento próximo
+    # =========================
+    alertas = []
 
-# =========================
-# 🔴 Atenção: Skap Vencida (etapas "Não realizado" e já vencidas)
-# =========================
-vencidas = []
+    if considera_tec:
+        mask_tec = (tmp["STATUS TECNICAS"] != "Realizado") & tmp["PRAZO_TECNICAS_DT"].notna()
+        dias_tec = (tmp.loc[mask_tec, "PRAZO_TECNICAS_DT"] - hoje).dt.days
+        tmp_tec = tmp.loc[mask_tec].copy()
+        tmp_tec["DIAS PARA VENCER"] = dias_tec.values
+        tmp_tec = tmp_tec[(tmp_tec["DIAS PARA VENCER"] >= 0) & (tmp_tec["DIAS PARA VENCER"] <= 7)]
 
-mask_vtec = (tmp["STATUS TECNICAS"] == "Não realizado") & tmp["PRAZO_TECNICAS_DT"].notna()
-dias_vtec = (hoje - tmp.loc[mask_vtec, "PRAZO_TECNICAS_DT"]).dt.days
-tmp_vtec = tmp.loc[mask_vtec].copy()
-tmp_vtec["DIAS VENCIDO"] = dias_vtec.values
-tmp_vtec = tmp_vtec[tmp_vtec["DIAS VENCIDO"] > 0]
+        if len(tmp_tec) > 0:
+            tmp_tec["ETAPA"] = "Técnicas"
+            tmp_tec["DATA VENCIMENTO"] = tmp_tec["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y")
+            alertas.append(tmp_tec[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS PARA VENCER"]])
 
-if len(tmp_vtec) > 0:
-    tmp_vtec["ETAPA"] = "Técnicas"
-    tmp_vtec["DATA VENCIMENTO"] = tmp_vtec["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y")
-    vencidas.append(tmp_vtec[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS VENCIDO"]])
+    if considera_esp:
+        mask_esp = (tmp["STATUS ESPECIFICAS"] != "Realizado") & tmp["PRAZO_ESPECIFICAS_DT"].notna()
+        dias_esp = (tmp.loc[mask_esp, "PRAZO_ESPECIFICAS_DT"] - hoje).dt.days
+        tmp_esp = tmp.loc[mask_esp].copy()
+        tmp_esp["DIAS PARA VENCER"] = dias_esp.values
+        tmp_esp = tmp_esp[(tmp_esp["DIAS PARA VENCER"] >= 0) & (tmp_esp["DIAS PARA VENCER"] <= 7)]
 
-mask_vesp = (tmp["STATUS ESPECIFICAS"] == "Não realizado") & tmp["PRAZO_ESPECIFICAS_DT"].notna()
-dias_vesp = (hoje - tmp.loc[mask_vesp, "PRAZO_ESPECIFICAS_DT"]).dt.days
-tmp_vesp = tmp.loc[mask_vesp].copy()
-tmp_vesp["DIAS VENCIDO"] = dias_vesp.values
-tmp_vesp = tmp_vesp[tmp_vesp["DIAS VENCIDO"] > 0]
+        if len(tmp_esp) > 0:
+            tmp_esp["ETAPA"] = "Específicas"
+            tmp_esp["DATA VENCIMENTO"] = tmp_esp["PRAZO_ESPECIFICAS_DT"].dt.strftime("%d/%m/%Y")
+            alertas.append(tmp_esp[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS PARA VENCER"]])
 
-if len(tmp_vesp) > 0:
-    tmp_vesp["ETAPA"] = "Específicas"
-    tmp_vesp["DATA VENCIMENTO"] = tmp_vesp["PRAZO_ESPECIFICAS_DT"].dt.strftime("%d/%m/%Y")
-    vencidas.append(tmp_vesp[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS VENCIDO"]])
-
-vencida_df = pd.concat(vencidas, ignore_index=True) if vencidas else pd.DataFrame(
-    columns=["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS VENCIDO"]
-)
-
-if len(vencida_df) > 0:
-    vencida_df = vencida_df.sort_values(["DIAS VENCIDO", "OPERACAO", "LIDERANCA", "COLABORADOR"], ascending=[False, True, True, True])
-
-st.subheader("🔴 Atenção: Skap Vencida")
-if len(vencida_df) == 0:
-    st.info("Nenhuma etapa vencida (Não realizado) com os filtros atuais.")
-else:
-    st.write(f"Total de etapas vencidas no filtro atual: **{len(vencida_df)}**")
-
-    st.dataframe(
-        centralizar_tabela(vencida_df).applymap(
-            lambda v: "color: red; font-weight:700;", subset=["DIAS VENCIDO"]
-        ),
-        use_container_width=True
+    alerta_df = pd.concat(alertas, ignore_index=True) if alertas else pd.DataFrame(
+        columns=["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS PARA VENCER"]
     )
 
-    excel_vencida = preparar_excel_para_download(vencida_df, sheet_name="Skap_vencida")
-    st.download_button(
-        label="⬇️ Baixar Excel (Skap vencida)",
-        data=excel_vencida,
-        file_name="skap_vencida.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
+    if len(alerta_df) > 0:
+        alerta_df = alerta_df.sort_values(["DIAS PARA VENCER", "OPERACAO", "LIDERANCA", "COLABORADOR"], ascending=[True, True, True, True])
+
+    st.subheader("⚠️ Atenção: Vencimento próximo")
+    if len(alerta_df) == 0:
+        st.info("Nenhuma etapa vencendo nos próximos 7 dias com os filtros atuais.")
+    else:
+        st.dataframe(centralizar_tabela(alerta_df), use_container_width=True)
+
+        excel_alerta = preparar_excel_para_download(alerta_df, sheet_name="Vencimento_proximo")
+        st.download_button(
+            label="⬇️ Baixar Excel (Vencimento próximo)",
+            data=excel_alerta,
+            file_name="vencimento_proximo_skap.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+
+    st.divider()
+
+    # =========================
+    # Skap Vencida
+    # =========================
+    vencidas = []
+
+    if considera_tec:
+        mask_vtec = (tmp["STATUS TECNICAS"] == "Não realizado") & tmp["PRAZO_TECNICAS_DT"].notna()
+        dias_vtec = (hoje - tmp.loc[mask_vtec, "PRAZO_TECNICAS_DT"]).dt.days
+        tmp_vtec = tmp.loc[mask_vtec].copy()
+        tmp_vtec["DIAS VENCIDO"] = dias_vtec.values
+        tmp_vtec = tmp_vtec[tmp_vtec["DIAS VENCIDO"] > 0]
+
+        if len(tmp_vtec) > 0:
+            tmp_vtec["ETAPA"] = "Técnicas"
+            tmp_vtec["DATA VENCIMENTO"] = tmp_vtec["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y")
+            vencidas.append(tmp_vtec[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS VENCIDO"]])
+
+    if considera_esp:
+        mask_vesp = (tmp["STATUS ESPECIFICAS"] == "Não realizado") & tmp["PRAZO_ESPECIFICAS_DT"].notna()
+        dias_vesp = (hoje - tmp.loc[mask_vesp, "PRAZO_ESPECIFICAS_DT"]).dt.days
+        tmp_vesp = tmp.loc[mask_vesp].copy()
+        tmp_vesp["DIAS VENCIDO"] = dias_vesp.values
+        tmp_vesp = tmp_vesp[tmp_vesp["DIAS VENCIDO"] > 0]
+
+        if len(tmp_vesp) > 0:
+            tmp_vesp["ETAPA"] = "Específicas"
+            tmp_vesp["DATA VENCIMENTO"] = tmp_vesp["PRAZO_ESPECIFICAS_DT"].dt.strftime("%d/%m/%Y")
+            vencidas.append(tmp_vesp[["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS VENCIDO"]])
+
+    vencida_df = pd.concat(vencidas, ignore_index=True) if vencidas else pd.DataFrame(
+        columns=["COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA", "ETAPA", "DATA VENCIMENTO", "DIAS VENCIDO"]
     )
+
+    if len(vencida_df) > 0:
+        vencida_df = vencida_df.sort_values(["DIAS VENCIDO", "OPERACAO", "LIDERANCA", "COLABORADOR"], ascending=[False, True, True, True])
+
+    st.subheader("🔴 Atenção: Skap Vencida")
+    if len(vencida_df) == 0:
+        st.info("Nenhuma etapa vencida (Não realizado) com os filtros atuais.")
+    else:
+        st.write(f"Total de etapas vencidas no filtro atual: **{len(vencida_df)}**")
+
+        st.dataframe(
+            centralizar_tabela(vencida_df).applymap(
+                lambda v: "color: red; font-weight:700;", subset=["DIAS VENCIDO"]
+            ),
+            use_container_width=True
+        )
+
+        excel_vencida = preparar_excel_para_download(vencida_df, sheet_name="Skap_vencida")
+        st.download_button(
+            label="⬇️ Baixar Excel (Skap vencida)",
+            data=excel_vencida,
+            file_name="skap_vencida.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
 st.divider()
 
@@ -495,9 +615,9 @@ for c in ["STATUS TECNICAS", "STATUS ESPECIFICAS"]:
     if c in tabela.columns:
         tabela[c] = tabela[c].astype(str).map(emoji_status)
 
-st.dataframe(centralizar_tabela(tabela), use_container_width=True)
+st.dataframe(centralizar_tabela(tabela.drop(columns=["_ADM_DT", "_ADM_ANO", "_ADM_MES"], errors="ignore")), use_container_width=True)
 
-excel_detalhe = preparar_excel_para_download(tabela, sheet_name="Detalhamento")
+excel_detalhe = preparar_excel_para_download(tabela.drop(columns=["_ADM_DT", "_ADM_ANO", "_ADM_MES"], errors="ignore"), sheet_name="Detalhamento")
 st.download_button(
     label="⬇️ Baixar Excel (Detalhamento individual)",
     data=excel_detalhe,
