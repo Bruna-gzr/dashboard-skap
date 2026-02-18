@@ -367,26 +367,31 @@ considera_emp_graf = "Empoderamento" in f_etapas
 def pct_tec(df):
     if len(df) == 0:
         return 0.0
-    return ((df["STATUS TECNICAS"].isin(["Realizado", "No prazo"])).sum()) / len(df)
+    return (df["STATUS TECNICAS"].isin(["Realizado", "No prazo"]).sum()) / len(df)
 
 def pct_esp(df):
     if len(df) == 0:
         return 0.0
-    return ((df["STATUS ESPECIFICAS"].isin(["Realizado", "No prazo"])).sum()) / len(df)
+    return (df["STATUS ESPECIFICAS"].isin(["Realizado", "No prazo"]).sum()) / len(df)
 
-def pct_emp(df):
+def pct_emp_realizado(df):
+    """Taxa de realizado (empoderamento > 0), e NÃO média do percentual."""
     if len(df) == 0:
         return 0.0
-    return pd.to_numeric(df["HABILIDADES EMPODERAMENTO"], errors="coerce").fillna(0).mean()
+    emp = pd.to_numeric(df["HABILIDADES EMPODERAMENTO"], errors="coerce").fillna(0)
+    return (emp > 0).mean()
 
 linhas = []
 for op, g in base_f.groupby("OPERACAO", dropna=False):
+    # IMPORTANTE: remove duplicidade causada pelo merge com comentários
+    g = g.drop_duplicates(subset=["COLABORADOR"]).copy()
+
     if considera_tec_graf:
         linhas.append({"OPERACAO": op, "ETAPA": "Técnicas", "PERCENTUAL": pct_tec(g)})
     if considera_esp_graf:
         linhas.append({"OPERACAO": op, "ETAPA": "Específicas", "PERCENTUAL": pct_esp(g)})
     if considera_emp_graf:
-        linhas.append({"OPERACAO": op, "ETAPA": "Empoderamento", "PERCENTUAL": pct_emp(g)})
+        linhas.append({"OPERACAO": op, "ETAPA": "Empoderamento", "PERCENTUAL": pct_emp_realizado(g)})
 
 pct_df = pd.DataFrame(linhas)
 
@@ -405,7 +410,6 @@ else:
     fig_pct.update_layout(yaxis_tickformat=".0%")
     st.plotly_chart(fig_pct, use_container_width=True)
 
-st.divider()
 
 # =========================
 # Gráficos de Pendência (somente Téc/Espec)
