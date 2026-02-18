@@ -254,14 +254,14 @@ base = base[ordem].copy()
 # =========================
 st.sidebar.header("Filtros")
 
-# Filtro por etapa (apenas para gráfico de % por etapa)
+# Filtro por etapa (apenas para gráfico de %)
 etapas_map = {"Técnicas": "TECNICAS", "Específicas": "ESPECIFICAS", "Empoderamento": "EMPODERAMENTO"}
 f_etapas = st.sidebar.multiselect(
     "Etapa (para o gráfico de %)",
     list(etapas_map.keys()),
     default=list(etapas_map.keys())
 )
-st.sidebar.caption("📌 Cards, Pendências, Vencimento e Vencida consideram apenas Técnicas + Específicas.")
+st.sidebar.caption("📌 Cards, Vencimento e Vencida consideram apenas Técnicas + Específicas.")
 
 f_operacao = st.sidebar.multiselect("Operação", opcoes(base, "OPERACAO"))
 f_lideranca = st.sidebar.multiselect("Liderança", opcoes(base, "LIDERANCA"))
@@ -354,9 +354,10 @@ c4.metric("🔴 Com pendência (Téc/Espec)", pend)
 st.divider()
 
 # =========================
-# % de realização por Unidade e por Etapa
-# - Téc/Espec: (Realizado + No prazo) / total
-# - Emp: média do % realizado
+# 📈 % de realização por Unidade e por Etapa
+# - Téc/Espec: (Realizado + No prazo) / total colaboradores
+# - Emp: taxa de realizado (>0) / total colaboradores
+# OBS: permanece por COLABORADORES (não mexer)
 # =========================
 st.subheader("📈 % de realização por Unidade e por Etapa")
 
@@ -375,7 +376,6 @@ def pct_esp(df):
     return (df["STATUS ESPECIFICAS"].isin(["Realizado", "No prazo"]).sum()) / len(df)
 
 def pct_emp_realizado(df):
-    """Taxa de realizado (empoderamento > 0), e NÃO média do percentual."""
     if len(df) == 0:
         return 0.0
     emp = pd.to_numeric(df["HABILIDADES EMPODERAMENTO"], errors="coerce").fillna(0)
@@ -383,8 +383,8 @@ def pct_emp_realizado(df):
 
 linhas = []
 for op, g in base_f.groupby("OPERACAO", dropna=False):
-    # IMPORTANTE: remove duplicidade causada pelo merge com comentários
-    g = g.drop_duplicates(subset=["COLABORADOR"]).copy()
+    # dedup por colaborador (protege contra duplicidade da base comentarios)
+    g = g.drop_duplicates(subset=["COLABORADOR"], keep="first").copy()
 
     if considera_tec_graf:
         linhas.append({"OPERACAO": op, "ETAPA": "Técnicas", "PERCENTUAL": pct_tec(g)})
@@ -410,47 +410,11 @@ else:
     fig_pct.update_layout(yaxis_tickformat=".0%")
     st.plotly_chart(fig_pct, use_container_width=True)
 
-
-# =========================
-# Gráficos de Pendência (somente Téc/Espec)
-# =========================
-st.subheader("🔴 Pendências (Não realizado) por Operação (Téc/Espec)")
-pend_df = base_f[mask_pendencia(base_f)].copy()
-
-gop = (
-    pend_df.groupby("OPERACAO", dropna=False)
-    .size()
-    .sort_values(ascending=False)
-    .reset_index(name="Quantidade")
-)
-
-if len(gop) == 0:
-    st.info("Sem pendências no filtro atual.")
-else:
-    fig1 = px.bar(gop, x="OPERACAO", y="Quantidade", text="Quantidade")
-    fig1.update_layout(xaxis={"categoryorder": "total descending"})
-    st.plotly_chart(fig1, use_container_width=True)
-
-st.subheader("🔴 Pendências (Não realizado) por Liderança (Téc/Espec)")
-glid = (
-    pend_df.groupby("LIDERANCA", dropna=False)
-    .size()
-    .sort_values(ascending=False)
-    .reset_index(name="Quantidade")
-)
-
-if len(glid) == 0:
-    st.info("Sem pendências no filtro atual.")
-else:
-    fig2 = px.bar(glid, x="LIDERANCA", y="Quantidade", text="Quantidade")
-    fig2.update_layout(xaxis={"categoryorder": "total descending"})
-    st.plotly_chart(fig2, use_container_width=True)
+st.divider()
 
 # =========================
 # Atenção: Vencimento próximo (até 7 dias) - Somente Téc/Espec
 # =========================
-st.divider()
-
 hoje = pd.to_datetime(datetime.today().date())
 
 tmp = skap[[
@@ -461,11 +425,16 @@ tmp = skap[[
 ]].copy()
 
 tmp = normalizar_colunas(tmp)
+
+# aplica os mesmos filtros do base_f (por colaborador)
 tmp = tmp.merge(
     base_f[["COLABORADOR"]].drop_duplicates(),
     on="COLABORADOR",
     how="inner"
 )
+
+# evita inflar por duplicidade da base de comentários
+tmp = tmp.drop_duplicates(subset=["COLABORADOR"], keep="first")
 
 alertas = []
 
@@ -569,14 +538,57 @@ else:
 st.divider()
 
 # =========================
+# 🔴 Pendências por Operação/Liderança = MESMOS DADOS do Skap Vencida
+# (Ou seja: Etapas vencidas)
+# =========================
+st.subheader("🔴 Pendências (Não realizado) por Operação (Téc/Espec)")
+
+vencida_graf = vencida_df.drop_duplicates(
+    subset=["COLABORADOR", "ETAPA", "DATA VENCIMENTO"],
+    keep="first"
+).copy()
+
+gop = (
+    vencida_graf.groupby("OPERACAO", dropna=False)
+    .size()
+    .sort_values(ascending=False)
+    .reset_index(name="Quantidade")
+)
+
+if len(gop) == 0:
+    st.info("Sem etapas vencidas no filtro atual.")
+else:
+    fig1 = px.bar(gop, x="OPERACAO", y="Quantidade", text="Quantidade")
+    fig1.update_layout(xaxis={"categoryorder": "total descending"})
+    st.plotly_chart(fig1, use_container_width=True)
+
+st.subheader("🔴 Pendências (Não realizado) por Liderança (Téc/Espec)")
+
+glid = (
+    vencida_graf.groupby("LIDERANCA", dropna=False)
+    .size()
+    .sort_values(ascending=False)
+    .reset_index(name="Quantidade")
+)
+
+if len(glid) == 0:
+    st.info("Sem etapas vencidas no filtro atual.")
+else:
+    fig2 = px.bar(glid, x="LIDERANCA", y="Quantidade", text="Quantidade")
+    fig2.update_layout(xaxis={"categoryorder": "total descending"})
+    st.plotly_chart(fig2, use_container_width=True)
+
+st.divider()
+
+# =========================
 # Tabela principal
 # =========================
 st.subheader("📋 Detalhamento Individual")
 
-# 1) Base RAW (para exportar)
+# RAW (para exportar)
 tabela_raw = base_f.drop(columns=["_ADM_DT", "_ADM_ANO", "_ADM_MES"], errors="ignore").copy()
 
-# 2) Base DISPLAY (para mostrar na tela)
+# DISPLAY (para tela)
 tabela = tabela_raw.copy()
 
 # Ordenação por admissão (na tela)
@@ -584,7 +596,7 @@ if "DATA ADMISSAO" in tabela.columns:
     tabela["_DATA_ADMISSAO_DT"] = pd.to_datetime(tabela["DATA ADMISSAO"], errors="coerce", dayfirst=True)
     tabela = tabela.sort_values("_DATA_ADMISSAO_DT", ascending=True).drop(columns=["_DATA_ADMISSAO_DT"])
 
-# Formatar % SOMENTE no display (tela)
+# Formatar % SOMENTE no display
 for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
     if c in tabela.columns:
         tabela[c] = pd.to_numeric(tabela[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
@@ -602,10 +614,9 @@ for c in ["STATUS TECNICAS", "STATUS ESPECIFICAS"]:
     if c in tabela.columns:
         tabela[c] = tabela[c].astype(str).map(emoji_status)
 
-# Tela
 st.dataframe(centralizar_tabela(tabela), use_container_width=True)
 
-# Excel: exporta o RAW (sem % em string)
+# Excel exporta RAW (sem perder valores)
 excel_detalhe = preparar_excel_para_download(tabela_raw, sheet_name="Detalhamento")
 st.download_button(
     label="⬇️ Baixar Excel (Detalhamento individual)",
