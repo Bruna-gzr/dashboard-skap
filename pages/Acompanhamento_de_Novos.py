@@ -229,11 +229,19 @@ if pd.isna(min_adm) or pd.isna(max_adm):
     min_adm = pd.to_datetime("2025-01-01")
     max_adm = hoje
 
-dt_ini, dt_fim = st.sidebar.date_input("Período de admissão", value=(min_adm.date(), max_adm.date()))
+col1, col2 = st.sidebar.columns(2)
+
+with col1:
+    dt_ini = st.date_input("Início", value=min_adm.date(), format="DD/MM/YYYY")
+with col2:
+    dt_fim = st.date_input("Fim", value=max_adm.date(), format="DD/MM/YYYY")
+
 dt_ini = pd.to_datetime(dt_ini)
 dt_fim = pd.to_datetime(dt_fim)
 if dt_fim < dt_ini:
     dt_ini, dt_fim = dt_fim, dt_ini
+
+st.sidebar.caption(f"Período selecionado: **{dt_ini.strftime('%d/%m/%Y')}** até **{dt_fim.strftime('%d/%m/%Y')}**")
 
 df_f = df.copy()
 df_f = df_f[df_f["ADMISSAO"].between(dt_ini, dt_fim)].copy()
