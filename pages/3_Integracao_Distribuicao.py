@@ -395,12 +395,34 @@ if pd.isna(min_adm) or pd.isna(max_adm):
     min_adm = pd.to_datetime("2024-09-01")
     max_adm = pd.to_datetime(datetime.today().date()).normalize()
 
-periodo = st.sidebar.date_input(
-    "Período de admissão",
-    value=(min_adm.date(), max_adm.date()),
-    min_value=min_adm.date(),
-    max_value=max_adm.date(),
-    format="DD/MM/YYYY",
+st.sidebar.subheader("Período de admissão")
+
+col_ini, col_fim = st.sidebar.columns(2)
+
+with col_ini:
+    data_ini = st.date_input(
+        "Início",
+        value=min_adm.date(),
+        min_value=min_adm.date(),
+        max_value=max_adm.date(),
+        format="DD/MM/YYYY",
+        key="adm_ini",
+    )
+
+with col_fim:
+    data_fim = st.date_input(
+        "Fim",
+        value=max_adm.date(),
+        min_value=min_adm.date(),
+        max_value=max_adm.date(),
+        format="DD/MM/YYYY",
+        key="adm_fim",
+    )
+
+# garante coerência (se inverter, ajusta)
+if data_ini > data_fim:
+    st.sidebar.warning("⚠️ A data de Início não pode ser maior que a data de Fim. Ajustei automaticamente.")
+    data_ini, data_fim = data_fim, data_ini
 )
 data_ini, data_fim = periodo
 
