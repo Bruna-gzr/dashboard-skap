@@ -6,9 +6,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-import streamlit as st
+
 import pandas as pd
 import numpy as np
+import re
 from datetime import datetime
 from pathlib import Path
 from io import BytesIO
@@ -24,49 +25,10 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 ARQ_NOVOS = DATA_DIR / "Acomp novos.xlsx"
 
 # =========================
-# Última atualização dos dados (APENAS desta página)
-# =========================
-try:
-    if ARQ_NOVOS.exists():
-        last_mtime = ARQ_NOVOS.stat().st_mtime
-        dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
-        st.caption(f"🕒 Última atualização (dados): {dt.strftime('%d/%m/%Y %H:%M')}")
-    else:
-        st.caption("🕒 Última atualização (dados): arquivo não encontrado em /data")
-except:
-    st.caption("🕒 Última atualização (dados): não disponível")
-
-@st.cache_data(show_spinner=True)
-def carregar_novos():
-    if not ARQ_NOVOS.exists():
-        raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_NOVOS}")
-    return pd.read_excel(ARQ_NOVOS)
-
-try:
-    df = carregar_novos()
-except Exception as e:
-    st.error(f"Erro ao carregar arquivo: {e}")
-    st.stop()
-
-# =========================
-# Normalizar colunas
-# =========================
-df.columns = (
-    df.columns.astype(str)
-    .str.strip()
-    .str.upper()
-    .str.normalize("NFKD")
-    .str.encode("ascii", errors="ignore")
-    .str.decode("utf-8")
-)
-
-# =========================
 # Utils
 # =========================
-def garantir_coluna(df_, col, default=""):
-    if col not in df_.columns:
-        df_[col] = default
-    return df_
+def get_mtime(path: Path):
+    return path.stat().st_mtime if path.exists() else None
 
 def opcoes(df_, col):
     if col not in df_.columns:
@@ -112,12 +74,13 @@ def fmt_data(d: pd.Series) -> pd.Series:
     return pd.to_datetime(d, errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 
 def normalizar_status(s) -> str:
-    s = str(s).strip()
+    s = "" if pd.isna(s) else str(s)
+    s = s.replace("\u00a0", " ")
+    s = re.sub(r"\s+", " ", s).strip()
     if s.lower() in ["nan", "none", ""]:
         return ""
 
     sl = s.lower()
-
     if sl in ["realizada", "realizado"]:
         return "Realizada"
     if sl in ["não realizada", "nao realizada", "não realizado", "nao realizado"]:
@@ -128,7 +91,6 @@ def normalizar_status(s) -> str:
         return "No prazo"
     if sl in ["n/a", "na"]:
         return "N/A"
-
     return s
 
 def preparar_excel_para_download(df_: pd.DataFrame, sheet_name="Dados") -> bytes:
@@ -137,12 +99,64 @@ def preparar_excel_para_download(df_: pd.DataFrame, sheet_name="Dados") -> bytes
         df_.to_excel(writer, index=False, sheet_name=sheet_name[:31])
     return output.getvalue()
 
+def exigir_coluna(df_: pd.DataFrame, col: str) -> pd.DataFrame:
+    if col not in df_.columns:
+        st.error(f"Coluna obrigatória NÃO encontrada no Excel: '{col}'")
+        st.stop()
+    return df_
+
+# =========================
+# Última atualização dos dados (APENAS desta página)
+# =========================try:
+    if ARQ_NOVOS.exists():
+        last_mtime = ARQ_NOVOS.stat().st_mtime
+        dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
+        st.caption(f"🕒 Última atualização (dados): {dt.strftime('%d/%m/%Y %H:%M:%S')}")
+    else:
+        st.caption("🕒 Última atualização (dados): arquivo não encontrado em /data")
+except Exception:
+    st.caption("🕒 Última atualização (dados): não disponível")
+
+# =========================
+# Sidebar: botão para recarregar dados (limpar cache)
+# =========================
+st.sidebar.header("Ações")
+if st.sidebar.button("🔄 Recarregar dados (limpar cache)"):
+    st.cache_data.clear()
+    st.rerun()
+
+# =========================
+# Carregar Excel com cache inteligente (mtime)
+# =========================
+@st.cache_data(show_spinner=True)
+def carregar_novos(_mtime):
+    if not ARQ_NOVOS.exists():
+        raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_NOVOS}")
+    return pd.read_excel(ARQ_NOVOS)
+
+mtime = get_mtime(ARQ_NOVOS)
+try:
+    df = carregar_novos(mtime)
+except Exception as e:
+    st.error(f"Erro ao carregar arquivo: {e}")
+    st.stop()
+
+# =========================
+# Normalizar colunas
+# =========================
+df.columns = (
+    df.columns.astype(str)
+    .str.strip()
+    .str.upper()
+    .str.normalize("NFKD")
+    .str.encode("ascii", errors="ignore")
+    .str.decode("utf-8")
+)
+
 # =========================
 # Colunas e etapas
 # =========================
 base_cols = ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "PROGRESSO GERAL"]
-for c in base_cols:
-    df = garantir_coluna(df, c, "")
 
 etapas = [
     ("Reação Integração", "REACAO INTEGRACAO", "LIMITE REACAO INTEGRACAO", "DT REACAO INTEGRACAO"),
@@ -154,10 +168,14 @@ etapas = [
     ("Follow", "FOLLOW", "LIMITE FOLLOW", "DATA HR FOLLOW"),
 ]
 
+# Validação: não mascarar coluna faltante
+for c in base_cols:
+    df = exigir_coluna(df, c)
+
 for _, status_col, limite_col, dt_col in etapas:
-    df = garantir_coluna(df, status_col, "")
-    df = garantir_coluna(df, limite_col, "")
-    df = garantir_coluna(df, dt_col, "")
+    df = exigir_coluna(df, status_col)
+    df = exigir_coluna(df, limite_col)
+    df = exigir_coluna(df, dt_col)
 
 # =========================
 # Datas + tempo de casa
@@ -175,17 +193,21 @@ if td.isna().all():
     df["TEMPO DE CASA"] = (hoje - df["ADMISSAO"]).dt.days
 else:
     df["TEMPO DE CASA"] = td
+
 df["TEMPO DE CASA"] = pd.to_numeric(df["TEMPO DE CASA"], errors="coerce").fillna(0).astype(int)
 
 pg = pd.to_numeric(df["PROGRESSO GERAL"], errors="coerce")
 df["PROGRESSO_GERAL_NUM"] = np.where(pg.notna() & (pg > 1.0), pg / 100.0, pg).astype(float)
 df["PROGRESSO_GERAL_NUM"] = np.nan_to_num(df["PROGRESSO_GERAL_NUM"], nan=0.0)
 
+# Datas das etapas
 for _, _, limite_col, dt_col in etapas:
     df[limite_col] = to_datetime_safe(df[limite_col])
     df[dt_col] = to_datetime_safe(df[dt_col])
 
+# Status: guardar RAW pra debug + normalizar
 for _, status_col, _, _ in etapas:
+    df[status_col + "_RAW"] = df[status_col].astype(str)
     df[status_col] = df[status_col].apply(normalizar_status)
 
 # =========================
@@ -252,12 +274,11 @@ st.divider()
 st.subheader("📌 Aderência Média - Log20")
 
 progresso_empresa = float(df_f["PROGRESSO_GERAL_NUM"].mean()) if len(df_f) else 0.0
-progresso_empresa = max(0.0, min(1.0, progresso_empresa))  # garante 0..1
+progresso_empresa = max(0.0, min(1.0, progresso_empresa))
 
 c_bar, c_txt = st.columns([6, 1])
 with c_txt:
     st.markdown(f"### {progresso_empresa:.2%}")
-
 with c_bar:
     st.progress(progresso_empresa)
 
@@ -338,6 +359,18 @@ else:
 st.divider()
 
 # =========================
+# 🧪 Debug — exemplos de 'Não Realizada'
+# =========================
+with st.expander("🧪 Debug: conferir divergências (RAW vs normalizado)", expanded=False):
+    for nome_aba, status_col, _, _ in etapas:
+        ex = df_f.loc[df_f[status_col] == "Não Realizada", ["COLABORADOR", "OPERACAO", status_col + "_RAW", status_col]].head(20)
+        if len(ex):
+            st.write(f"**{nome_aba}**")
+            st.dataframe(ex, use_container_width=True)
+        else:
+            st.caption(f"{nome_aba}: sem 'Não Realizada' nos filtros atuais.")
+
+# =========================
 # 🔴 Não Realizada — detalhamento geral
 # =========================
 st.subheader("🔴 Não Realizada — detalhamento geral")
@@ -362,13 +395,13 @@ for nome_aba, status_col, limite_col, dt_col in etapas:
 
 if linhas_nr:
     df_nr = pd.concat(linhas_nr, ignore_index=True)
-    df_nr = df_nr.sort_values(["DIAS", "ADMISSAO"], ascending=[True, True])  # mais crítico (negativo) primeiro
+    df_nr = df_nr.sort_values(["DIAS", "ADMISSAO"], ascending=[True, True])
     df_nr["ADMISSAO"] = fmt_data(df_nr["ADMISSAO"])
     df_nr["DATA LIMITE"] = fmt_data(df_nr["DATA LIMITE"])
 
     st.metric("Registros com etapa 'Não Realizada'", len(df_nr))
 
-    view_nr = df_nr[["COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
+    view_nr = df_nr[["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "ETAPA", "DATA LIMITE", "DIAS"]].copy()
     sty_nr = styler_padrao(view_nr).applymap(estilo_dias, subset=["DIAS"])
     st.dataframe(sty_nr, use_container_width=True, height=450)
 else:
@@ -378,7 +411,7 @@ else:
 st.divider()
 
 # =========================
-# 🟡 No prazo vencendo em até 3 dias (geral) — detalhamento
+# 🟡 No prazo vencendo em até 3 dias (geral)
 # =========================
 st.subheader("🟡 No prazo vencendo em até 3 dias (geral)")
 
@@ -406,7 +439,7 @@ if linhas_np:
 
     st.metric("Registros 'No prazo' vencendo em até 3 dias", len(df_alerta))
 
-    view_np = df_alerta[["COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
+    view_np = df_alerta[["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "ETAPA", "DATA LIMITE", "DIAS"]].copy()
     sty_np = styler_padrao(view_np).applymap(estilo_dias, subset=["DIAS"])
     st.dataframe(sty_np, use_container_width=True, height=420)
 else:
@@ -494,7 +527,6 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
 # Abas
 # =========================
 abas = st.tabs([e[0] for e in etapas])
-
 for tab, (nome_aba, status_col, limite_col, dt_col) in zip(abas, etapas):
     with tab:
         tabela_etapa(nome_aba, status_col, limite_col, dt_col)
