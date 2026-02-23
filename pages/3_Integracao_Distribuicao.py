@@ -272,9 +272,7 @@ ignorar_up = set(normalizar_texto(x) for x in IGNORAR_NOMES)
 base = base[~base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ignorar_up)]
 
 # =========================
-# >>> REGRA NOVA: remover READMITIDOS (manter apenas 1ª admissão)
-# - chave principal: ID (quando existe)
-# - fallback: nome normalizado (quando ID é vazio)
+# Remover READMITIDOS (manter apenas 1ª admissão)
 # =========================
 base["_NOME_KEY"] = base["COLABORADOR"].astype(str).map(normalizar_texto)
 
@@ -289,7 +287,6 @@ base["_ADM_DT"] = pd.to_datetime(base["DATA_ADM_DT"], errors="coerce")
 first_adm = base.groupby("_KEY_REHIRES")["_ADM_DT"].transform("min")
 base = base[base["_ADM_DT"] == first_adm].copy()
 
-# se houver duplicidade exata no mesmo dia, mantém uma
 base = base.sort_values(["_KEY_REHIRES", "_ADM_DT"]).drop_duplicates(subset=["_KEY_REHIRES"], keep="first")
 
 base = base.drop(columns=["_NOME_KEY", "_KEY_REHIRES", "_ADM_DT"], errors="ignore")
@@ -315,7 +312,6 @@ resp_min = (
 
 # =========================
 # Etapas + prazos
-# (etapa, offset_min, offset_max)
 # =========================
 ETAPAS = [
     ("Dia 01 - Distribuição Urbana", 0, 3),
@@ -329,7 +325,7 @@ ETAPAS = [
 ]
 
 # =========================
-# Montagem da base LONGA (1 linha por etapa por colaborador)
+# Montagem da base LONGA
 # =========================
 linhas = []
 base_cols = ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "DATA ADMISSAO", "DATA_ADM_DT", "ID", "STATUS COLABORADOR"]
@@ -385,7 +381,7 @@ for _, r in base[base_cols].iterrows():
 etapas_df = pd.DataFrame(linhas)
 
 # =========================
-# Filtros (data em PT-BR)
+# Filtros
 # =========================
 st.sidebar.header("Filtros")
 
@@ -395,8 +391,8 @@ if pd.isna(min_adm) or pd.isna(max_adm):
     min_adm = pd.to_datetime("2024-09-01")
     max_adm = pd.to_datetime(datetime.today().date()).normalize()
 
+# >>> AJUSTE: dois campos separados "Início" / "Fim" (igual ao exemplo)
 st.sidebar.subheader("Período de admissão")
-
 col_ini, col_fim = st.sidebar.columns(2)
 
 with col_ini:
@@ -419,12 +415,9 @@ with col_fim:
         key="adm_fim",
     )
 
-# garante coerência (se inverter, ajusta)
 if data_ini > data_fim:
     st.sidebar.warning("⚠️ A data de Início não pode ser maior que a data de Fim. Ajustei automaticamente.")
     data_ini, data_fim = data_fim, data_ini
-)
-data_ini, data_fim = periodo
 
 f_operacao = st.sidebar.multiselect("Operação", opcoes(etapas_df, "OPERACAO"))
 f_cargo = st.sidebar.multiselect("Cargo", opcoes(etapas_df, "CARGO"))
