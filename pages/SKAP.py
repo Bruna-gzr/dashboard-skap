@@ -6,7 +6,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-import streamlit as st
+
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
@@ -29,6 +29,7 @@ ARQ_COM = DATA_DIR / "Skap - comentarios.xlsx"
 
 # =========================
 # Última atualização dos dados + cache que invalida quando arquivo muda
+# + botão para forçar atualização
 # =========================
 def get_last_mtime():
     arquivos = [ARQ_SKAP, ARQ_COM]
@@ -48,6 +49,14 @@ try:
     last_mtime = get_last_mtime()
     dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
     st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
+
+    # Botão para "matar cache" e forçar rerun
+    c_refresh, _ = st.columns([1, 5])
+    with c_refresh:
+        if st.button("🔄 Atualizar dados agora", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
     skap, comentarios = carregar_dados(last_mtime)
 except Exception as e:
     st.error(f"❌ Erro ao carregar os arquivos da pasta /data: {e}")
@@ -221,7 +230,7 @@ for c in ["CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "NIVEIS"]:
     base = consolidar_xy(base, c)
 
 # =========================
-# Padronização de campos-chave (evita divergências e NaN)
+# Padronização de campos-chave
 # =========================
 for col in ["OPERACAO", "LIDERANCA", "ATIVIDADE"]:
     base[col] = base[col].astype(str).str.strip()
@@ -277,27 +286,49 @@ f_atividade = st.sidebar.multiselect("Atividade", opcoes(base, "ATIVIDADE"))
 f_niveis = st.sidebar.multiselect("Níveis", opcoes(base, "NIVEIS"))
 f_status = st.sidebar.multiselect("Status (Téc/Espec)", ["Realizado", "Não realizado", "No prazo"])
 
-# Filtro de data por mês/ano baseado em DATA ADMISSAO
-meses_pt = {
-    1: "01 - Jan", 2: "02 - Fev", 3: "03 - Mar", 4: "04 - Abr",
-    5: "05 - Mai", 6: "06 - Jun", 7: "07 - Jul", 8: "08 - Ago",
-    9: "09 - Set", 10: "10 - Out", 11: "11 - Nov", 12: "12 - Dez"
-}
-
+# =========================
+# >>> NOVO FILTRO DE DATA IGUAL AO PRINT (Início / Fim) em PT-BR
+# baseando em DATA ADMISSAO
+# =========================
 base["_ADM_DT"] = pd.to_datetime(base["DATA ADMISSAO"], errors="coerce", dayfirst=True)
-base["_ADM_ANO"] = base["_ADM_DT"].dt.year
-base["_ADM_MES"] = base["_ADM_DT"].dt.month
 
-anos_disp = sorted([int(x) for x in base["_ADM_ANO"].dropna().unique().tolist()])
-anos_opts = ["Todos"] + anos_disp
-mes_opts = ["Todos"] + [meses_pt[m] for m in range(1, 13)]
+min_adm = base["_ADM_DT"].min()
+max_adm = base["_ADM_DT"].max()
 
-f_ano = st.sidebar.selectbox("Ano de admissão", anos_opts, index=0)
-f_mes_lbl = st.sidebar.selectbox("Mês de admissão", mes_opts, index=0)
+if pd.isna(min_adm) or pd.isna(max_adm):
+    min_adm = pd.to_datetime("2024-01-01")
+    max_adm = pd.to_datetime(datetime.today().date())
 
-# -------------------------
+st.sidebar.subheader("Período de admissão")
+col_ini, col_fim = st.sidebar.columns(2)
+
+with col_ini:
+    data_ini = st.date_input(
+        "Início",
+        value=min_adm.date(),
+        min_value=min_adm.date(),
+        max_value=max_adm.date(),
+        format="DD/MM/YYYY",
+        key="skap_ini",
+    )
+
+with col_fim:
+    data_fim = st.date_input(
+        "Fim",
+        value=max_adm.date(),
+        min_value=min_adm.date(),
+        max_value=max_adm.date(),
+        format="DD/MM/YYYY",
+        key="skap_fim",
+    )
+
+if data_ini > data_fim:
+    st.sidebar.warning("⚠️ A data de Início não pode ser maior que a data de Fim. Ajustei automaticamente.")
+    data_ini, data_fim = data_fim, data_ini
+
+# =========================
 # Aplicação dos filtros
-# -------------------------
+# =========================
 base_f = base.copy()
 
 if f_operacao:
@@ -309,13 +340,12 @@ if f_atividade:
 if f_niveis:
     base_f = base_f[base_f["NIVEIS"].isin(f_niveis)]
 
-# Filtro de ano/mês (DATA ADMISSAO)
-if f_ano != "Todos":
-    base_f = base_f[base_f["_ADM_ANO"] == int(f_ano)]
-
-if f_mes_lbl != "Todos":
-    mes_num = int(f_mes_lbl.split(" - ")[0])
-    base_f = base_f[base_f["_ADM_MES"] == mes_num]
+# Filtro de data (range) agora por Início/Fim
+base_f["_ADM_DT"] = pd.to_datetime(base_f["DATA ADMISSAO"], errors="coerce", dayfirst=True)
+base_f = base_f[
+    (base_f["_ADM_DT"].dt.date >= data_ini) &
+    (base_f["_ADM_DT"].dt.date <= data_fim)
+]
 
 # Filtro de status (somente Técnicas/Específicas)
 if f_status:
@@ -363,9 +393,6 @@ st.divider()
 
 # =========================
 # 📈 % de realização por Unidade e por Etapa
-# - Téc/Espec: (Realizado + No prazo) / total colaboradores
-# - Emp: taxa de realizado (>0) / total colaboradores
-# OBS: permanece por COLABORADORES (não mexer)
 # =========================
 st.subheader("📈 % de realização por Unidade e por Etapa")
 
@@ -391,7 +418,6 @@ def pct_emp_realizado(df):
 
 linhas = []
 for op, g in base_f.groupby("OPERACAO", dropna=False):
-    # dedup por colaborador (protege contra duplicidade da base comentarios)
     g = g.drop_duplicates(subset=["COLABORADOR"], keep="first").copy()
 
     if considera_tec_graf:
@@ -434,14 +460,12 @@ tmp = skap[[
 
 tmp = normalizar_colunas(tmp)
 
-# aplica os mesmos filtros do base_f (por colaborador)
 tmp = tmp.merge(
     base_f[["COLABORADOR"]].drop_duplicates(),
     on="COLABORADOR",
     how="inner"
 )
 
-# evita inflar por duplicidade da base de comentários
 tmp = tmp.drop_duplicates(subset=["COLABORADOR"], keep="first")
 
 alertas = []
@@ -546,8 +570,7 @@ else:
 st.divider()
 
 # =========================
-# 🔴 Pendências por Operação/Liderança = MESMOS DADOS do Skap Vencida
-# (Ou seja: Etapas vencidas)
+# 🔴 Pendências por Operação/Liderança
 # =========================
 st.subheader("🔴 Pendências (Não realizado) por Operação (Téc/Espec)")
 
@@ -593,18 +616,13 @@ st.divider()
 # =========================
 st.subheader("📋 Detalhamento Individual")
 
-# RAW (para exportar)
-tabela_raw = base_f.drop(columns=["_ADM_DT", "_ADM_ANO", "_ADM_MES"], errors="ignore").copy()
-
-# DISPLAY (para tela)
+tabela_raw = base_f.drop(columns=["_ADM_DT"], errors="ignore").copy()
 tabela = tabela_raw.copy()
 
-# Ordenação por admissão (na tela)
 if "DATA ADMISSAO" in tabela.columns:
     tabela["_DATA_ADMISSAO_DT"] = pd.to_datetime(tabela["DATA ADMISSAO"], errors="coerce", dayfirst=True)
     tabela = tabela.sort_values("_DATA_ADMISSAO_DT", ascending=True).drop(columns=["_DATA_ADMISSAO_DT"])
 
-# Formatar % SOMENTE no display
 for c in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
     if c in tabela.columns:
         tabela[c] = pd.to_numeric(tabela[c], errors="coerce").fillna(0).map(lambda x: f"{x:.0%}")
@@ -624,7 +642,6 @@ for c in ["STATUS TECNICAS", "STATUS ESPECIFICAS"]:
 
 st.dataframe(centralizar_tabela(tabela), use_container_width=True)
 
-# Excel exporta RAW (sem perder valores)
 excel_detalhe = preparar_excel_para_download(tabela_raw, sheet_name="Detalhamento")
 st.download_button(
     label="⬇️ Baixar Excel (Detalhamento individual)",
