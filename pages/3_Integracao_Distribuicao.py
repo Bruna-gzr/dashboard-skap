@@ -30,12 +30,11 @@ ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 ARQ_IDS = DATA_DIR / "Base IDs Logon.xlsx"
 ARQ_RESPOSTAS = DATA_DIR / "Respostas Logon.xlsx"
 
-# >>> NOVO: base de ADMITIDOS (ajuste o nome do arquivo se o seu for diferente)
+# >>> Base de ADMITIDOS (ajuste o nome do arquivo se o seu for diferente)
 ARQ_ADMITIDOS = DATA_DIR / "Admitidos.xlsx"
 
 # =========================
-# Última atualização dos dados (APENAS desta página)
-# + Botão para forçar refresh de cache
+# Última atualização dos dados + botão refresh
 # =========================
 try:
     arquivos = [ARQ_ATIVOS, ARQ_IDS, ARQ_RESPOSTAS, ARQ_ADMITIDOS]
@@ -46,7 +45,6 @@ except Exception:
     last_mtime = None
     st.caption("🕒 Última atualização: não disponível")
 
-# Botão “mata-cache” (ajuda quando alguém troca arquivo e quer ver refletir na hora)
 c_refresh, _ = st.columns([1, 5])
 with c_refresh:
     if st.button("🔄 Atualizar dados agora", use_container_width=True):
@@ -124,6 +122,12 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
     )
     return sorted(vals)
 
+def limpar_id(v):
+    s = "" if pd.isna(v) else str(v).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
 # =========================
 # Status colors (coluna STATUS)
 # =========================
@@ -131,13 +135,12 @@ STATUS_STYLE = {
     "Conforme esperado": "background-color: #22c55e; color: white; font-weight:700;",
     "Pendente mas no prazo": "background-color: #facc15; color: black; font-weight:700;",
     "Pendente em atraso": "background-color: #ef4444; color: white; font-weight:700;",
-    "Concluido em atraso": "background-color: #fb923c; color: black; font-weight:700;",   # laranja
-    "Concluido adiantado": "background-color: #fecaca; color: black; font-weight:700;",  # vermelho clarinho
+    "Concluido em atraso": "background-color: #fb923c; color: black; font-weight:700;",
+    "Concluido adiantado": "background-color: #fecaca; color: black; font-weight:700;",
 }
 
 # =========================
-# Load (cache “inteligente” por mudança de arquivo)
-# - quando você sobe/commita o Excel novo, muda o mtime -> invalida cache
+# Load (cache buster por mtime)
 # =========================
 @st.cache_data(show_spinner=True)
 def carregar_bases(_cache_buster: float | None):
@@ -172,8 +175,7 @@ ids_logon = normalizar_colunas(ids_logon)
 respostas = normalizar_colunas(respostas)
 admitidos = normalizar_colunas(admitidos)
 
-# --- Ajustes de nomes de colunas (Admitidos) ---
-# Esperado: COLABORADOR / DATA (admissão) / ATIVIDADE / OPERACAO / CARGO
+# Admitidos (colunas esperadas)
 for c in ["COLABORADOR", "DATA", "ATIVIDADE", "OPERACAO", "CARGO"]:
     admitidos = garantir_coluna(admitidos, c, "")
 
@@ -183,7 +185,7 @@ if "OPERAÇÃO" in admitidos.columns and "OPERACAO" not in admitidos.columns:
 admitidos = limpar_texto(admitidos, ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE"])
 admitidos["DATA_ADM_DT"] = tratar_data_segura(admitidos["DATA"])
 
-# --- Ajustes de nomes de colunas (Ativos) ---
+# Ativos (colunas mínimas)
 for c in ["COLABORADOR", "CARGO", "OPERACAO", "DATA ULT. ADM"]:
     ativos = garantir_coluna(ativos, c, "")
 
@@ -196,15 +198,16 @@ ativos = limpar_texto(ativos, ["COLABORADOR", "CARGO", "OPERACAO"])
 for c in ["COLABORADOR", "ID"]:
     ids_logon = garantir_coluna(ids_logon, c, "")
 ids_logon = limpar_texto(ids_logon, ["COLABORADOR", "ID"])
+ids_logon["ID"] = ids_logon["ID"].apply(limpar_id)
 
 # Respostas
 for c in ["ID", "CURSO", "DATA ENTREGA"]:
     respostas = garantir_coluna(respostas, c, "")
 respostas = limpar_texto(respostas, ["ID", "CURSO"])
+respostas["ID"] = respostas["ID"].apply(limpar_id)
 
 # =========================
-# Regras: cargos + data admissão
-# (AGORA A BASE “FONTE” é ADMITIDOS, não a BASE ATIVOS)
+# Regras: cargos + data admissão (BASE = ADMITIDOS)
 # =========================
 CARGOS_PERMITIDOS = [
     "Motorista Caminhão Distribuição",
@@ -229,16 +232,28 @@ base = admitidos[
 ].copy()
 
 # =========================
-# Status do colaborador (Ativo/Inativo)
-# - Ativo: aparece na Base colaboradores ativos
-# - Inativo: não aparece
+# IDs por colaborador (merge)
 # =========================
-ativos_set = set(ativos["COLABORADOR"].astype(str).map(normalizar_texto).replace({"": None}).dropna().tolist())
+ids_logon = ids_logon.drop_duplicates(subset=["COLABORADOR"], keep="last")
+base = base.merge(ids_logon[["COLABORADOR", "ID"]], on="COLABORADOR", how="left")
+base["ID"] = base["ID"].astype(str).str.strip().replace(["", "nan", "None"], pd.NA)
+base["ID"] = base["ID"].apply(limpar_id)
+
+# =========================
+# Status do colaborador (Ativo/Inativo)
+# =========================
+ativos_set = set(
+    ativos["COLABORADOR"].astype(str).map(normalizar_texto).replace({"": None}).dropna().tolist()
+)
 base["STATUS COLABORADOR"] = np.where(
     base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ativos_set),
     "Ativo",
     "Inativo"
 )
+
+# =========================
+# Regras de exclusão
+# =========================
 
 # --- EXCEÇÃO: CD PETRÓPOLIS com admissão em 16/07/2025 (ignorar) ---
 data_excluir = pd.to_datetime("2025-07-16").date()
@@ -256,27 +271,44 @@ IGNORAR_NOMES = [
 ignorar_up = set(normalizar_texto(x) for x in IGNORAR_NOMES)
 base = base[~base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ignorar_up)]
 
+# =========================
+# >>> REGRA NOVA: remover READMITIDOS (manter apenas 1ª admissão)
+# - chave principal: ID (quando existe)
+# - fallback: nome normalizado (quando ID é vazio)
+# =========================
+base["_NOME_KEY"] = base["COLABORADOR"].astype(str).map(normalizar_texto)
+
+base["_KEY_REHIRES"] = np.where(
+    base["ID"].notna(),
+    "ID|" + base["ID"].astype(str),
+    "NM|" + base["_NOME_KEY"]
+)
+
+base["_ADM_DT"] = pd.to_datetime(base["DATA_ADM_DT"], errors="coerce")
+
+first_adm = base.groupby("_KEY_REHIRES")["_ADM_DT"].transform("min")
+base = base[base["_ADM_DT"] == first_adm].copy()
+
+# se houver duplicidade exata no mesmo dia, mantém uma
+base = base.sort_values(["_KEY_REHIRES", "_ADM_DT"]).drop_duplicates(subset=["_KEY_REHIRES"], keep="first")
+
+base = base.drop(columns=["_NOME_KEY", "_KEY_REHIRES", "_ADM_DT"], errors="ignore")
+
+# =========================
 # Datas derivadas
+# =========================
 base["DATA ADMISSAO"] = pd.to_datetime(base["DATA_ADM_DT"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 hoje = pd.Timestamp.now(tz=ZoneInfo("America/Sao_Paulo")).normalize().tz_localize(None)
 
 # =========================
-# IDs por colaborador
-# =========================
-ids_logon = ids_logon.drop_duplicates(subset=["COLABORADOR"], keep="last")
-
-base = base.merge(ids_logon[["COLABORADOR", "ID"]], on="COLABORADOR", how="left")
-base["ID"] = base["ID"].astype(str).str.strip().replace(["", "nan", "None"], pd.NA)
-
-# =========================
-# Respostas por ID + Curso (pega a primeira data)
+# Respostas por ID + Curso (match robusto por CURSO_UP)
 # =========================
 respostas["DATA_ENTREGA_DT"] = tratar_data_segura(respostas["DATA ENTREGA"])
-respostas["ID"] = respostas["ID"].astype(str).str.strip()
+respostas["CURSO_UP"] = respostas["CURSO"].astype(str).map(normalizar_texto)
 
 resp_min = (
     respostas.dropna(subset=["ID"])
-    .groupby(["ID", "CURSO"], dropna=False)["DATA_ENTREGA_DT"]
+    .groupby(["ID", "CURSO_UP"], dropna=False)["DATA_ENTREGA_DT"]
     .min()
     .reset_index()
 )
@@ -300,7 +332,7 @@ ETAPAS = [
 # Montagem da base LONGA (1 linha por etapa por colaborador)
 # =========================
 linhas = []
-base_cols = ["COLABORADOR", "CARGO", "OPERACAO", "DATA ADMISSAO", "DATA_ADM_DT", "ID", "STATUS COLABORADOR", "ATIVIDADE"]
+base_cols = ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "DATA ADMISSAO", "DATA_ADM_DT", "ID", "STATUS COLABORADOR"]
 
 for _, r in base[base_cols].iterrows():
     adm = pd.to_datetime(r["DATA_ADM_DT"]).normalize()
@@ -312,20 +344,20 @@ for _, r in base[base_cols].iterrows():
 
         realizado_dt = pd.NaT
         if pd.notna(_id):
-            hit = resp_min[(resp_min["ID"] == str(_id)) & (resp_min["CURSO"] == etapa)]
+            etapa_up = normalizar_texto(etapa)
+            hit = resp_min[(resp_min["ID"] == str(_id)) & (resp_min["CURSO_UP"] == etapa_up)]
             if len(hit) > 0:
                 realizado_dt = hit["DATA_ENTREGA_DT"].iloc[0]
 
         if pd.notna(realizado_dt):
             realizado_dt = pd.to_datetime(realizado_dt).normalize()
 
-        # DIAS (saldo do Prazo Máximo)
         if pd.isna(realizado_dt):
-            dias = int((prazo_max_dt - hoje).days)  # pendente
+            dias = int((prazo_max_dt - hoje).days)
             status = "Pendente em atraso" if hoje > prazo_max_dt else "Pendente mas no prazo"
             realizado_txt = ""
         else:
-            dias = int((prazo_max_dt - realizado_dt).days)  # concluído (adiantado positivo, atraso negativo)
+            dias = int((prazo_max_dt - realizado_dt).days)
             if realizado_dt < prazo_min_dt:
                 status = "Concluido adiantado"
             elif realizado_dt > prazo_max_dt:
@@ -336,10 +368,10 @@ for _, r in base[base_cols].iterrows():
 
         linhas.append({
             "COLABORADOR": r["COLABORADOR"],
+            "STATUS COLABORADOR": r["STATUS COLABORADOR"],
             "CARGO": r["CARGO"],
             "OPERACAO": r["OPERACAO"],
             "ATIVIDADE": r.get("ATIVIDADE", ""),
-            "STATUS COLABORADOR": r["STATUS COLABORADOR"],
             "ADMISSAO": r["DATA ADMISSAO"],
             "ADMISSAO_DT": adm,
             "ETAPA": etapa,
@@ -368,7 +400,7 @@ periodo = st.sidebar.date_input(
     value=(min_adm.date(), max_adm.date()),
     min_value=min_adm.date(),
     max_value=max_adm.date(),
-    format="DD/MM/YYYY",  # <<< PT-BR no formato do teu dash
+    format="DD/MM/YYYY",
 )
 data_ini, data_fim = periodo
 
@@ -379,8 +411,6 @@ f_status = st.sidebar.multiselect(
     "Status (etapa)",
     ["Pendente em atraso", "Pendente mas no prazo", "Concluido em atraso", "Concluido adiantado", "Conforme esperado"]
 )
-
-# >>> NOVO: filtro por status do colaborador (Ativo/Inativo)
 f_status_colab = st.sidebar.multiselect(
     "Status do colaborador",
     ["Ativo", "Inativo"],
@@ -435,7 +465,6 @@ st.divider()
 
 # =========================
 # 1 - 📌 Aderência Média - Log20
-# OK = Conforme esperado + Pendente mas no prazo
 # =========================
 st.subheader("📌 Aderência Média - Log20")
 
@@ -445,11 +474,11 @@ aderencia_total = (total_ok / total_etapas) if total_etapas > 0 else 0.0
 pct = aderencia_total * 100
 
 if pct >= 100:
-    cor = "#22c55e"  # verde
+    cor = "#22c55e"
 elif pct >= 80:
-    cor = "#facc15"  # amarelo
+    cor = "#facc15"
 else:
-    cor = "#ef4444"  # vermelho
+    cor = "#ef4444"
 
 col_bar, col_pct = st.columns([8, 1])
 with col_bar:
@@ -503,7 +532,7 @@ else:
 st.divider()
 
 # =========================
-# 3 - 🔴 Pendentes em atraso (tabela) - ordem por ADMISSAO crescente
+# 3 - 🔴 Pendentes em atraso
 # =========================
 st.subheader("🔴 Pendentes em atraso")
 
@@ -521,7 +550,7 @@ else:
 st.divider()
 
 # =========================
-# 4 - 🟡 No prazo vencendo em até 3 dias (tabela) - ordem por ADMISSAO crescente
+# 4 - 🟡 No prazo vencendo em até 3 dias
 # =========================
 vencendo_3_df = df_f[
     (df_f["STATUS"] == "Pendente mas no prazo") &
@@ -552,7 +581,7 @@ tabs = st.tabs(ordem_etapas)
 
 cols_ordem = [
     "COLABORADOR",
-    "STATUS COLABORADOR",  # <<< NOVO
+    "STATUS COLABORADOR",
     "CARGO",
     "OPERACAO",
     "ATIVIDADE",
