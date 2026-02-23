@@ -10,7 +10,6 @@ st.set_page_config(
 import pandas as pd
 import numpy as np
 import re
-import locale
 from datetime import datetime
 from pathlib import Path
 from io import BytesIO
@@ -43,6 +42,44 @@ def opcoes(df_, col):
     )
     return sorted(vals)
 
+def normalizar_texto(chave) -> str:
+    """Normaliza para comparação: remove acentos, caixa alta, espaços."""
+    s = "" if pd.isna(chave) else str(chave)
+    s = s.replace("\u00a0", " ").strip().upper()
+    s = (
+        pd.Series([s])
+        .astype(str)
+        .str.normalize("NFKD")
+        .str.encode("ascii", errors="ignore")
+        .str.decode("utf-8")
+        .iloc[0]
+    )
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def carregar_base_ativos():
+    """
+    Tenta carregar base de ativos:
+    1) como aba 'Base colaboradores ativos' dentro do Acomp novos.xlsx
+    2) como arquivo separado /data/Base colaboradores ativos.xlsx
+    Retorna df_ativos (ou None se não encontrar).
+    """
+    # 1) aba dentro do mesmo arquivo
+    try:
+        return pd.read_excel(ARQ_NOVOS, sheet_name="Base colaboradores ativos")
+    except Exception:
+        pass
+
+    # 2) arquivo separado
+    arq_ativos = DATA_DIR / "Base colaboradores ativos.xlsx"
+    if arq_ativos.exists():
+        try:
+            return pd.read_excel(arq_ativos)
+        except Exception:
+            return None
+
+    return None
+
 def to_datetime_safe(s: pd.Series) -> pd.Series:
     if pd.api.types.is_datetime64_any_dtype(s):
         return pd.to_datetime(s, errors="coerce")
@@ -71,7 +108,6 @@ def to_datetime_safe(s: pd.Series) -> pd.Series:
 
     return dt_txt.fillna(dt_excel)
 
-# ✅ CORRIGIDO (sem parêntese extra) e estável no Cloud
 def fmt_data(d: pd.Series) -> pd.Series:
     datas = pd.to_datetime(d, errors="coerce")
     return datas.dt.strftime("%d/%m/%Y").fillna("")
@@ -158,6 +194,47 @@ df.columns = (
 )
 
 # =========================
+# Status colaborador: Ativo / Inativo
+# =========================
+df_ativos = carregar_base_ativos()
+
+ativos_set = set()
+if df_ativos is not None and len(df_ativos):
+    df_ativos.columns = (
+        df_ativos.columns.astype(str)
+        .str.strip()
+        .str.upper()
+        .str.normalize("NFKD")
+        .str.encode("ascii", errors="ignore")
+        .str.decode("utf-8")
+    )
+
+    col_nome = None
+    if "COLABORADOR" in df_ativos.columns:
+        col_nome = "COLABORADOR"
+    elif "NOME" in df_ativos.columns:
+        col_nome = "NOME"
+    else:
+        candidatos = [c for c in df_ativos.columns if "COLAB" in c]
+        col_nome = candidatos[0] if candidatos else None
+
+    if col_nome:
+        ativos_set = set(
+            df_ativos[col_nome]
+            .dropna()
+            .astype(str)
+            .map(normalizar_texto)
+            .tolist()
+        )
+    else:
+        st.warning("⚠️ Base colaboradores ativos carregou, mas não encontrei coluna de nome (COLABORADOR/NOME).")
+else:
+    st.warning("⚠️ Não encontrei a base 'Base colaboradores ativos' (aba ou arquivo). Todos ficarão como Inativo.")
+
+df["COLABORADOR_NORM"] = df["COLABORADOR"].astype(str).map(normalizar_texto)
+df["STATUS COLABORADOR"] = np.where(df["COLABORADOR_NORM"].isin(ativos_set), "Ativo", "Inativo")
+
+# =========================
 # Colunas e etapas
 # =========================
 base_cols = ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "PROGRESSO GERAL"]
@@ -223,14 +300,20 @@ f_status = st.sidebar.multiselect(
     ["Realizada", "Não Realizada", "Realizada - Fora do Prazo", "N/A", "No prazo"],
 )
 
+f_status_colab = st.sidebar.multiselect(
+    "Status do colaborador",
+    ["Ativo", "Inativo"],
+    default=["Ativo"],
+)
+
 min_adm = df["ADMISSAO"].min()
 max_adm = df["ADMISSAO"].max()
 if pd.isna(min_adm) or pd.isna(max_adm):
     min_adm = pd.to_datetime("2025-01-01")
     max_adm = hoje
 
+# ✅ Período (2 campos) em PT-BR visual
 col1, col2 = st.sidebar.columns(2)
-
 with col1:
     dt_ini = st.date_input("Início", value=min_adm.date(), format="DD/MM/YYYY")
 with col2:
@@ -250,6 +333,8 @@ if f_operacao:
     df_f = df_f[df_f["OPERACAO"].isin(f_operacao)]
 if f_atividade:
     df_f = df_f[df_f["ATIVIDADE"].isin(f_atividade)]
+if f_status_colab:
+    df_f = df_f[df_f["STATUS COLABORADOR"].isin(f_status_colab)]
 
 # =========================
 # Cards globais
@@ -399,7 +484,7 @@ for nome_aba, status_col, limite_col, dt_col in etapas:
         dias_dt = (lim - dt).dt.days
         dias = dias.where(dt.isna(), dias_dt)
 
-        tmp_nr = df_f.loc[mask_nr, ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
+        tmp_nr = df_f.loc[mask_nr, ["COLABORADOR", "STATUS COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
         tmp_nr["ETAPA"] = nome_aba
         tmp_nr["DATA LIMITE"] = lim.loc[mask_nr].copy()
         tmp_nr["DIAS"] = pd.to_numeric(dias.loc[mask_nr], errors="coerce").fillna(0).astype(int).values
@@ -413,7 +498,7 @@ if linhas_nr:
 
     st.metric("Registros com etapa 'Não Realizada'", len(df_nr))
 
-    view_nr = df_nr[["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "ETAPA", "DATA LIMITE", "DIAS"]].copy()
+    view_nr = df_nr[["COLABORADOR","STATUS COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
     sty_nr = styler_padrao(view_nr).applymap(estilo_dias, subset=["DIAS"])
     st.dataframe(sty_nr, use_container_width=True, height=450)
 else:
@@ -437,7 +522,7 @@ for nome_aba, status_col, limite_col, dt_col in etapas:
     mask_venc3 = mask_np & dias_para_vencer.between(0, 3)
 
     if mask_venc3.any():
-        tmp_np = df_f.loc[mask_venc3, ["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
+        tmp_np = df_f.loc[mask_venc3, ["COLABORADOR", "STATUS COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
         tmp_np["ETAPA"] = nome_aba
         tmp_np["DATA LIMITE"] = lim.loc[mask_venc3].copy()
         tmp_np["DIAS"] = pd.to_numeric(dias_para_vencer.loc[mask_venc3], errors="coerce").fillna(0).astype(int).values
@@ -451,7 +536,7 @@ if linhas_np:
 
     st.metric("Registros 'No prazo' vencendo em até 3 dias", len(df_alerta))
 
-    view_np = df_alerta[["COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA", "ETAPA", "DATA LIMITE", "DIAS"]].copy()
+    view_np = df_alerta[["COLABORADOR","STATUS COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
     sty_np = styler_padrao(view_np).applymap(estilo_dias, subset=["DIAS"])
     st.dataframe(sty_np, use_container_width=True, height=420)
 else:
@@ -487,20 +572,24 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
 
     tmp["PROGRESSO GERAL"] = tmp["PROGRESSO_GERAL_NUM"].map(lambda x: f"{x:.0%}")
 
-    view = tmp[
-        [
-            "COLABORADOR",
-            "OPERACAO",
-            "ATIVIDADE",
-            "ADMISSAO",
-            "TEMPO DE CASA",
-            "PROGRESSO GERAL",
-            status_col,
-            limite_col,
-            dt_col,
-            "DIAS",
-        ]
-    ].copy()
+    cols_view = [
+        "COLABORADOR",
+        "OPERACAO",
+        "ATIVIDADE",
+        "ADMISSAO",
+        "TEMPO DE CASA",
+        "PROGRESSO GERAL",
+        status_col,
+        limite_col,
+        dt_col,
+        "DIAS",
+    ]
+
+    # ✅ Só no Follow: adiciona STATUS COLABORADOR logo após COLABORADOR
+    if nome_aba.strip().lower() == "follow":
+        cols_view.insert(1, "STATUS COLABORADOR")
+
+    view = tmp[cols_view].copy()
 
     st.write("**Top 5 operações com mais 'Não Realizada' (nesta etapa)**")
     top5_etapa = (
