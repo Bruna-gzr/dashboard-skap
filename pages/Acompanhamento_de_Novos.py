@@ -70,8 +70,16 @@ def to_datetime_safe(s: pd.Series) -> pd.Series:
 
     return dt_txt.fillna(dt_excel)
 
+import locale
+
 def fmt_data(d: pd.Series) -> pd.Series:
-    return pd.to_datetime(d, errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
+    try:
+        locale.setlocale(locale.LC_TIME, "pt_BR.UTF-8")
+    except:
+        pass
+
+    datas = pd.to_datetime(d, errors="coerce")
+    return datas.dt.strftime("%d/%m/%Y").fillna(""))
 
 def normalizar_status(s) -> str:
     s = "" if pd.isna(s) else str(s)
