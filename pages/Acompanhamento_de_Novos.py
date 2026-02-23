@@ -10,6 +10,7 @@ st.set_page_config(
 import pandas as pd
 import numpy as np
 import re
+import locale
 from datetime import datetime
 from pathlib import Path
 from io import BytesIO
@@ -70,16 +71,10 @@ def to_datetime_safe(s: pd.Series) -> pd.Series:
 
     return dt_txt.fillna(dt_excel)
 
-import locale
-
+# ✅ CORRIGIDO (sem parêntese extra) e estável no Cloud
 def fmt_data(d: pd.Series) -> pd.Series:
-    try:
-        locale.setlocale(locale.LC_TIME, "pt_BR.UTF-8")
-    except:
-        pass
-
     datas = pd.to_datetime(d, errors="coerce")
-    return datas.dt.strftime("%d/%m/%Y").fillna(""))
+    return datas.dt.strftime("%d/%m/%Y").fillna("")
 
 def normalizar_status(s) -> str:
     s = "" if pd.isna(s) else str(s)
