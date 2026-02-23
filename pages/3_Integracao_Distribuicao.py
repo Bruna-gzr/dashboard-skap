@@ -251,6 +251,7 @@ IGNORAR_NOMES = [
     "JULIANO CASTEDO MENDES",
     "CLEITON VINICIUS CESARIO DE CARVALHO",
     "ALEXANDER DE SOUZA GOMES",
+    "RIVALDO BERNABE DE MELO",
 ]
 ignorar_up = set(normalizar_texto(x) for x in IGNORAR_NOMES)
 base = base[~base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ignorar_up)]
