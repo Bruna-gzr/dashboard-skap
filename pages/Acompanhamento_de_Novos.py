@@ -107,7 +107,8 @@ def exigir_coluna(df_: pd.DataFrame, col: str) -> pd.DataFrame:
 
 # =========================
 # Última atualização dos dados (APENAS desta página)
-# =========================try:
+# =========================
+try:
     if ARQ_NOVOS.exists():
         last_mtime = ARQ_NOVOS.stat().st_mtime
         dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
@@ -193,19 +194,16 @@ if td.isna().all():
     df["TEMPO DE CASA"] = (hoje - df["ADMISSAO"]).dt.days
 else:
     df["TEMPO DE CASA"] = td
-
 df["TEMPO DE CASA"] = pd.to_numeric(df["TEMPO DE CASA"], errors="coerce").fillna(0).astype(int)
 
 pg = pd.to_numeric(df["PROGRESSO GERAL"], errors="coerce")
 df["PROGRESSO_GERAL_NUM"] = np.where(pg.notna() & (pg > 1.0), pg / 100.0, pg).astype(float)
 df["PROGRESSO_GERAL_NUM"] = np.nan_to_num(df["PROGRESSO_GERAL_NUM"], nan=0.0)
 
-# Datas das etapas
 for _, _, limite_col, dt_col in etapas:
     df[limite_col] = to_datetime_safe(df[limite_col])
     df[dt_col] = to_datetime_safe(df[dt_col])
 
-# Status: guardar RAW pra debug + normalizar
 for _, status_col, _, _ in etapas:
     df[status_col + "_RAW"] = df[status_col].astype(str)
     df[status_col] = df[status_col].apply(normalizar_status)
@@ -219,7 +217,7 @@ f_operacao = st.sidebar.multiselect("Operação", opcoes(df, "OPERACAO"))
 f_atividade = st.sidebar.multiselect("Atividade", opcoes(df, "ATIVIDADE"))
 f_status = st.sidebar.multiselect(
     "Status (aplica na etapa da aba)",
-    ["Realizada", "Não Realizada", "Realizada - Fora do Prazo", "N/A", "No prazo"]
+    ["Realizada", "Não Realizada", "Realizada - Fora do Prazo", "N/A", "No prazo"],
 )
 
 min_adm = df["ADMISSAO"].min()
@@ -252,7 +250,6 @@ for _, status_col, limite_col, _ in etapas:
     st_col = df_f[status_col].fillna("")
     lim = df_f[limite_col]
 
-    # ✅ SOMENTE "No prazo"
     mask_np = (st_col == "No prazo") & lim.notna()
     dias_para_vencer = (lim - hoje).dt.days
     mask_venc3 = mask_np & dias_para_vencer.between(0, 3)
@@ -283,7 +280,7 @@ with c_bar:
     st.progress(progresso_empresa)
 
 # =========================
-# Estilos (usados em tudo)
+# Estilos
 # =========================
 def estilo_progresso(v):
     try:
@@ -337,7 +334,7 @@ def styler_padrao(df_view: pd.DataFrame):
     return sty
 
 # =========================
-# Gráfico: % médio de Progresso Geral por Operação
+# Gráfico
 # =========================
 st.subheader("📈 Progresso Geral médio por Operação")
 
@@ -353,13 +350,17 @@ if len(prog_op) == 0:
 else:
     prog_op["PROGRESSO_MEDIO_%"] = (prog_op["PROGRESSO_MEDIO"] * 100).round(1)
     fig = px.bar(prog_op, x="OPERACAO", y="PROGRESSO_MEDIO_%", text="PROGRESSO_MEDIO_%")
-    fig.update_layout(yaxis_title="% médio", xaxis_title="Operação", xaxis={"categoryorder": "total descending"})
+    fig.update_layout(
+        yaxis_title="% médio",
+        xaxis_title="Operação",
+        xaxis={"categoryorder": "total descending"},
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
 
 # =========================
-# 🧪 Debug — exemplos de 'Não Realizada'
+# Debug
 # =========================
 with st.expander("🧪 Debug: conferir divergências (RAW vs normalizado)", expanded=False):
     for nome_aba, status_col, _, _ in etapas:
@@ -511,7 +512,7 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
         data=excel_bytes,
         file_name=f"acomp_novos_{nome_aba.lower().replace(' ', '_')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
+        use_container_width=True,
     )
 
     st.subheader(f"📋 Detalhamento — {nome_aba}")
