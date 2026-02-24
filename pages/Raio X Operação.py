@@ -356,6 +356,13 @@ def carregar_bases(_cache_key: float | None):
     if not ARQ_ATIVOS.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_ATIVOS.name}")
 
+    with st.expander("🧪 DEBUG PRONTUÁRIO"):
+    st.write("ARQ_PRONT existe?", ARQ_PRONT.exists())
+    st.write("Linhas pront carregadas:", 0 if pront is None else len(pront))
+    if pront is not None and not pront.empty:
+        st.write("Colunas:", list(pront.columns))
+        st.dataframe(pront.head(20), use_container_width=True)
+
     ativos = pd.read_excel(ARQ_ATIVOS)
     skap   = pd.read_excel(ARQ_SKAP) if ARQ_SKAP.exists() else pd.DataFrame()
     vales  = pd.read_excel(ARQ_VALES) if ARQ_VALES.exists() else pd.DataFrame()
@@ -427,33 +434,25 @@ else:
         if c not in pront.columns:
             pront[c] = np.nan if c == "PRONT_PONDERADA" else ""
 
-# =========================================================
-# BASE MASTER + fallback de prontuário (3 camadas)
-# =========================================================
+# =========================
+# BASE MASTER + PRONTUÁRIO (merge robusto)
+# =========================
 base_master = ativos.merge(skap_niveis, on="NOME_KEY", how="left")
 
-# 1) por NOME_KEY
-base_master = base_master.merge(
-    pront[["NOME_KEY", "PRONT_PONDERADA"]].drop_duplicates("NOME_KEY"),
-    on="NOME_KEY", how="left"
-)
+# garante colunas de match no prontuário
+if pront is None or pront.empty:
+    base_master["PRONT_PONDERADA"] = np.nan
+else:
+    # dicionários por chave (último valor válido)
+    d_key = pront.dropna(subset=["PRONT_PONDERADA"]).drop_duplicates("NOME_KEY", keep="last").set_index("NOME_KEY")["PRONT_PONDERADA"].to_dict()
+    d_simple = pront.dropna(subset=["PRONT_PONDERADA"]).drop_duplicates("NOME_SIMPLE", keep="last").set_index("NOME_SIMPLE")["PRONT_PONDERADA"].to_dict()
+    d_fl = pront.dropna(subset=["PRONT_PONDERADA"]).drop_duplicates("FIRST_LAST", keep="last").set_index("FIRST_LAST")["PRONT_PONDERADA"].to_dict()
 
-# 2) por NOME_SIMPLE
-missing = base_master["PRONT_PONDERADA"].isna()
-if missing.any():
-    p2 = pront[["NOME_SIMPLE", "PRONT_PONDERADA"]].dropna(subset=["NOME_SIMPLE"]).drop_duplicates("NOME_SIMPLE", keep="last")
-    m2 = base_master.loc[missing, ["NOME_SIMPLE"]].merge(p2, on="NOME_SIMPLE", how="left")
-    base_master.loc[missing, "PRONT_PONDERADA"] = m2["PRONT_PONDERADA"].values
-
-# 3) por FIRST_LAST (primeiro + último)
-missing = base_master["PRONT_PONDERADA"].isna()
-if missing.any():
-    p3 = pront[["FIRST_LAST", "PRONT_PONDERADA"]].dropna(subset=["FIRST_LAST"]).drop_duplicates("FIRST_LAST", keep="last")
-    m3 = base_master.loc[missing, ["FIRST_LAST"]].merge(p3, on="FIRST_LAST", how="left")
-    base_master.loc[missing, "PRONT_PONDERADA"] = m3["PRONT_PONDERADA"].values
-
-if "NIVEIS" not in base_master.columns:
-    base_master["NIVEIS"] = ""
+    base_master["PRONT_PONDERADA"] = base_master["NOME_KEY"].map(d_key)
+    miss = base_master["PRONT_PONDERADA"].isna()
+    base_master.loc[miss, "PRONT_PONDERADA"] = base_master.loc[miss, "NOME_SIMPLE"].map(d_simple)
+    miss = base_master["PRONT_PONDERADA"].isna()
+    base_master.loc[miss, "PRONT_PONDERADA"] = base_master.loc[miss, "FIRST_LAST"].map(d_fl)
 
 # Prontuário só para motoristas
 MOTORISTAS_OK = {normalizar_nome("Motorista de Distribuição"), normalizar_nome("Motorista de Van")}
