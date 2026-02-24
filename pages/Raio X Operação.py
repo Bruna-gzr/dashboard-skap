@@ -725,7 +725,7 @@ grid["MÊS"] = grid["MES"].apply(month_label)
 def calc_pontos_row(row) -> dict:
     op_key = norm_operacao(row.get("OPERACAO", ""))
     metas_op = METAS.get(op_key, {})
-    mode = view_mode_from_funcao(row.get("FUNCAO",""))
+    mode = view_mode_from_funcao(row.get("FUNCAO", ""))
 
     res = {
         "PTS_PDV": 0, "PTS_BEES": 0, "PTS_TML": 0, "PTS_JL": 0,
@@ -734,34 +734,45 @@ def calc_pontos_row(row) -> dict:
     }
 
     if mode == "DISTRIB":
-        v_pdv = row.get("PDV", np.nan)
+        v_pdv  = row.get("PDV", np.nan)
         v_bees = row.get("BEES", np.nan)
-        v_tml = row.get("TML_MIN", np.nan)
-        v_jl = row.get("JL", np.nan)
+        v_tml  = row.get("TML_MIN", np.nan)   # ✅ minutos
+        v_jl   = row.get("JL", np.nan)
 
-        if pd.notna(v_pdv) and "PDV" in metas_op and v_pdv <= metas_op["PDV"]["meta"]:
-            res["PTS_PDV"] = PONTOS_DISTRIB["PDV"]
-        if pd.notna(v_bees) and "BEES" in metas_op and v_bees >= metas_op["BEES"]["meta"]:
-            res["PTS_BEES"] = PONTOS_DISTRIB["BEES"]
+        # PDV
+        if pd.notna(v_pdv) and "PDV" in metas_op and pd.notna(metas_op["PDV"].get("meta", None)):
+            if float(v_pdv) <= float(metas_op["PDV"]["meta"]):
+                res["PTS_PDV"] = PONTOS_DISTRIB["PDV"]
+
+        # BEES
+        if pd.notna(v_bees) and "BEES" in metas_op and pd.notna(metas_op["BEES"].get("meta", None)):
+            if float(v_bees) >= float(metas_op["BEES"]["meta"]):
+                res["PTS_BEES"] = PONTOS_DISTRIB["BEES"]
+
+        # TML (meta em minutos OU horas)
         meta_tml = metas_op.get("TML", {}).get("meta", None)
+        meta_tml_min = None
+        if meta_tml is not None and pd.notna(meta_tml):
+            meta_tml = float(meta_tml)
+            meta_tml_min = meta_tml * 60.0 if 0 < meta_tml <= 1.5 else meta_tml  # 0.5h -> 30min
 
-# aceita meta em horas (0.5) OU minutos (30)
-meta_tml_min = None
-if meta_tml is not None and pd.notna(meta_tml):
-    meta_tml = float(meta_tml)
-    meta_tml_min = meta_tml * 60 if 0 < meta_tml <= 1.5 else meta_tml
-if pd.notna(v_tml) and meta_tml_min is not None and v_tml <= meta_tml_min:
-    res["PTS_TML"] = PONTOS_DISTRIB["TML"]
-        if pd.notna(v_jl) and "JL" in metas_op and v_jl >= metas_op["JL"]["meta"]:
-            res["PTS_JL"] = PONTOS_DISTRIB["JL"]
+        if pd.notna(v_tml) and meta_tml_min is not None:
+            if float(v_tml) <= float(meta_tml_min):
+                res["PTS_TML"] = PONTOS_DISTRIB["TML"]
 
-        if int(row.get("ABS", 0)) == 0:
+        # JL
+        if pd.notna(v_jl) and "JL" in metas_op and pd.notna(metas_op["JL"].get("meta", None)):
+            if float(v_jl) >= float(metas_op["JL"]["meta"]):
+                res["PTS_JL"] = PONTOS_DISTRIB["JL"]
+
+        # eventos
+        if int(row.get("ABS", 0) or 0) == 0:
             res["PTS_ABS"] = PONTOS_DISTRIB["ABS"]
-        if int(row.get("VALES", 0)) == 0:
+        if int(row.get("VALES", 0) or 0) == 0:
             res["PTS_VALES"] = PONTOS_DISTRIB["VALES"]
-        if int(row.get("ACIDENTE", 0)) == 0:
+        if int(row.get("ACIDENTE", 0) or 0) == 0:
             res["PTS_ACIDENTE"] = PONTOS_DISTRIB["ACIDENTE"]
-        if int(row.get("DTO", 0)) == 0:
+        if int(row.get("DTO", 0) or 0) == 0:
             res["PTS_DTO"] = PONTOS_DISTRIB["DTO"]
 
         res["TOTAL_PTS"] = (
@@ -771,11 +782,11 @@ if pd.notna(v_tml) and meta_tml_min is not None and v_tml <= meta_tml_min:
         return res
 
     # ARMAZEM
-    if int(row.get("ABS", 0)) == 0:
+    if int(row.get("ABS", 0) or 0) == 0:
         res["PTS_ABS"] = PONTOS_ARMAZEM["ABS"]
-    if int(row.get("ACIDENTE", 0)) == 0:
+    if int(row.get("ACIDENTE", 0) or 0) == 0:
         res["PTS_ACIDENTE"] = PONTOS_ARMAZEM["ACIDENTE"]
-    if int(row.get("DTO", 0)) == 0:
+    if int(row.get("DTO", 0) or 0) == 0:
         res["PTS_DTO"] = PONTOS_ARMAZEM["DTO"]
 
     res["TOTAL_PTS"] = res["PTS_ABS"] + res["PTS_ACIDENTE"] + res["PTS_DTO"]
