@@ -1199,16 +1199,11 @@ with right:
             for c in out_flat.columns
         ]
 
-        ZERO = "\u200b"  # zero-width space (invisível)
-
-        def base_indicador(col: str) -> str:
-            if col.endswith("_PTS"):
-                return col[:-4]
-            if col.endswith("_Resultado"):
-                return col[:-10]
-            return col
+                ZERO = "\u200b"  # zero-width space (invisível)
 
         new_cols = []
+        pts_counter = 0  # garante unicidade para cada coluna PTS
+
         for col in out_flat.columns:
             col = str(col)
 
@@ -1218,10 +1213,9 @@ with right:
                 continue
 
             if col.endswith("_PTS"):
-                # JL_PTS -> PTS (mas único internamente)
-                ind = base_indicador(col)
-                n = (abs(hash(ind)) % 6) + 1  # 1..6
-                new_cols.append("PTS" + (ZERO * n))
+                # vira "PTS" visualmente, mas único internamente
+                pts_counter += 1
+                new_cols.append("PTS" + (ZERO * pts_counter))
                 continue
 
             new_cols.append(col)
