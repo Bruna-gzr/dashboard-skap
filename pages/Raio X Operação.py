@@ -31,15 +31,15 @@ st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 # =========================================================
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
-ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"              # BASE PRINCIPAL
-ARQ_SKAP = DATA_DIR / "Skap.xlsx"                                     # pegar coluna NIVEIS
-ARQ_PRONT = DATA_DIR / "Prontuario Condutor.xlsx"                     # Nome + Pontuação Ponderada
-ARQ_VALES = DATA_DIR / "Vales.xlsx"                                   # COLABORADOR + DATA
-ARQ_RV = DATA_DIR / "RV.xlsx"                                         # NOME + DATA + TOTAL RV + % + RECARGA
-ARQ_ABS = DATA_DIR / "Absenteismo.xlsx"                               # COLABORADOR + DATA + Tipo de Ausência
-ARQ_ACID = DATA_DIR / "Ocorrencia de acidentes.xlsx"                  # COLABORADOR + Data da Ocorrência
-ARQ_DTO = DATA_DIR / "Desvios de DTOs.xlsx"                           # COLABORADOR + Data
-ARQ_IND = DATA_DIR / "Resultados indicadores operacionais.xlsx"       # COLABORADOR + Data + PDV + BEES + TML (MIN) + JL + STATUS
+ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
+ARQ_SKAP = DATA_DIR / "Skap.xlsx"
+ARQ_PRONT = DATA_DIR / "Prontuario Condutor.xlsx"
+ARQ_VALES = DATA_DIR / "Vales.xlsx"
+ARQ_RV = DATA_DIR / "RV.xlsx"
+ARQ_ABS = DATA_DIR / "Absenteismo.xlsx"
+ARQ_ACID = DATA_DIR / "Ocorrencia de acidentes.xlsx"
+ARQ_DTO = DATA_DIR / "Desvios de DTOs.xlsx"
+ARQ_IND = DATA_DIR / "Resultados indicadores operacionais.xlsx"
 
 # =========================================================
 # ATUALIZAÇÃO + CACHE BUSTER + BOTÃO REFRESH
@@ -121,6 +121,13 @@ def safe_float(x):
     return pd.to_numeric(x, errors="coerce")
 
 def parse_percent(x):
+    """
+    Aceita:
+    - 0.6117 -> 61.17%
+    - "61,17%" / "61.17%" -> 61.17%
+    - 61.17 -> 61.17%
+    Retorna em porcentagem (0-100).
+    """
     if pd.isna(x):
         return np.nan
     s = str(x).strip()
@@ -135,11 +142,19 @@ def parse_percent(x):
     return float(v)
 
 def parse_time_mmss(x):
+    """
+    Retorna minutos como float.
+    Aceita:
+    - "00:30" / "0:30" (mm:ss)
+    - "00:30:00" (hh:mm:ss)
+    - número (já minutos)
+    """
     if pd.isna(x):
         return np.nan
     s = str(x).strip()
     if s == "":
         return np.nan
+
     s = s.replace("0 days ", "").replace("0 day ", "")
 
     v = pd.to_numeric(s.replace(",", "."), errors="coerce")
@@ -163,6 +178,7 @@ def parse_time_mmss(x):
         if pd.isna(hh) or pd.isna(mm) or pd.isna(ss):
             return np.nan
         return float(hh) * 60.0 + float(mm) + float(ss) / 60.0
+
     return np.nan
 
 def fmt_pct(v):
@@ -212,8 +228,7 @@ FUNCOES_MAP = {
 FUNCOES_PERMITIDAS = sorted(list(set(FUNCOES_MAP.values())))
 
 def unificar_funcao(cargo: str) -> str:
-    k = normalizar_nome(cargo)
-    return FUNCOES_MAP.get(k, "")
+    return FUNCOES_MAP.get(normalizar_nome(cargo), "")
 
 # =========================================================
 # METAS/PONTOS POR OPERAÇÃO
@@ -221,7 +236,7 @@ def unificar_funcao(cargo: str) -> str:
 METAS = {
     "CD CASCAVEL": {
         "PDV": {"meta": 3.5, "pontos": 5, "tipo": "lte_pct"},
-        "BEES": {"meta": 95.0, "pontos": 1, "tipo": "gte_pct"},  # ✅ ajuste
+        "BEES": {"meta": 95.0, "pontos": 1, "tipo": "gte_pct"},  # ajuste
         "TML": {"meta": 0.5, "pontos": 2, "tipo": "lte_min"},
         "JL": {"meta": 80.0, "pontos": 3, "tipo": "gte_pct"},
         "ABS": {"meta": 0, "pontos": 5, "tipo": "eq0"},
@@ -251,7 +266,6 @@ METAS = {
     },
     "CD LONDRINA": {
         "PDV": {"meta": 3.5, "pontos": 3, "tipo": "lte_pct"},
-        # BEES não aplicável
         "TML": {"meta": 0.5, "pontos": 5, "tipo": "lte_min"},
         "JL": {"meta": 80.0, "pontos": 3, "tipo": "gte_pct"},
         "ABS": {"meta": 0, "pontos": 5, "tipo": "eq0"},
@@ -291,7 +305,7 @@ METAS = {
     },
 }
 
-# ✅ normaliza chaves do METAS
+# normaliza chaves do METAS (pra bater com norm_operacao)
 METAS = {norm_operacao(k): v for k, v in METAS.items()}
 
 # =========================================================
@@ -318,7 +332,7 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
 
     df["NOME_KEY"] = df[col_nome].astype(str).map(normalizar_nome)
 
-    # acha coluna ponderada (com variações)
+    # acha coluna ponderada
     col_score = None
     for c in df.columns:
         cc = normalizar_nome(c)
@@ -396,7 +410,7 @@ ativos["ADMISSAO"] = pd.to_datetime(ativos["DATA_ADM_DT"], errors="coerce").dt.s
 ativos = ativos[ativos["FUNCAO"].isin(FUNCOES_PERMITIDAS)].copy()
 
 # =========================================================
-# SKAP: puxar NÍVEIS
+# SKAP: puxar NÍVEIS (via nome normalizado)
 # =========================================================
 skap = normalizar_colunas(skap) if not skap.empty else skap
 if not skap.empty:
@@ -410,7 +424,7 @@ else:
     skap_niveis = pd.DataFrame(columns=["NOME_KEY", "NIVEIS"])
 
 # =========================================================
-# PRONTUÁRIO: DF (NOME_KEY, PRONT_PONDERADA)
+# PRONTUÁRIO
 # =========================================================
 if pront is None or pront.empty:
     pront = pd.DataFrame(columns=["NOME_KEY", "PRONT_PONDERADA"])
@@ -422,16 +436,18 @@ else:
         pront["PRONT_PONDERADA"] = np.nan
 
 # =========================================================
-# BASE MASTER — filtros e cards
+# BASE MASTER
 # =========================================================
 base_master = (
-    ativos.merge(skap_niveis, on="NOME_KEY", how="left")
-          .merge(pront[["NOME_KEY", "PRONT_PONDERADA"]], on="NOME_KEY", how="left")
+    ativos
+    .merge(skap_niveis, on="NOME_KEY", how="left")
+    .merge(pront[["NOME_KEY", "PRONT_PONDERADA"]], on="NOME_KEY", how="left")
 )
+
 if "NIVEIS" not in base_master.columns:
     base_master["NIVEIS"] = ""
 
-# ✅ Prontuário só para motoristas
+# Prontuário só para motoristas
 MOTORISTAS_OK = {
     normalizar_nome("Motorista de Distribuição"),
     normalizar_nome("Motorista de Van"),
@@ -480,9 +496,11 @@ def prep_evento(df: pd.DataFrame, col_nome: str, col_data: str, nome_out="NOME_K
     return out[[nome_out, data_out, "MES"]]
 
 vales_ev = prep_evento(vales, "COLABORADOR", "DATA")
+
 acid_ev = prep_evento(acid, "COLABORADOR", "DATA DA OCORRENCIA")
 if acid_ev.empty:
     acid_ev = prep_evento(acid, "COLABORADOR", "DATA")
+
 dto_ev = prep_evento(dto, "COLABORADOR", "DATA")
 
 # Absenteísmo
@@ -626,7 +644,7 @@ for c in ["ABS", "VALES", "ACIDENTE", "DTO"]:
     if c in grid.columns:
         grid[c] = pd.to_numeric(grid[c], errors="coerce").fillna(0).astype(int)
 
-# ✅ FILTRAR MESES ANTERIORES À ADMISSÃO
+# ✅ remover meses anteriores à admissão (por colaborador)
 grid["_MES_DT"] = pd.to_datetime(grid["MES"] + "-01", errors="coerce")
 grid["_ADM_MES_DT"] = pd.to_datetime(grid["DATA_ADM_DT"], errors="coerce").dt.to_period("M").dt.to_timestamp()
 grid = grid[grid["_MES_DT"] >= grid["_ADM_MES_DT"]].copy()
@@ -747,6 +765,7 @@ if adm_ini > adm_fim:
     st.sidebar.warning("⚠️ Início maior que Fim. Ajustei automaticamente.")
     adm_ini, adm_fim = adm_fim, adm_ini
 
+# Colaborador (depende dos filtros acima)
 base_fil = base_master.copy()
 if f_oper != "Todos":
     base_fil = base_fil[base_fil["OPERACAO"] == f_oper]
@@ -792,10 +811,368 @@ if f_colab != "Todos":
     df = df[df["NOME_KEY"] == nome_key]
 
 # =========================================================
-# BOX METAS/PONTUAÇÃO (lateral)
+# BOX METAS/PONTUAÇÃO (sidebar)
 # =========================================================
 st.sidebar.divider()
 st.sidebar.subheader("Pontuação")
 
 op_meta_key = norm_operacao(f_oper) if f_oper != "Todos" else None
-metas_op = METAS.get(op
+metas_op = METAS.get(op_meta_key, None) if op_meta_key else None
+
+if metas_op is None:
+    st.sidebar.caption("Selecione uma operação com metas configuradas para ver a pontuação.")
+else:
+    def linha_meta(nome, meta, pts):
+        st.sidebar.markdown(f"- **{nome}**: meta **{meta}** · **{pts} pts**")
+
+    if "PDV" in metas_op:
+        linha_meta("DEV PDV", f"≤ {metas_op['PDV']['meta']}%", metas_op["PDV"]["pontos"])
+    if "BEES" in metas_op:
+        linha_meta("BEES", f"≥ {metas_op['BEES']['meta']}%", metas_op["BEES"]["pontos"])
+    if "TML" in metas_op:
+        linha_meta("TML", "≤ 00:30", metas_op["TML"]["pontos"])
+    if "JL" in metas_op:
+        linha_meta("JL", f"≥ {metas_op['JL']['meta']}%", metas_op["JL"]["pontos"])
+    linha_meta("ABS", "0", metas_op["ABS"]["pontos"])
+    linha_meta("VALES", "0", metas_op["VALES"]["pontos"])
+    linha_meta("ACID", "0", metas_op["ACIDENTE"]["pontos"])
+    linha_meta("DTO", "0", metas_op["DTO"]["pontos"])
+
+    total_pts = sum(v["pontos"] for v in metas_op.values())
+    st.sidebar.markdown(f"**Total possível:** {total_pts} pts")
+
+# =========================================================
+# REFERÊNCIAS: último mês (ref_last) + médias dos resultados (ref_avg)
+# =========================================================
+ref_last = None
+ref_avg = None
+
+if not df.empty:
+    ref_last = df.sort_values("MES", ascending=False).iloc[0].copy()
+
+    # médias dos RESULTADOS (isso que você pediu)
+    ref_avg = ref_last.copy()
+    ref_avg["JL"] = df["JL"].mean()
+    ref_avg["PDV"] = df["PDV"].mean()
+    ref_avg["BEES"] = df["BEES"].mean()
+    ref_avg["TML_MIN"] = df["TML_MIN"].mean()
+
+    # “resultado” de contagens: média mensal no período filtrado
+    ref_avg["ABS"] = df["ABS"].mean()
+    ref_avg["VALES"] = df["VALES"].mean()
+    ref_avg["ACIDENTE"] = df["ACIDENTE"].mean()
+    ref_avg["DTO"] = df["DTO"].mean()
+
+def pts_possiveis_por_operacao(op: str) -> dict:
+    m = METAS.get(norm_operacao(op), {})
+    return {
+        "JL": m.get("JL", {}).get("pontos", 0),
+        "DEV PDV": m.get("PDV", {}).get("pontos", 0),
+        "BEES": m.get("BEES", {}).get("pontos", 0),
+        "TML": m.get("TML", {}).get("pontos", 0),
+        "ABS": m.get("ABS", {}).get("pontos", 0),
+        "VALES": m.get("VALES", {}).get("pontos", 0),
+        "ACID": m.get("ACIDENTE", {}).get("pontos", 0),
+        "DTO": m.get("DTO", {}).get("pontos", 0),
+    }
+
+pts_poss = pts_possiveis_por_operacao(ref_last["OPERACAO"]) if ref_last is not None else {}
+
+# =========================================================
+# ESTILO (cores)
+# =========================================================
+def color_pts(v):
+    try:
+        v = int(v)
+    except Exception:
+        return ""
+    return "color: #e5e7eb; font-weight:900;"  # PTS possíveis: neutro (sem verde/vermelho)
+
+def color_risco(v):
+    v = str(v)
+    if v == "NÃO":
+        return "color: #22c55e; font-weight:900;"
+    if v == "ATENÇÃO":
+        return "color: #facc15; font-weight:900;"
+    if v == "SIM":
+        return "color: #ef4444; font-weight:900;"
+    if v in ["FERIAS", "AFASTADO"]:
+        return "color: #94a3b8; font-weight:900;"
+    return ""
+
+# =========================================================
+# LAYOUT (coluna esquerda indicadores + TOP10 estreito; direita gráfico + tabela)
+# =========================================================
+left, right = st.columns([1.05, 2.95], gap="large")
+
+with left:
+    st.markdown("#### Colaborador")
+    st.markdown(
+        f"""
+        <div style='padding:12px;border-radius:14px;background:#22262f;'>
+          <div style='font-weight:900;font-size:18px;line-height:1.1;'>
+            {ref_last['COLABORADOR'] if ref_last is not None else '-'}
+          </div>
+          <div style='opacity:.82;font-size:12px;margin-top:4px;'>
+            {ref_last['OPERACAO'] if ref_last is not None else ''} · {ref_last['FUNCAO'] if ref_last is not None else ''}
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("#### Indicadores")
+
+    def linha_ind(icon, nome, resultado, pts):
+        st.markdown(
+            f"""
+            <div style="display:flex;align-items:center;justify-content:space-between;
+                        padding:10px 10px;border-radius:12px;background:#22262f;margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="font-size:18px;opacity:.9;">{icon}</div>
+                <div>
+                  <div style="font-weight:800;font-size:13px;opacity:.95;">{nome}</div>
+                  <div style="font-size:12px;opacity:.8;">Resultado (média): <b>{resultado}</b></div>
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:11px;opacity:.7;">PTS</div>
+                <div style="font-weight:900;font-size:16px;">{pts}</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    if ref_avg is None:
+        st.info("Sem dados para os filtros atuais.")
+    else:
+        # ✅ resultado do indicador (média), não pontuação
+        jl_res = fmt_pct(ref_avg.get("JL", np.nan)) or "-"
+        pdv_res = fmt_pct(ref_avg.get("PDV", np.nan)) or "-"
+        bees_res = fmt_pct(ref_avg.get("BEES", np.nan)) or "-"
+        tml_res = fmt_min(ref_avg.get("TML_MIN", np.nan)) or "-"
+
+        linha_ind("👥", "JL", jl_res, int(pts_poss.get("JL", 0)))
+        linha_ind("📦", "DEV PDV", pdv_res, int(pts_poss.get("DEV PDV", 0)))
+
+        # BEES só mostra se a operação tem meta configurada
+        if int(pts_poss.get("BEES", 0)) > 0:
+            linha_ind("🟨", "BEES", bees_res, int(pts_poss.get("BEES", 0)))
+
+        linha_ind("⏱️", "TML", tml_res, int(pts_poss.get("TML", 0)))
+
+        # contagens (média mensal)
+        linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}", int(pts_poss.get("ABS", 0)))
+        linha_ind("🎫", "VALES", f"{ref_avg.get('VALES', 0):.2f}", int(pts_poss.get("VALES", 0)))
+        linha_ind("⚠️", "ACID", f"{ref_avg.get('ACIDENTE', 0):.2f}", int(pts_poss.get("ACID", 0)))
+        linha_ind("📄", "DTO", f"{ref_avg.get('DTO', 0):.2f}", int(pts_poss.get("DTO", 0)))
+
+    # ✅ TOP 10 estreito (abaixo dos indicadores)
+    st.markdown("### 🏆 TOP 10")
+    if df.empty:
+        st.info("Sem dados para ranking com os filtros atuais.")
+    else:
+        rank = (
+            df.groupby(["COLABORADOR"], dropna=False)
+            .agg(
+                MEDIA_TOTAL=("TOTAL_PTS", "mean"),
+            )
+            .reset_index()
+            .sort_values("MEDIA_TOTAL", ascending=False)
+            .head(10)
+        )
+        rank["MEDIA_TOTAL"] = rank["MEDIA_TOTAL"].map(lambda x: f"{x:.1f}")
+        st.dataframe(centralizar_tabela(rank), use_container_width=True, height=360)
+
+with right:
+    # =========================================================
+    # TOPO — cards (sem Demissão)
+    # =========================================================
+    top1, top2, top3 = st.columns([2.4, 1.3, 1.3])
+
+    with top1:
+        st.markdown(f"<h4 style='margin:0;'> {ref_last['FUNCAO'] if ref_last is not None else ''} </h4>", unsafe_allow_html=True)
+
+    with top2:
+        if ref_last is None or pd.isna(ref_last.get("DATA_ADM_DT", None)):
+            st.metric("Tempo de casa (meses)", "-")
+        else:
+            meses = int((pd.Timestamp.today().normalize() - pd.to_datetime(ref_last["DATA_ADM_DT"]).normalize()).days / 30.44)
+            st.metric("Tempo de casa (meses)", f"{meses}")
+
+    with top3:
+        st.metric("Admissão", (ref_last["ADMISSAO"] if ref_last is not None else "-"))
+
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+    # =========================================================
+    # ✅ Card destacado: RISCO DO ÚLTIMO MÊS
+    # =========================================================
+    if ref_last is None:
+        st.info("Sem dados para exibir risco do último mês.")
+    else:
+        risco_ultimo = str(ref_last.get("RISCO DE TO", "-"))
+        st.markdown(
+            f"""
+            <div style="padding:14px;border-radius:14px;background:#22262f;margin-bottom:14px;">
+              <div style="font-size:12px;opacity:.75;">RISCO DE TO (último mês)</div>
+              <div style="font-size:22px;font-weight:900;margin-top:4px;">{risco_ultimo}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    # =========================================================
+    # ✅ Cards em "caixa" (como indicadores)
+    # =========================================================
+    with st.container(border=True):
+        cA, cB, cC, cD = st.columns(4)
+
+        with cA:
+            st.metric("SKAP - Níveis", (ref_last["NIVEIS"] if ref_last is not None and str(ref_last.get("NIVEIS","")).strip() != "" else "-"))
+
+        with cB:
+            v = ref_last.get("PRONT_PONDERADA", np.nan) if ref_last is not None else np.nan
+            faixa = ref_last.get("PRONT_FAIXA", "-") if ref_last is not None else "-"
+            cor = ref_last.get("PRONT_COR", "#94a3b8") if ref_last is not None else "#94a3b8"
+            if pd.isna(v):
+                st.metric("Prontuário", "-")
+            else:
+                st.markdown(
+                    f"""
+                    <div style="padding:10px;border-radius:12px;background:#2b2f38;">
+                      <div style="font-weight:700;margin-bottom:4px;">Prontuário</div>
+                      <div style="font-weight:900;color:{cor};">{faixa}</div>
+                      <div style="opacity:0.9;font-size:12px;">Ponderada: <b>{v:.3f}</b></div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+        with cC:
+            col = "CICLO DE GENTE 2025"
+            if col in base_master.columns and ref_last is not None:
+                st.metric("Ciclo de gente 2025", str(ref_last.get(col, "-")) or "-")
+            else:
+                st.metric("Ciclo de gente 2025", "-")
+
+        with cD:
+            st.metric("TOTAL (média)", "-" if df.empty else f"{df['TOTAL_PTS'].mean():.1f}")
+
+    st.divider()
+
+    # =========================================================
+    # GRÁFICO: pontuação total por mês
+    # =========================================================
+    st.subheader("📊 Pontuação x mês")
+
+    graf = df.copy()
+    if graf.empty:
+        st.info("Sem dados para o gráfico com os filtros atuais.")
+    else:
+        g = (
+            graf.groupby(["MES"], dropna=False)["TOTAL_PTS"]
+            .mean()
+            .reset_index()
+            .sort_values("MES")
+        )
+        g["MÊS"] = g["MES"].apply(month_label)
+
+        fig = px.bar(g, x="MÊS", y="TOTAL_PTS", text=g["TOTAL_PTS"].map(lambda x: f"{x:.0f}"))
+        fig.update_layout(yaxis_title="Pontuação (TOTAL)", xaxis_title="")
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+
+    # =========================================================
+    # ✅ TABELA logo abaixo do gráfico
+    # =========================================================
+    st.subheader("📋 Tabela de Pontuação (por colaborador e mês)")
+
+    if df.empty:
+        st.info("Sem dados para tabela com os filtros atuais.")
+    else:
+        t = df.copy()
+
+        t["DEV PDV"] = t["PDV"].apply(fmt_pct)
+        t["BEES"]    = t["BEES"].apply(fmt_pct)
+        t["TML"]     = t["TML_MIN"].apply(fmt_min)
+        t["JL"]      = t.get("JL", np.nan).apply(fmt_pct)
+
+        t["ABS"]   = t["ABS"].astype(int)
+        t["VALES"] = t["VALES"].astype(int)
+        t["ACID"]  = t["ACIDENTE"].astype(int)
+        t["DTO"]   = t["DTO"].astype(int)
+
+        out = pd.DataFrame({
+            ("MÊS",""): t["MÊS"],
+            ("COLABORADOR",""): t["COLABORADOR"],
+            ("RISCO DE TO",""): t["RISCO DE TO"],
+            ("TOTAL",""): t["TOTAL_PTS"],
+        })
+
+        def add_indicador(nome, col_res, col_pts):
+            out[(nome, "Resultado")] = t[col_res]
+            out[(nome, "PTS")] = t[col_pts]
+
+        add_indicador("JL",      "JL",      "PTS_JL")
+        add_indicador("DEV PDV", "DEV PDV", "PTS_PDV")
+
+        # BEES condicionado
+        tem_bees = True
+        if f_oper != "Todos":
+            m = METAS.get(norm_operacao(f_oper), {})
+            if "BEES" not in m:
+                tem_bees = False
+        if tem_bees:
+            add_indicador("BEES", "BEES", "PTS_BEES")
+
+        add_indicador("TML",   "TML",   "PTS_TML")
+        add_indicador("ABS",   "ABS",   "PTS_ABS")
+        add_indicador("VALES", "VALES", "PTS_VALES")
+        add_indicador("ACID",  "ACID",  "PTS_ACIDENTE")
+        add_indicador("DTO",   "DTO",   "PTS_DTO")
+
+        out[("_MESKEY","")] = pd.to_datetime(t["MES"] + "-01", errors="coerce")
+        out = out.sort_values([("_MESKEY",""), ("COLABORADOR","")]).drop(columns=[("_MESKEY","")])
+
+        sty = (
+            out.style
+            .set_properties(**{"text-align": "center"})
+            .set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
+        )
+
+        # PTS nas colunas (mantém como “PTS” ao lado)
+        pts_cols = [c for c in out.columns if isinstance(c, tuple) and c[1] == "PTS"]
+        if pts_cols:
+            sty = sty.applymap(color_pts, subset=pts_cols)
+
+        sty = sty.applymap(color_risco, subset=[("RISCO DE TO","")])
+        sty = sty.applymap(lambda v: "font-weight:900;" if isinstance(v, (int, float, np.integer, np.floating)) else "", subset=[("TOTAL","")])
+
+        st.dataframe(sty, use_container_width=True, height=520)
+
+        # Export (flatten colunas)
+        export_df = out.copy()
+        export_df.columns = [c[0] if c[1] == "" else f"{c[0]}_{c[1]}" for c in export_df.columns]
+        excel = preparar_excel_para_download(export_df, sheet_name="RAIO_X")
+        st.download_button(
+            "⬇️ Baixar Excel (Tabela RAIO X)",
+            data=excel,
+            file_name="raio_x_operacao.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+
+# =========================================================
+# NOTAS IMPORTANTES
+# =========================================================
+with st.expander("ℹ️ Notas rápidas"):
+    st.write(
+        "- O match entre planilhas é feito por **nome normalizado** (sem acento, sem pontuação, espaços ajustados).\n"
+        "- Prontuário: somente para **Motorista de Distribuição** e **Motorista de Van**, usando **Pontuação Ponderada**.\n"
+        "- Meses anteriores à admissão **não aparecem**.\n"
+        "- Indicadores por mês: quando há mais de um registro no mês, o app usa **média** (PDV/BEES/TML/JL).\n"
+        "- Se STATUS do indicador for **FERIAS** ou **AFASTADO/AFS**, a coluna **RISCO DE TO** mostra esse status."
+    )
