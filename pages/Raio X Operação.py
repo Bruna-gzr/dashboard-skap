@@ -270,38 +270,73 @@ PONTOS_ARMAZEM = {"ABS": 10, "ACIDENTE": 10, "DTO": 10}  # = 30 (sem RV)
 # PRONTUÁRIO
 # =========================================================
 def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
-    df = pd.read_excel(path_xlsx, sheet_name=0)
-    df = normalizar_colunas(df)
+    """
+    Lê o prontuário de forma robusta:
+    - tenta múltiplos headers (0,1,2)
+    - encontra coluna Empregado
+    - encontra coluna Pontuação <br> Ponderada (mesmo com variações)
+    """
+    def try_read(h):
+        df0 = pd.read_excel(path_xlsx, sheet_name=0, header=h)
+        df0 = normalizar_colunas(df0)
+        return df0
 
-    # nome (prioriza EMPREGADO)
-    col_nome = None
-    for cand in ["EMPREGADO", "COLABORADOR", "NOME", "MOTORISTA", "CONDUTOR"]:
-        if cand in df.columns:
-            col_nome = cand
-            break
-    if col_nome is None:
-        for c in df.columns:
-            cc = normalizar_nome(c)
-            if "EMPREG" in cc or "COLAB" in cc or "NOME" in cc:
-                col_nome = c
+    df = None
+    for h in [0, 1, 2]:
+        try:
+            tmp = try_read(h)
+            # precisa ter alguma coluna com "EMPREG"
+            has_emp = any("EMPREG" in normalizar_nome(c) for c in tmp.columns)
+            if has_emp:
+                df = tmp
                 break
+        except Exception:
+            continue
+
+    if df is None or df.empty:
+        return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
+
+    # --- acha coluna de nome (Empregado)
+    col_nome = None
+    for c in df.columns:
+        cc = normalizar_nome(c)
+        if "EMPREG" in cc:  # cobre EMPREGADO, EMPREG, SITUAÇÃO EMPREG etc (mas vamos priorizar o "EMPREGADO")
+            col_nome = c
+            break
+
+    # tenta priorizar EMPREGADO exato se existir
+    if "EMPREGADO" in df.columns:
+        col_nome = "EMPREGADO"
+
     if col_nome is None:
         return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
 
+    # --- acha coluna pontuação ponderada (cobre <br>, br, etc)
+    col_score = None
+    for c in df.columns:
+        cc = normalizar_nome(c)  # remove acento/pontuação e padroniza espaços
+        # exemplos esperados viram algo como: "PONTUACAO BR PONDERADA"
+        if ("PONTUACAO" in cc or "PONTUAC" in cc or "PONT" in cc) and "PONDERADA" in cc:
+            col_score = c
+            break
+
+    if col_score is None:
+        # fallback: se tiver "PONDERADA" e "PONT" em qualquer ordem
+        for c in df.columns:
+            cc = normalizar_nome(c)
+            if "PONDERADA" in cc and "PONT" in cc:
+                col_score = c
+                break
+
+    if col_score is None:
+        return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
+
+    # --- monta chaves
     df["NOME_KEY"] = df[col_nome].astype(str).map(normalizar_nome)
     df["NOME_SIMPLE"] = df["NOME_KEY"].map(nome_simple_from_key)
     df["FIRST_LAST"] = df["NOME_KEY"].map(first_last_key)
 
-    # coluna ponderada (robusta)
-    col_score = None
-    for c in df.columns:
-        cc = normalizar_nome(c)
-        if ("PONTUACAO" in cc or "PONTUAC" in cc or "PONT" in cc) and "PONDERADA" in cc:
-            col_score = c
-            break
-    if col_score is None:
-        return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
-
+    # --- converte pontuação (vírgula -> ponto)
     s = df[col_score].astype(str).str.replace(",", ".", regex=False)
     df["PRONT_PONDERADA"] = pd.to_numeric(s, errors="coerce")
 
