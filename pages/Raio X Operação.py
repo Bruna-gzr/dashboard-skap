@@ -118,24 +118,37 @@ def parse_percent(x):
 def parse_time_mmss(x):
     if pd.isna(x):
         return np.nan
+
     s = str(x).strip()
     if s == "":
         return np.nan
 
     s = s.replace("0 days ", "").replace("0 day ", "")
 
-    v = pd.to_numeric(s.replace(",", "."), errors="coerce")
-    if not pd.isna(v) and re.fullmatch(r"[-+]?\d+(\.\d+)?", s.replace(",", ".")) is not None:
-        return float(v)
+    # ✅ Se vier número do Excel (fração do dia)
+    s_num = s.replace(",", ".")
+    v = pd.to_numeric(s_num, errors="coerce")
 
+    if not pd.isna(v) and re.fullmatch(r"[-+]?\d+(\.\d+)?", s_num):
+        v = float(v)
+
+        # horário Excel = fração do dia
+        if 0 <= v < 1:
+            return v * 24 * 60  # converte para minutos
+
+        return v
+
+    # ✅ texto HH:MM:SS
     parts = [p.strip() for p in s.split(":") if p.strip() != ""]
+
     if len(parts) == 2:
         mm, ss = parts
         mm = pd.to_numeric(mm, errors="coerce")
         ss = pd.to_numeric(ss, errors="coerce")
         if pd.isna(mm) or pd.isna(ss):
             return np.nan
-        return float(mm) + float(ss) / 60.0
+        return float(mm) + float(ss) / 60
+
     if len(parts) == 3:
         hh, mm, ss = parts
         hh = pd.to_numeric(hh, errors="coerce")
@@ -143,8 +156,21 @@ def parse_time_mmss(x):
         ss = pd.to_numeric(ss, errors="coerce")
         if pd.isna(hh) or pd.isna(mm) or pd.isna(ss):
             return np.nan
-        return float(hh) * 60.0 + float(mm) + float(ss) / 60.0
+        return float(hh) * 60 + float(mm) + float(ss) / 60
+
     return np.nan
+
+def fmt_hms_from_minutes(v):
+    if pd.isna(v):
+        return ""
+
+    total_seconds = int(round(float(v) * 60))
+
+    hh = total_seconds // 3600
+    mm = (total_seconds % 3600) // 60
+    ss = total_seconds % 60
+
+    return f"{hh:02d}:{mm:02d}:{ss:02d}"
 
 def fmt_pct(v):
     return "" if pd.isna(v) else f"{v:.2f}%"
@@ -994,7 +1020,7 @@ with left:
         jl_res   = fmt_pct(ref_avg.get("JL", np.nan)) or "-"
         pdv_res  = fmt_pct(ref_avg.get("PDV", np.nan)) or "-"
         bees_res = fmt_pct(ref_avg.get("BEES", np.nan)) or "-"
-        tml_res  = fmt_min(ref_avg.get("TML_MIN", np.nan)) or "-"
+        tml_res  = fmt_hms_from_minutes(ref_avg.get("TML_MIN", np.nan)) or "-"
         rv_res   = fmt_pct(ref_avg.get("PCT_RV", np.nan)) or "-"
         rec_res  = "-" if pd.isna(ref_avg.get("RECARGAS", np.nan)) else f"{ref_avg.get('RECARGAS', 0):.0f}"
 
@@ -1120,7 +1146,7 @@ with right:
         t = df.copy()
         t["DEV PDV"] = t["PDV"].apply(fmt_pct)
         t["BEES"]    = t["BEES"].apply(fmt_pct)
-        t["TML"]     = t["TML_MIN"].apply(fmt_min)
+        t["TML"] = t["TML_MIN"].apply(fmt_hms_from_minutes)
         t["JL"]      = t.get("JL", np.nan).apply(fmt_pct)
         t["MÉDIA RV"] = t.get("PCT_RV", np.nan).apply(fmt_pct)
         t["RECARGAS_TXT"] = t.get("RECARGAS", 0).fillna(0).astype(int).astype(str)
