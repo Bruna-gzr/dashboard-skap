@@ -236,7 +236,7 @@ def unificar_funcao(cargo: str) -> str:
 METAS = {
     "CD CASCAVEL": {
         "PDV": {"meta": 3.5, "pontos": 5, "tipo": "lte_pct"},
-        "BEES": {"meta": 95.0, "pontos": 1, "tipo": "gte_pct"},  # ajuste
+        "BEES": {"meta": 95.0, "pontos": 1, "tipo": "gte_pct"},
         "TML": {"meta": 0.5, "pontos": 2, "tipo": "lte_min"},
         "JL": {"meta": 80.0, "pontos": 3, "tipo": "gte_pct"},
         "ABS": {"meta": 0, "pontos": 5, "tipo": "eq0"},
@@ -309,13 +309,13 @@ METAS = {
 METAS = {norm_operacao(k): v for k, v in METAS.items()}
 
 # =========================================================
-# PRONTUÁRIO: LER "Pontuação <br> Ponderada" (robusto)
+# PRONTUÁRIO: LER "Empregado" + "Pontuação <br> Ponderada" (robusto)
 # =========================================================
 def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
     df = pd.read_excel(path_xlsx, sheet_name=0)
     df = normalizar_colunas(df)
 
-    # procura coluna de nome
+    # procura coluna de nome (prioriza EMPREGADO)
     col_nome = None
     for cand in ["EMPREGADO", "COLABORADOR", "NOME", "MOTORISTA", "CONDUTOR"]:
         if cand in df.columns:
@@ -324,7 +324,7 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
     if col_nome is None:
         for c in df.columns:
             cc = normalizar_nome(c)
-            if "NOME" in cc or "EMPREG" in cc or "COLAB" in cc:
+            if "EMPREG" in cc or "COLAB" in cc or "NOME" in cc:
                 col_nome = c
                 break
     if col_nome is None:
@@ -332,24 +332,20 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
 
     df["NOME_KEY"] = df[col_nome].astype(str).map(normalizar_nome)
 
-    # acha coluna ponderada
+    # acha coluna ponderada (aceita variações com <br>)
     col_score = None
     for c in df.columns:
         cc = normalizar_nome(c)
-        if "PONTUACAO" in cc and "PONDERADA" in cc:
+        if ("PONTUACAO" in cc or "PONTUAC" in cc or "PONT" in cc) and "PONDERADA" in cc:
             col_score = c
             break
-        if "PONTUAC" in cc and "PONDERADA" in cc:
-            col_score = c
-            break
-        if "PONDERADA" in cc and ("PONT" in cc or "PONTU" in cc):
-            col_score = c
-            break
-
     if col_score is None:
         return pd.DataFrame(columns=["NOME_KEY", "PRONT_PONDERADA"])
 
-    df["PRONT_PONDERADA"] = pd.to_numeric(df[col_score], errors="coerce")
+    # numérico robusto (vírgula)
+    s = df[col_score].astype(str).str.replace(",", ".", regex=False)
+    df["PRONT_PONDERADA"] = pd.to_numeric(s, errors="coerce")
+
     out = (
         df[["NOME_KEY", "PRONT_PONDERADA"]]
         .dropna(subset=["NOME_KEY"])
@@ -424,7 +420,7 @@ else:
     skap_niveis = pd.DataFrame(columns=["NOME_KEY", "NIVEIS"])
 
 # =========================================================
-# PRONTUÁRIO
+# PRONTUÁRIO (já vem com NOME_KEY e PRONT_PONDERADA)
 # =========================================================
 if pront is None or pront.empty:
     pront = pd.DataFrame(columns=["NOME_KEY", "PRONT_PONDERADA"])
@@ -551,7 +547,8 @@ if rv is not None and not rv.empty:
     )
 
 # Indicadores operacionais (por mês) + STATUS
-ind_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PDV", "BEES", "TML_MIN", "JL", "STATUS"])
+# -> além do STATUS "final" (FERIAS/AFASTADO), vamos manter STATUS_RAW para exibir na tabela
+ind_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PDV", "BEES", "TML_MIN", "JL", "STATUS", "STATUS_RAW"])
 if ind is not None and not ind.empty:
     ind = normalizar_colunas(ind)
     for c in ["COLABORADOR", "DATA", "PDV", "BEES", "TML (MIN)", "JL", "STATUS"]:
@@ -569,6 +566,7 @@ if ind is not None and not ind.empty:
     ind["JL_NUM"] = ind["JL"].apply(parse_percent)
 
     ind["STATUS_NORM"] = ind["STATUS"].astype(str).map(normalizar_nome)
+    ind["STATUS_RAW"] = ind["STATUS"].astype(str)
 
     def status_final(s):
         s = normalizar_nome(s)
@@ -586,6 +584,13 @@ if ind is not None and not ind.empty:
             return "AFASTADO"
         return ""
 
+    def pick_status_raw(series: pd.Series) -> str:
+        # prioriza um valor não-vazio (mantém o texto original)
+        vals = [str(x).strip() for x in series.dropna().astype(str).tolist() if str(x).strip() != ""]
+        if not vals:
+            return ""
+        return vals[-1]
+
     ind_m = (
         ind.groupby(["NOME_KEY", "MES"], dropna=False)
         .agg(
@@ -594,6 +599,7 @@ if ind is not None and not ind.empty:
             TML_MIN=("TML_MIN", "mean"),
             JL=("JL_NUM", "mean"),
             STATUS=("STATUS_NORM", pick_status),
+            STATUS_RAW=("STATUS_RAW", pick_status_raw),
         )
         .reset_index()
     )
@@ -633,7 +639,7 @@ def left_join(grid_, df_, cols_keep):
         return grid_
     return grid_.merge(df_[["NOME_KEY", "MES"] + cols_keep], on=["NOME_KEY", "MES"], how="left")
 
-grid = left_join(grid, ind_m, ["PDV", "BEES", "TML_MIN", "JL", "STATUS"])
+grid = left_join(grid, ind_m, ["PDV", "BEES", "TML_MIN", "JL", "STATUS", "STATUS_RAW"])
 grid = left_join(grid, abs_m, ["ABS"])
 grid = left_join(grid, vales_m, ["VALES"])
 grid = left_join(grid, acid_m, ["ACIDENTE"])
@@ -842,52 +848,33 @@ else:
     st.sidebar.markdown(f"**Total possível:** {total_pts} pts")
 
 # =========================================================
-# REFERÊNCIAS: último mês (ref_last) + médias dos resultados (ref_avg)
+# REFERÊNCIAS
+# - ref_last_colab: só existe quando há colaborador selecionado
+# - ref_avg_all: médias do filtro atual (para os indicadores à esquerda)
 # =========================================================
-ref_last = None
-ref_avg = None
+ref_last_colab = None
+ref_avg_all = None
 
 if not df.empty:
-    ref_last = df.sort_values("MES", ascending=False).iloc[0].copy()
-
-    # médias dos RESULTADOS (isso que você pediu)
-    ref_avg = ref_last.copy()
-    ref_avg["JL"] = df["JL"].mean()
-    ref_avg["PDV"] = df["PDV"].mean()
-    ref_avg["BEES"] = df["BEES"].mean()
-    ref_avg["TML_MIN"] = df["TML_MIN"].mean()
-
-    # “resultado” de contagens: média mensal no período filtrado
-    ref_avg["ABS"] = df["ABS"].mean()
-    ref_avg["VALES"] = df["VALES"].mean()
-    ref_avg["ACIDENTE"] = df["ACIDENTE"].mean()
-    ref_avg["DTO"] = df["DTO"].mean()
-
-def pts_possiveis_por_operacao(op: str) -> dict:
-    m = METAS.get(norm_operacao(op), {})
-    return {
-        "JL": m.get("JL", {}).get("pontos", 0),
-        "DEV PDV": m.get("PDV", {}).get("pontos", 0),
-        "BEES": m.get("BEES", {}).get("pontos", 0),
-        "TML": m.get("TML", {}).get("pontos", 0),
-        "ABS": m.get("ABS", {}).get("pontos", 0),
-        "VALES": m.get("VALES", {}).get("pontos", 0),
-        "ACID": m.get("ACIDENTE", {}).get("pontos", 0),
-        "DTO": m.get("DTO", {}).get("pontos", 0),
+    # médias do filtro atual (sempre)
+    ref_avg_all = {
+        "JL": df["JL"].mean(),
+        "PDV": df["PDV"].mean(),
+        "BEES": df["BEES"].mean(),
+        "TML_MIN": df["TML_MIN"].mean(),
+        "ABS": df["ABS"].mean(),
+        "VALES": df["VALES"].mean(),
+        "ACIDENTE": df["ACIDENTE"].mean(),
+        "DTO": df["DTO"].mean(),
     }
 
-pts_poss = pts_possiveis_por_operacao(ref_last["OPERACAO"]) if ref_last is not None else {}
+    # último registro do colaborador (apenas se colaborador escolhido)
+    if f_colab != "Todos":
+        ref_last_colab = df.sort_values("MES", ascending=False).iloc[0].copy()
 
 # =========================================================
 # ESTILO (cores)
 # =========================================================
-def color_pts(v):
-    try:
-        v = int(v)
-    except Exception:
-        return ""
-    return "color: #e5e7eb; font-weight:900;"  # PTS possíveis: neutro (sem verde/vermelho)
-
 def color_risco(v):
     v = str(v)
     if v == "NÃO":
@@ -900,6 +887,16 @@ def color_risco(v):
         return "color: #94a3b8; font-weight:900;"
     return ""
 
+def color_pts_zero(v):
+    # ✅ verde se >0, vermelho se ==0 (ou vazio/NaN tratado como 0)
+    try:
+        vv = float(v)
+    except Exception:
+        vv = 0.0
+    if vv > 0:
+        return "color: #22c55e; font-weight:900;"
+    return "color: #ef4444; font-weight:900;"
+
 # =========================================================
 # LAYOUT (coluna esquerda indicadores + TOP10 estreito; direita gráfico + tabela)
 # =========================================================
@@ -907,14 +904,21 @@ left, right = st.columns([1.05, 2.95], gap="large")
 
 with left:
     st.markdown("#### Colaborador")
+
+    # ✅ quando não tem colaborador selecionado, deixa em branco
+    nome_card = ref_last_colab["COLABORADOR"] if ref_last_colab is not None else ""
+    subt_card = ""
+    if ref_last_colab is not None:
+        subt_card = f"{ref_last_colab['OPERACAO']} · {ref_last_colab['FUNCAO']}"
+
     st.markdown(
         f"""
-        <div style='padding:12px;border-radius:14px;background:#22262f;'>
+        <div style='padding:12px;border-radius:14px;background:#22262f; min-height:64px;'>
           <div style='font-weight:900;font-size:18px;line-height:1.1;'>
-            {ref_last['COLABORADOR'] if ref_last is not None else '-'}
+            {nome_card}
           </div>
           <div style='opacity:.82;font-size:12px;margin-top:4px;'>
-            {ref_last['OPERACAO'] if ref_last is not None else ''} · {ref_last['FUNCAO'] if ref_last is not None else ''}
+            {subt_card}
           </div>
         </div>
         """,
@@ -923,67 +927,72 @@ with left:
 
     st.markdown("#### Indicadores")
 
-    def linha_ind(icon, nome, resultado, pts):
+    # ✅ aumenta fonte e remove PTS (fica só Resultado médio)
+    def linha_ind(icon, nome, resultado):
         st.markdown(
             f"""
             <div style="display:flex;align-items:center;justify-content:space-between;
-                        padding:10px 10px;border-radius:12px;background:#22262f;margin-bottom:8px;">
+                        padding:12px 12px;border-radius:12px;background:#22262f;margin-bottom:8px;">
               <div style="display:flex;align-items:center;gap:10px;">
-                <div style="font-size:18px;opacity:.9;">{icon}</div>
+                <div style="font-size:20px;opacity:.9;">{icon}</div>
                 <div>
-                  <div style="font-weight:800;font-size:13px;opacity:.95;">{nome}</div>
-                  <div style="font-size:12px;opacity:.8;">Resultado (média): <b>{resultado}</b></div>
+                  <div style="font-weight:900;font-size:15px;opacity:.98;">{nome}</div>
+                  <div style="font-size:14px;opacity:.85;">Resultado (média): <b>{resultado}</b></div>
                 </div>
-              </div>
-              <div style="text-align:right;">
-                <div style="font-size:11px;opacity:.7;">PTS</div>
-                <div style="font-weight:900;font-size:16px;">{pts}</div>
               </div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    if ref_avg is None:
+    if ref_avg_all is None:
         st.info("Sem dados para os filtros atuais.")
     else:
-        # ✅ resultado do indicador (média), não pontuação
-        jl_res = fmt_pct(ref_avg.get("JL", np.nan)) or "-"
-        pdv_res = fmt_pct(ref_avg.get("PDV", np.nan)) or "-"
-        bees_res = fmt_pct(ref_avg.get("BEES", np.nan)) or "-"
-        tml_res = fmt_min(ref_avg.get("TML_MIN", np.nan)) or "-"
+        jl_res = fmt_pct(ref_avg_all.get("JL", np.nan)) or "-"
+        pdv_res = fmt_pct(ref_avg_all.get("PDV", np.nan)) or "-"
+        bees_res = fmt_pct(ref_avg_all.get("BEES", np.nan)) or "-"
+        tml_res = fmt_min(ref_avg_all.get("TML_MIN", np.nan)) or "-"
 
-        linha_ind("👥", "JL", jl_res, int(pts_poss.get("JL", 0)))
-        linha_ind("📦", "DEV PDV", pdv_res, int(pts_poss.get("DEV PDV", 0)))
+        linha_ind("👥", "JL", jl_res)
+        linha_ind("📦", "DEV PDV", pdv_res)
 
-        # BEES só mostra se a operação tem meta configurada
-        if int(pts_poss.get("BEES", 0)) > 0:
-            linha_ind("🟨", "BEES", bees_res, int(pts_poss.get("BEES", 0)))
+        # BEES só mostra se existir na operação selecionada ou se estiver em "Todos"
+        mostrar_bees = True
+        if f_oper != "Todos":
+            m = METAS.get(norm_operacao(f_oper), {})
+            if "BEES" not in m:
+                mostrar_bees = False
+        if mostrar_bees:
+            linha_ind("🟨", "BEES", bees_res)
 
-        linha_ind("⏱️", "TML", tml_res, int(pts_poss.get("TML", 0)))
+        linha_ind("⏱️", "TML", tml_res)
 
         # contagens (média mensal)
-        linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}", int(pts_poss.get("ABS", 0)))
-        linha_ind("🎫", "VALES", f"{ref_avg.get('VALES', 0):.2f}", int(pts_poss.get("VALES", 0)))
-        linha_ind("⚠️", "ACID", f"{ref_avg.get('ACIDENTE', 0):.2f}", int(pts_poss.get("ACID", 0)))
-        linha_ind("📄", "DTO", f"{ref_avg.get('DTO', 0):.2f}", int(pts_poss.get("DTO", 0)))
+        linha_ind("🩹", "ABS", f"{ref_avg_all.get('ABS', 0):.2f}")
+        linha_ind("🎫", "VALES", f"{ref_avg_all.get('VALES', 0):.2f}")
+        linha_ind("⚠️", "ACID", f"{ref_avg_all.get('ACIDENTE', 0):.2f}")
+        linha_ind("📄", "DTO", f"{ref_avg_all.get('DTO', 0):.2f}")
 
-    # ✅ TOP 10 estreito (abaixo dos indicadores)
+    # ✅ TOP 10 estreito (abaixo dos indicadores) + cargo após nome
     st.markdown("### 🏆 TOP 10")
     if df.empty:
         st.info("Sem dados para ranking com os filtros atuais.")
     else:
         rank = (
-            df.groupby(["COLABORADOR"], dropna=False)
-            .agg(
-                MEDIA_TOTAL=("TOTAL_PTS", "mean"),
-            )
+            df.groupby(["NOME_KEY", "COLABORADOR", "FUNCAO"], dropna=False)
+            .agg(MEDIA_TOTAL=("TOTAL_PTS", "mean"))
             .reset_index()
             .sort_values("MEDIA_TOTAL", ascending=False)
             .head(10)
         )
         rank["MEDIA_TOTAL"] = rank["MEDIA_TOTAL"].map(lambda x: f"{x:.1f}")
-        st.dataframe(centralizar_tabela(rank), use_container_width=True, height=360)
+        rank_out = rank[["COLABORADOR", "FUNCAO", "MEDIA_TOTAL"]].rename(columns={"FUNCAO": "CARGO"})
+
+        st.dataframe(
+            centralizar_tabela(rank_out),
+            use_container_width=True,
+            height=360
+        )
 
 with right:
     # =========================================================
@@ -992,27 +1001,30 @@ with right:
     top1, top2, top3 = st.columns([2.4, 1.3, 1.3])
 
     with top1:
-        st.markdown(f"<h4 style='margin:0;'> {ref_last['FUNCAO'] if ref_last is not None else ''} </h4>", unsafe_allow_html=True)
+        st.markdown(
+            f"<h4 style='margin:0;'> {ref_last_colab['FUNCAO'] if ref_last_colab is not None else ''} </h4>",
+            unsafe_allow_html=True
+        )
 
     with top2:
-        if ref_last is None or pd.isna(ref_last.get("DATA_ADM_DT", None)):
+        if ref_last_colab is None or pd.isna(ref_last_colab.get("DATA_ADM_DT", None)):
             st.metric("Tempo de casa (meses)", "-")
         else:
-            meses = int((pd.Timestamp.today().normalize() - pd.to_datetime(ref_last["DATA_ADM_DT"]).normalize()).days / 30.44)
+            meses = int((pd.Timestamp.today().normalize() - pd.to_datetime(ref_last_colab["DATA_ADM_DT"]).normalize()).days / 30.44)
             st.metric("Tempo de casa (meses)", f"{meses}")
 
     with top3:
-        st.metric("Admissão", (ref_last["ADMISSAO"] if ref_last is not None else "-"))
+        st.metric("Admissão", (ref_last_colab["ADMISSAO"] if ref_last_colab is not None else "-"))
 
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
     # =========================================================
-    # ✅ Card destacado: RISCO DO ÚLTIMO MÊS
+    # Card: RISCO DO ÚLTIMO MÊS (somente se colaborador selecionado)
     # =========================================================
-    if ref_last is None:
-        st.info("Sem dados para exibir risco do último mês.")
+    if ref_last_colab is None:
+        st.info("Selecione um colaborador para ver o risco do último mês.")
     else:
-        risco_ultimo = str(ref_last.get("RISCO DE TO", "-"))
+        risco_ultimo = str(ref_last_colab.get("RISCO DE TO", "-"))
         st.markdown(
             f"""
             <div style="padding:14px;border-radius:14px;background:#22262f;margin-bottom:14px;">
@@ -1024,18 +1036,18 @@ with right:
         )
 
     # =========================================================
-    # ✅ Cards em "caixa" (como indicadores)
+    # Cards em "caixa"
     # =========================================================
     with st.container(border=True):
         cA, cB, cC, cD = st.columns(4)
 
         with cA:
-            st.metric("SKAP - Níveis", (ref_last["NIVEIS"] if ref_last is not None and str(ref_last.get("NIVEIS","")).strip() != "" else "-"))
+            st.metric("SKAP - Níveis", (ref_last_colab["NIVEIS"] if ref_last_colab is not None and str(ref_last_colab.get("NIVEIS","")).strip() != "" else "-"))
 
         with cB:
-            v = ref_last.get("PRONT_PONDERADA", np.nan) if ref_last is not None else np.nan
-            faixa = ref_last.get("PRONT_FAIXA", "-") if ref_last is not None else "-"
-            cor = ref_last.get("PRONT_COR", "#94a3b8") if ref_last is not None else "#94a3b8"
+            v = ref_last_colab.get("PRONT_PONDERADA", np.nan) if ref_last_colab is not None else np.nan
+            faixa = ref_last_colab.get("PRONT_FAIXA", "-") if ref_last_colab is not None else "-"
+            cor = ref_last_colab.get("PRONT_COR", "#94a3b8") if ref_last_colab is not None else "#94a3b8"
             if pd.isna(v):
                 st.metric("Prontuário", "-")
             else:
@@ -1052,8 +1064,8 @@ with right:
 
         with cC:
             col = "CICLO DE GENTE 2025"
-            if col in base_master.columns and ref_last is not None:
-                st.metric("Ciclo de gente 2025", str(ref_last.get(col, "-")) or "-")
+            if col in base_master.columns and ref_last_colab is not None:
+                st.metric("Ciclo de gente 2025", str(ref_last_colab.get(col, "-")) or "-")
             else:
                 st.metric("Ciclo de gente 2025", "-")
 
@@ -1086,7 +1098,7 @@ with right:
     st.divider()
 
     # =========================================================
-    # ✅ TABELA logo abaixo do gráfico
+    # TABELA
     # =========================================================
     st.subheader("📋 Tabela de Pontuação (por colaborador e mês)")
 
@@ -1095,6 +1107,7 @@ with right:
     else:
         t = df.copy()
 
+        # formatar indicadores
         t["DEV PDV"] = t["PDV"].apply(fmt_pct)
         t["BEES"]    = t["BEES"].apply(fmt_pct)
         t["TML"]     = t["TML_MIN"].apply(fmt_min)
@@ -1105,9 +1118,22 @@ with right:
         t["ACID"]  = t["ACIDENTE"].astype(int)
         t["DTO"]   = t["DTO"].astype(int)
 
+        # ✅ STATUS exibido após CARGO
+        # Se "DESCLASSIFICADO" -> "TRABALHANDO"
+        def status_exibir(x):
+            s = "" if pd.isna(x) else str(x).strip()
+            if normalizar_nome(s) == normalizar_nome("DESCLASSIFICADO"):
+                return "TRABALHANDO"
+            return s
+
+        t["STATUS_EXIB"] = t.get("STATUS_RAW", "").apply(status_exibir)
+
+        # Monta tabela com CARGO após nome e STATUS após cargo
         out = pd.DataFrame({
             ("MÊS",""): t["MÊS"],
             ("COLABORADOR",""): t["COLABORADOR"],
+            ("CARGO",""): t["FUNCAO"],
+            ("STATUS",""): t["STATUS_EXIB"],
             ("RISCO DE TO",""): t["RISCO DE TO"],
             ("TOTAL",""): t["TOTAL_PTS"],
         })
@@ -1134,19 +1160,20 @@ with right:
         add_indicador("ACID",  "ACID",  "PTS_ACIDENTE")
         add_indicador("DTO",   "DTO",   "PTS_DTO")
 
+        # ordenar por mês/colaborador
         out[("_MESKEY","")] = pd.to_datetime(t["MES"] + "-01", errors="coerce")
         out = out.sort_values([("_MESKEY",""), ("COLABORADOR","")]).drop(columns=[("_MESKEY","")])
 
+        # ✅ estilos: centralizado + risco colorido + TOTAL em negrito + PTS verde/vermelho
         sty = (
             out.style
             .set_properties(**{"text-align": "center"})
             .set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
         )
 
-        # PTS nas colunas (mantém como “PTS” ao lado)
         pts_cols = [c for c in out.columns if isinstance(c, tuple) and c[1] == "PTS"]
         if pts_cols:
-            sty = sty.applymap(color_pts, subset=pts_cols)
+            sty = sty.applymap(color_pts_zero, subset=pts_cols)
 
         sty = sty.applymap(color_risco, subset=[("RISCO DE TO","")])
         sty = sty.applymap(lambda v: "font-weight:900;" if isinstance(v, (int, float, np.integer, np.floating)) else "", subset=[("TOTAL","")])
@@ -1174,5 +1201,6 @@ with st.expander("ℹ️ Notas rápidas"):
         "- Prontuário: somente para **Motorista de Distribuição** e **Motorista de Van**, usando **Pontuação Ponderada**.\n"
         "- Meses anteriores à admissão **não aparecem**.\n"
         "- Indicadores por mês: quando há mais de um registro no mês, o app usa **média** (PDV/BEES/TML/JL).\n"
-        "- Se STATUS do indicador for **FERIAS** ou **AFASTADO/AFS**, a coluna **RISCO DE TO** mostra esse status."
+        "- Se STATUS do indicador for **FERIAS** ou **AFASTADO/AFS**, a coluna **RISCO DE TO** mostra esse status.\n"
+        "- Na tabela, a coluna **STATUS** exibe o texto do arquivo de indicadores; quando for **DESCLASSIFICADO**, exibimos **TRABALHANDO**."
     )
