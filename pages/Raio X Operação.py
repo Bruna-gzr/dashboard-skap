@@ -18,7 +18,7 @@ import unicodedata
 import re
 
 # =========================================================
-# TÍTULO (1 linha)
+# TÍTULO
 # =========================================================
 st.markdown(
     "<h2 style='text-align:center; margin:0;'>RAIO X OPERAÇÃO</h2>",
@@ -32,14 +32,14 @@ st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
-ARQ_SKAP = DATA_DIR / "Skap.xlsx"
-ARQ_PRONT = DATA_DIR / "Prontuario Condutor.xlsx"
-ARQ_VALES = DATA_DIR / "Vales.xlsx"
-ARQ_RV = DATA_DIR / "RV.xlsx"
-ARQ_ABS = DATA_DIR / "Absenteismo.xlsx"
-ARQ_ACID = DATA_DIR / "Ocorrencia de acidentes.xlsx"
-ARQ_DTO = DATA_DIR / "Desvios de DTOs.xlsx"
-ARQ_IND = DATA_DIR / "Resultados indicadores operacionais.xlsx"
+ARQ_SKAP   = DATA_DIR / "Skap.xlsx"
+ARQ_PRONT  = DATA_DIR / "Prontuario Condutor.xlsx"
+ARQ_VALES  = DATA_DIR / "Vales.xlsx"
+ARQ_RV     = DATA_DIR / "RV.xlsx"
+ARQ_ABS    = DATA_DIR / "Absenteismo.xlsx"
+ARQ_ACID   = DATA_DIR / "Ocorrencia de acidentes.xlsx"
+ARQ_DTO    = DATA_DIR / "Desvios de DTOs.xlsx"
+ARQ_IND    = DATA_DIR / "Resultados indicadores operacionais.xlsx"
 
 # =========================================================
 # ATUALIZAÇÃO + CACHE BUSTER + BOTÃO REFRESH
@@ -84,6 +84,14 @@ def normalizar_nome(s: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
+def nome_simple_from_key(key: str) -> str:
+    """
+    Fallback para match de nomes (remove partículas comuns).
+    """
+    key = normalizar_nome(key)
+    tokens = [t for t in key.split() if t not in {"DE", "DA", "DO", "DAS", "DOS"}]
+    return " ".join(tokens).strip()
+
 def tratar_data_segura(series: pd.Series) -> pd.Series:
     dt_txt = pd.to_datetime(series, errors="coerce", dayfirst=True)
 
@@ -122,11 +130,11 @@ def safe_float(x):
 
 def parse_percent(x):
     """
-    Aceita:
-    - 0.6117 -> 61.17%
-    - "61,17%" / "61.17%" -> 61.17%
-    - 61.17 -> 61.17%
     Retorna em porcentagem (0-100).
+    Aceita:
+    - 0.811 -> 81.10%
+    - "81,10%" / "81.10%" -> 81.10
+    - 81.10 -> 81.10
     """
     if pd.isna(x):
         return np.nan
@@ -145,7 +153,7 @@ def parse_time_mmss(x):
     """
     Retorna minutos como float.
     Aceita:
-    - "00:30" / "0:30" (mm:ss)
+    - "00:30" (mm:ss)
     - "00:30:00" (hh:mm:ss)
     - número (já minutos)
     """
@@ -161,8 +169,7 @@ def parse_time_mmss(x):
     if not pd.isna(v) and re.fullmatch(r"[-+]?\d+(\.\d+)?", s.replace(",", ".")) is not None:
         return float(v)
 
-    parts = s.split(":")
-    parts = [p.strip() for p in parts if p.strip() != ""]
+    parts = [p.strip() for p in s.split(":") if p.strip() != ""]
     if len(parts) == 2:
         mm, ss = parts
         mm = pd.to_numeric(mm, errors="coerce")
@@ -231,91 +238,104 @@ def unificar_funcao(cargo: str) -> str:
     return FUNCOES_MAP.get(normalizar_nome(cargo), "")
 
 # =========================================================
-# METAS/PONTOS POR OPERAÇÃO
+# GRUPOS DE FUNÇÃO (define indicadores aplicáveis)
+# =========================================================
+FUNCOES_DISTRIB = {
+    normalizar_nome("Ajudante de Distribuição"),
+    normalizar_nome("Motorista de Distribuição"),
+    normalizar_nome("Motorista de Van"),
+}
+FUNCOES_ARMAZEM = {
+    normalizar_nome("Operador"),
+    normalizar_nome("Ajudante de armazem"),
+}
+
+def grupo_funcao(funcao: str) -> str:
+    fk = normalizar_nome(funcao)
+    if fk in FUNCOES_ARMAZEM:
+        return "ARMAZEM"
+    if fk in FUNCOES_DISTRIB:
+        return "DISTRIB"
+    return "OUTROS"
+
+# =========================================================
+# METAS POR OPERAÇÃO (somente thresholds)
+# Pontuação = 30 em todas as unidades via PONTOS_* por grupo
 # =========================================================
 METAS = {
     "CD CASCAVEL": {
-        "PDV": {"meta": 3.5, "pontos": 5, "tipo": "lte_pct"},
-        "BEES": {"meta": 95.0, "pontos": 1, "tipo": "gte_pct"},
-        "TML": {"meta": 0.5, "pontos": 2, "tipo": "lte_min"},
-        "JL": {"meta": 80.0, "pontos": 3, "tipo": "gte_pct"},
-        "ABS": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "VALES": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "ACIDENTE": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "DTO": {"meta": 0, "pontos": 4, "tipo": "eq0"},
+        "PDV": {"meta": 3.5},
+        "BEES": {"meta": 95.0},
+        "TML": {"meta": 0.5},
+        "JL":  {"meta": 80.0},
     },
     "CD DIADEMA": {
-        "PDV": {"meta": 3.5, "pontos": 4, "tipo": "lte_pct"},
-        "BEES": {"meta": 95.0, "pontos": 3, "tipo": "gte_pct"},
-        "TML": {"meta": 0.5, "pontos": 3, "tipo": "lte_min"},
-        "JL": {"meta": 80.0, "pontos": 1, "tipo": "gte_pct"},
-        "ABS": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "VALES": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "ACIDENTE": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "DTO": {"meta": 0, "pontos": 4, "tipo": "eq0"},
+        "PDV": {"meta": 3.5},
+        "BEES": {"meta": 95.0},
+        "TML": {"meta": 0.5},
+        "JL":  {"meta": 80.0},
     },
     "CD FOZ DO IGUACU": {
-        "PDV": {"meta": 3.01, "pontos": 3, "tipo": "lte_pct"},
-        "BEES": {"meta": 95.0, "pontos": 2, "tipo": "gte_pct"},
-        "TML": {"meta": 0.5, "pontos": 3, "tipo": "lte_min"},
-        "JL": {"meta": 80.0, "pontos": 3, "tipo": "gte_pct"},
-        "ABS": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "VALES": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "ACIDENTE": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "DTO": {"meta": 0, "pontos": 4, "tipo": "eq0"},
+        "PDV": {"meta": 3.01},
+        "BEES": {"meta": 95.0},
+        "TML": {"meta": 0.5},
+        "JL":  {"meta": 80.0},
     },
     "CD LONDRINA": {
-        "PDV": {"meta": 3.5, "pontos": 3, "tipo": "lte_pct"},
-        "TML": {"meta": 0.5, "pontos": 5, "tipo": "lte_min"},
-        "JL": {"meta": 80.0, "pontos": 3, "tipo": "gte_pct"},
-        "ABS": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "VALES": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "ACIDENTE": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "DTO": {"meta": 0, "pontos": 4, "tipo": "eq0"},
+        "PDV": {"meta": 3.5},
+        "BEES": {"meta": 95.0},
+        "TML": {"meta": 0.5},
+        "JL":  {"meta": 80.0},
     },
     "CD LITORAL": {
-        "PDV": {"meta": 3.5, "pontos": 3, "tipo": "lte_pct"},
-        "BEES": {"meta": 95.0, "pontos": 2, "tipo": "gte_pct"},
-        "TML": {"meta": 0.5, "pontos": 3, "tipo": "lte_min"},
-        "JL": {"meta": 80.0, "pontos": 3, "tipo": "gte_pct"},
-        "ABS": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "VALES": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "ACIDENTE": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "DTO": {"meta": 0, "pontos": 4, "tipo": "eq0"},
+        "PDV": {"meta": 3.5},
+        "BEES": {"meta": 95.0},
+        "TML": {"meta": 0.5},
+        "JL":  {"meta": 80.0},
     },
     "CD SAO CRISTOVAO": {
-        "PDV": {"meta": 3.5, "pontos": 3, "tipo": "lte_pct"},
-        "BEES": {"meta": 95.0, "pontos": 4, "tipo": "gte_pct"},
-        "TML": {"meta": 0.5, "pontos": 3, "tipo": "lte_min"},
-        "JL": {"meta": 80.0, "pontos": 1, "tipo": "gte_pct"},
-        "ABS": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "VALES": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "ACIDENTE": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "DTO": {"meta": 0, "pontos": 4, "tipo": "eq0"},
+        "PDV": {"meta": 3.5},
+        "BEES": {"meta": 95.0},
+        "TML": {"meta": 0.5},
+        "JL":  {"meta": 80.0},
     },
     "CD FRANCISCO BELTRAO": {
-        "PDV": {"meta": 2.84, "pontos": 2, "tipo": "lte_pct"},
-        "BEES": {"meta": 95.0, "pontos": 3, "tipo": "gte_pct"},
-        "TML": {"meta": 0.5, "pontos": 3, "tipo": "lte_min"},
-        "JL": {"meta": 89.0, "pontos": 3, "tipo": "gte_pct"},
-        "ABS": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "VALES": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "ACIDENTE": {"meta": 0, "pontos": 5, "tipo": "eq0"},
-        "DTO": {"meta": 0, "pontos": 4, "tipo": "eq0"},
+        "PDV": {"meta": 2.84},
+        "BEES": {"meta": 95.0},
+        "TML": {"meta": 0.5},
+        "JL":  {"meta": 89.0},
     },
 }
 
-# normaliza chaves do METAS (pra bater com norm_operacao)
 METAS = {norm_operacao(k): v for k, v in METAS.items()}
 
+# Pontos por grupo (sempre total 30)
+PONTOS_DISTRIB = {
+    "PDV": 5,
+    "BEES": 1,
+    "TML": 2,
+    "JL": 3,
+    "ABS": 5,
+    "VALES": 5,
+    "ACIDENTE": 5,
+    "DTO": 4,
+}  # soma 30
+
+PONTOS_ARMAZEM = {
+    "ABS": 10,
+    "ACIDENTE": 10,
+    "DTO": 5,
+    "RV": 5,  # Média RV >= 80%
+}  # soma 30
+
 # =========================================================
-# PRONTUÁRIO: LER "Empregado" + "Pontuação <br> Ponderada" (robusto)
+# PRONTUÁRIO: ler "Empregado" + "Pontuação <br> Ponderada"
 # =========================================================
 def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
     df = pd.read_excel(path_xlsx, sheet_name=0)
     df = normalizar_colunas(df)
 
-    # procura coluna de nome (prioriza EMPREGADO)
+    # nome (prioriza EMPREGADO)
     col_nome = None
     for cand in ["EMPREGADO", "COLABORADOR", "NOME", "MOTORISTA", "CONDUTOR"]:
         if cand in df.columns:
@@ -328,11 +348,12 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
                 col_nome = c
                 break
     if col_nome is None:
-        return pd.DataFrame(columns=["NOME_KEY", "PRONT_PONDERADA"])
+        return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "PRONT_PONDERADA"])
 
     df["NOME_KEY"] = df[col_nome].astype(str).map(normalizar_nome)
+    df["NOME_SIMPLE"] = df["NOME_KEY"].map(nome_simple_from_key)
 
-    # acha coluna ponderada (aceita variações com <br>)
+    # coluna ponderada (aceita variações com <br>)
     col_score = None
     for c in df.columns:
         cc = normalizar_nome(c)
@@ -340,14 +361,13 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
             col_score = c
             break
     if col_score is None:
-        return pd.DataFrame(columns=["NOME_KEY", "PRONT_PONDERADA"])
+        return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "PRONT_PONDERADA"])
 
-    # numérico robusto (vírgula)
     s = df[col_score].astype(str).str.replace(",", ".", regex=False)
     df["PRONT_PONDERADA"] = pd.to_numeric(s, errors="coerce")
 
     out = (
-        df[["NOME_KEY", "PRONT_PONDERADA"]]
+        df[["NOME_KEY", "NOME_SIMPLE", "PRONT_PONDERADA"]]
         .dropna(subset=["NOME_KEY"])
         .drop_duplicates("NOME_KEY", keep="last")
     )
@@ -362,13 +382,13 @@ def carregar_bases(_cache_key: float | None):
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_ATIVOS.name}")
 
     ativos = pd.read_excel(ARQ_ATIVOS)
-    skap = pd.read_excel(ARQ_SKAP) if ARQ_SKAP.exists() else pd.DataFrame()
-    vales = pd.read_excel(ARQ_VALES) if ARQ_VALES.exists() else pd.DataFrame()
-    rv = pd.read_excel(ARQ_RV) if ARQ_RV.exists() else pd.DataFrame()
-    abs_ = pd.read_excel(ARQ_ABS) if ARQ_ABS.exists() else pd.DataFrame()
-    acid = pd.read_excel(ARQ_ACID) if ARQ_ACID.exists() else pd.DataFrame()
-    dto = pd.read_excel(ARQ_DTO) if ARQ_DTO.exists() else pd.DataFrame()
-    ind = pd.read_excel(ARQ_IND) if ARQ_IND.exists() else pd.DataFrame()
+    skap   = pd.read_excel(ARQ_SKAP) if ARQ_SKAP.exists() else pd.DataFrame()
+    vales  = pd.read_excel(ARQ_VALES) if ARQ_VALES.exists() else pd.DataFrame()
+    rv     = pd.read_excel(ARQ_RV) if ARQ_RV.exists() else pd.DataFrame()
+    abs_   = pd.read_excel(ARQ_ABS) if ARQ_ABS.exists() else pd.DataFrame()
+    acid   = pd.read_excel(ARQ_ACID) if ARQ_ACID.exists() else pd.DataFrame()
+    dto    = pd.read_excel(ARQ_DTO) if ARQ_DTO.exists() else pd.DataFrame()
+    ind    = pd.read_excel(ARQ_IND) if ARQ_IND.exists() else pd.DataFrame()
 
     pront = pd.DataFrame()
     if ARQ_PRONT.exists():
@@ -398,6 +418,7 @@ if "OPERAÇÃO" in ativos.columns and "OPERACAO" not in ativos.columns:
     ativos["OPERACAO"] = ativos["OPERAÇÃO"]
 
 ativos["NOME_KEY"] = ativos["COLABORADOR"].astype(str).map(normalizar_nome)
+ativos["NOME_SIMPLE"] = ativos["NOME_KEY"].map(nome_simple_from_key)
 ativos["OPER_KEY"] = ativos["OPERACAO"].astype(str).map(norm_operacao)
 ativos["FUNCAO"] = ativos["CARGO"].astype(str).map(unificar_funcao)
 ativos["DATA_ADM_DT"] = tratar_data_segura(ativos["DATA ULT. ADM"])
@@ -406,7 +427,7 @@ ativos["ADMISSAO"] = pd.to_datetime(ativos["DATA_ADM_DT"], errors="coerce").dt.s
 ativos = ativos[ativos["FUNCAO"].isin(FUNCOES_PERMITIDAS)].copy()
 
 # =========================================================
-# SKAP: puxar NÍVEIS (via nome normalizado)
+# SKAP: puxar NÍVEIS
 # =========================================================
 skap = normalizar_colunas(skap) if not skap.empty else skap
 if not skap.empty:
@@ -415,30 +436,45 @@ if not skap.empty:
     if "NIVEIS" not in skap.columns:
         skap["NIVEIS"] = ""
     skap["NOME_KEY"] = skap["COLABORADOR"].astype(str).map(normalizar_nome)
-    skap_niveis = skap[["NOME_KEY", "NIVEIS"]].drop_duplicates(subset=["NOME_KEY"], keep="last")
+    skap["NOME_SIMPLE"] = skap["NOME_KEY"].map(nome_simple_from_key)
+    skap_niveis = skap[["NOME_KEY", "NOME_SIMPLE", "NIVEIS"]].drop_duplicates(subset=["NOME_KEY"], keep="last")
 else:
-    skap_niveis = pd.DataFrame(columns=["NOME_KEY", "NIVEIS"])
+    skap_niveis = pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "NIVEIS"])
 
 # =========================================================
-# PRONTUÁRIO (já vem com NOME_KEY e PRONT_PONDERADA)
+# PRONTUÁRIO
 # =========================================================
 if pront is None or pront.empty:
-    pront = pd.DataFrame(columns=["NOME_KEY", "PRONT_PONDERADA"])
+    pront = pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "PRONT_PONDERADA"])
 else:
     pront = normalizar_colunas(pront)
-    if "NOME_KEY" not in pront.columns:
-        pront["NOME_KEY"] = ""
-    if "PRONT_PONDERADA" not in pront.columns:
-        pront["PRONT_PONDERADA"] = np.nan
+    for c in ["NOME_KEY", "NOME_SIMPLE", "PRONT_PONDERADA"]:
+        if c not in pront.columns:
+            pront[c] = np.nan if c == "PRONT_PONDERADA" else ""
 
 # =========================================================
-# BASE MASTER
+# BASE MASTER (merge com fallback de nome_simple)
 # =========================================================
 base_master = (
     ativos
-    .merge(skap_niveis, on="NOME_KEY", how="left")
-    .merge(pront[["NOME_KEY", "PRONT_PONDERADA"]], on="NOME_KEY", how="left")
+    .merge(skap_niveis[["NOME_KEY", "NIVEIS"]].drop_duplicates("NOME_KEY"), on="NOME_KEY", how="left")
 )
+
+# merge pront por NOME_KEY
+base_master = base_master.merge(
+    pront[["NOME_KEY", "PRONT_PONDERADA"]].drop_duplicates("NOME_KEY"),
+    on="NOME_KEY",
+    how="left"
+)
+
+# fallback: se PRONT_PONDERADA vazio, tenta por NOME_SIMPLE
+if "PRONT_PONDERADA" in base_master.columns:
+    missing = base_master["PRONT_PONDERADA"].isna()
+    if missing.any():
+        base_master_f = base_master.loc[missing, ["NOME_SIMPLE"]].copy()
+        pront_f = pront[["NOME_SIMPLE", "PRONT_PONDERADA"]].dropna(subset=["NOME_SIMPLE"]).drop_duplicates("NOME_SIMPLE", keep="last")
+        base_master_f = base_master_f.merge(pront_f, on="NOME_SIMPLE", how="left")
+        base_master.loc[missing, "PRONT_PONDERADA"] = base_master_f["PRONT_PONDERADA"].values
 
 if "NIVEIS" not in base_master.columns:
     base_master["NIVEIS"] = ""
@@ -473,7 +509,7 @@ base_master["PRONT_FAIXA"] = tmp.apply(lambda t: t[0])
 base_master["PRONT_COR"] = tmp.apply(lambda t: t[1])
 
 # =========================================================
-# PREPARAR EVENTOS / OCORRÊNCIAS POR MÊS
+# EVENTOS / OCORRÊNCIAS POR MÊS
 # =========================================================
 def prep_evento(df: pd.DataFrame, col_nome: str, col_data: str, nome_out="NOME_KEY", data_out="DT"):
     if df is None or df.empty:
@@ -514,7 +550,7 @@ if abs_ is not None and not abs_.empty:
     abs_ = abs_[abs_["TIPO"].isin([normalizar_nome("JUSTIFICADA"), normalizar_nome("NÃO JUSTIFICADA"), normalizar_nome("NAO JUSTIFICADA")])]
     abs_ev = abs_[["NOME_KEY", "DT", "MES", "TIPO"]].copy()
 
-# RV (por mês)
+# RV (por mês)  -> vamos usar PCT_RV (média do % no período/mês)
 rv_m = pd.DataFrame(columns=["NOME_KEY", "MES", "TOTAL_RV", "PCT_RV", "RECARGA"])
 if rv is not None and not rv.empty:
     rv = normalizar_colunas(rv)
@@ -547,7 +583,6 @@ if rv is not None and not rv.empty:
     )
 
 # Indicadores operacionais (por mês) + STATUS
-# -> além do STATUS "final" (FERIAS/AFASTADO), vamos manter STATUS_RAW para exibir na tabela
 ind_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PDV", "BEES", "TML_MIN", "JL", "STATUS", "STATUS_RAW"])
 if ind is not None and not ind.empty:
     ind = normalizar_colunas(ind)
@@ -585,11 +620,8 @@ if ind is not None and not ind.empty:
         return ""
 
     def pick_status_raw(series: pd.Series) -> str:
-        # prioriza um valor não-vazio (mantém o texto original)
         vals = [str(x).strip() for x in series.dropna().astype(str).tolist() if str(x).strip() != ""]
-        if not vals:
-            return ""
-        return vals[-1]
+        return vals[-1] if vals else ""
 
     ind_m = (
         ind.groupby(["NOME_KEY", "MES"], dropna=False)
@@ -607,11 +639,11 @@ if ind is not None and not ind.empty:
 # Contagens por mês
 vales_m = vales_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="VALES")
 acid_m = acid_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ACIDENTE")
-dto_m = dto_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="DTO")
-abs_m = abs_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ABS")
+dto_m  = dto_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="DTO")
+abs_m  = abs_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ABS")
 
 # =========================================================
-# TABELA BASE POR MÊS (colaborador x mês)
+# GRID colaborador x mês
 # =========================================================
 meses_sets = []
 for df_ in [vales_m, acid_m, dto_m, abs_m, rv_m, ind_m]:
@@ -623,7 +655,7 @@ if not meses_all:
     meses_all = [pd.Timestamp.today().to_period("M").astype(str)]
 
 colab_univ = base_master[[
-    "NOME_KEY", "COLABORADOR", "OPERACAO", "OPER_KEY", "ATIVIDADE",
+    "NOME_KEY", "NOME_SIMPLE", "COLABORADOR", "OPERACAO", "OPER_KEY", "ATIVIDADE",
     "FUNCAO", "DATA_ADM_DT", "ADMISSAO", "NIVEIS",
     "PRONT_PONDERADA", "PRONT_FAIXA", "PRONT_COR"
 ]].copy()
@@ -650,60 +682,78 @@ for c in ["ABS", "VALES", "ACIDENTE", "DTO"]:
     if c in grid.columns:
         grid[c] = pd.to_numeric(grid[c], errors="coerce").fillna(0).astype(int)
 
-# ✅ remover meses anteriores à admissão (por colaborador)
+# remover meses anteriores à admissão
 grid["_MES_DT"] = pd.to_datetime(grid["MES"] + "-01", errors="coerce")
 grid["_ADM_MES_DT"] = pd.to_datetime(grid["DATA_ADM_DT"], errors="coerce").dt.to_period("M").dt.to_timestamp()
 grid = grid[grid["_MES_DT"] >= grid["_ADM_MES_DT"]].copy()
 grid = grid.drop(columns=["_MES_DT", "_ADM_MES_DT"])
 
+grid["MÊS"] = grid["MES"].apply(month_label)
+
 # =========================================================
-# PONTUAÇÃO
+# PONTUAÇÃO POR GRUPO (sempre total 30)
 # =========================================================
 def calc_pontos_row(row) -> dict:
     op_key = norm_operacao(row.get("OPERACAO", ""))
-    metas = METAS.get(op_key, None)
+    metas_op = METAS.get(op_key, {})
+
+    grp = grupo_funcao(row.get("FUNCAO", ""))
 
     res = {
         "PTS_PDV": 0, "PTS_BEES": 0, "PTS_TML": 0, "PTS_JL": 0,
         "PTS_ABS": 0, "PTS_VALES": 0, "PTS_ACIDENTE": 0, "PTS_DTO": 0,
+        "PTS_RV": 0,
         "TOTAL_PTS": 0
     }
-    if metas is None:
+
+    # DISTRIB (todos indicadores)
+    if grp in ["DISTRIB", "OUTROS"]:
+        # metas
+        v_pdv = row.get("PDV", np.nan)
+        v_bees = row.get("BEES", np.nan)
+        v_tml = row.get("TML_MIN", np.nan)
+        v_jl = row.get("JL", np.nan)
+
+        if pd.notna(v_pdv) and "PDV" in metas_op and v_pdv <= metas_op["PDV"]["meta"]:
+            res["PTS_PDV"] = PONTOS_DISTRIB["PDV"]
+        if pd.notna(v_bees) and "BEES" in metas_op and v_bees >= metas_op["BEES"]["meta"]:
+            res["PTS_BEES"] = PONTOS_DISTRIB["BEES"]
+        if pd.notna(v_tml) and "TML" in metas_op and v_tml <= metas_op["TML"]["meta"]:
+            res["PTS_TML"] = PONTOS_DISTRIB["TML"]
+        if pd.notna(v_jl) and "JL" in metas_op and v_jl >= metas_op["JL"]["meta"]:
+            res["PTS_JL"] = PONTOS_DISTRIB["JL"]
+
+        if int(row.get("ABS", 0)) == 0:
+            res["PTS_ABS"] = PONTOS_DISTRIB["ABS"]
+        if int(row.get("VALES", 0)) == 0:
+            res["PTS_VALES"] = PONTOS_DISTRIB["VALES"]
+        if int(row.get("ACIDENTE", 0)) == 0:
+            res["PTS_ACIDENTE"] = PONTOS_DISTRIB["ACIDENTE"]
+        if int(row.get("DTO", 0)) == 0:
+            res["PTS_DTO"] = PONTOS_DISTRIB["DTO"]
+
+        res["TOTAL_PTS"] = (
+            res["PTS_PDV"] + res["PTS_BEES"] + res["PTS_TML"] + res["PTS_JL"] +
+            res["PTS_ABS"] + res["PTS_VALES"] + res["PTS_ACIDENTE"] + res["PTS_DTO"]
+        )
         return res
 
-    if "PDV" in metas:
-        v = row.get("PDV", np.nan)
-        if pd.notna(v) and v <= metas["PDV"]["meta"]:
-            res["PTS_PDV"] = metas["PDV"]["pontos"]
+    # ARMAZEM (ABS/ACIDENTE/DTO/RV)
+    if grp == "ARMAZEM":
+        if int(row.get("ABS", 0)) == 0:
+            res["PTS_ABS"] = PONTOS_ARMAZEM["ABS"]
+        if int(row.get("ACIDENTE", 0)) == 0:
+            res["PTS_ACIDENTE"] = PONTOS_ARMAZEM["ACIDENTE"]
+        if int(row.get("DTO", 0)) == 0:
+            res["PTS_DTO"] = PONTOS_ARMAZEM["DTO"]
 
-    if "BEES" in metas:
-        v = row.get("BEES", np.nan)
-        if pd.notna(v) and v >= metas["BEES"]["meta"]:
-            res["PTS_BEES"] = metas["BEES"]["pontos"]
+        v_rv = row.get("PCT_RV", np.nan)
+        if pd.notna(v_rv) and float(v_rv) >= 80.0:
+            res["PTS_RV"] = PONTOS_ARMAZEM["RV"]
 
-    if "TML" in metas:
-        v = row.get("TML_MIN", np.nan)
-        if pd.notna(v) and v <= metas["TML"]["meta"]:
-            res["PTS_TML"] = metas["TML"]["pontos"]
+        res["TOTAL_PTS"] = res["PTS_ABS"] + res["PTS_ACIDENTE"] + res["PTS_DTO"] + res["PTS_RV"]
+        return res
 
-    if "JL" in metas:
-        v = row.get("JL", np.nan)
-        if pd.notna(v) and v >= metas["JL"]["meta"]:
-            res["PTS_JL"] = metas["JL"]["pontos"]
-
-    if "ABS" in metas and int(row.get("ABS", 0)) == 0:
-        res["PTS_ABS"] = metas["ABS"]["pontos"]
-    if "VALES" in metas and int(row.get("VALES", 0)) == 0:
-        res["PTS_VALES"] = metas["VALES"]["pontos"]
-    if "ACIDENTE" in metas and int(row.get("ACIDENTE", 0)) == 0:
-        res["PTS_ACIDENTE"] = metas["ACIDENTE"]["pontos"]
-    if "DTO" in metas and int(row.get("DTO", 0)) == 0:
-        res["PTS_DTO"] = metas["DTO"]["pontos"]
-
-    res["TOTAL_PTS"] = sum([
-        res["PTS_PDV"], res["PTS_BEES"], res["PTS_TML"], res["PTS_JL"],
-        res["PTS_ABS"], res["PTS_VALES"], res["PTS_ACIDENTE"], res["PTS_DTO"]
-    ])
     return res
 
 pts_df = grid.apply(calc_pontos_row, axis=1, result_type="expand")
@@ -718,12 +768,10 @@ def risco_to(total_pts: int) -> str:
 
 grid["RISCO DE TO"] = grid["TOTAL_PTS"].apply(lambda x: risco_to(int(x) if pd.notna(x) else 0))
 
-# ✅ sobrescreve risco com STATUS (FERIAS/AFASTADO)
+# sobrescreve risco com STATUS (FERIAS/AFASTADO)
 if "STATUS" in grid.columns:
     grid["STATUS"] = grid["STATUS"].fillna("").astype(str)
     grid.loc[grid["STATUS"].isin(["FERIAS", "AFASTADO"]), "RISCO DE TO"] = grid["STATUS"]
-
-grid["MÊS"] = grid["MES"].apply(month_label)
 
 # =========================================================
 # SIDEBAR — FILTROS
@@ -771,7 +819,7 @@ if adm_ini > adm_fim:
     st.sidebar.warning("⚠️ Início maior que Fim. Ajustei automaticamente.")
     adm_ini, adm_fim = adm_fim, adm_ini
 
-# Colaborador (depende dos filtros acima)
+# Colaborador depende dos filtros acima
 base_fil = base_master.copy()
 if f_oper != "Todos":
     base_fil = base_fil[base_fil["OPERACAO"] == f_oper]
@@ -817,46 +865,59 @@ if f_colab != "Todos":
     df = df[df["NOME_KEY"] == nome_key]
 
 # =========================================================
-# BOX METAS/PONTUAÇÃO (sidebar)
+# Define VISUALIZAÇÃO por função selecionada
+# =========================================================
+if f_func == "Todos":
+    view_mode = "ALL"
+else:
+    fk = normalizar_nome(f_func)
+    if fk in FUNCOES_ARMAZEM:
+        view_mode = "ARMAZEM"
+    else:
+        view_mode = "DISTRIB"
+
+# =========================================================
+# BOX METAS/PONTUAÇÃO (sidebar) -> total 30
 # =========================================================
 st.sidebar.divider()
-st.sidebar.subheader("Pontuação")
+st.sidebar.subheader("Pontuação (total possível: 30 pts)")
+
+def linha_meta(nome, meta, pts):
+    st.sidebar.markdown(f"- **{nome}**: meta **{meta}** · **{pts} pts**")
 
 op_meta_key = norm_operacao(f_oper) if f_oper != "Todos" else None
 metas_op = METAS.get(op_meta_key, None) if op_meta_key else None
 
 if metas_op is None:
-    st.sidebar.caption("Selecione uma operação com metas configuradas para ver a pontuação.")
+    st.sidebar.caption("Selecione uma operação para ver metas.")
 else:
-    def linha_meta(nome, meta, pts):
-        st.sidebar.markdown(f"- **{nome}**: meta **{meta}** · **{pts} pts**")
+    if view_mode in ["ALL", "DISTRIB"]:
+        st.sidebar.markdown("**Distribuição (Ajudante/Motoristas)**")
+        linha_meta("DEV PDV", f"≤ {metas_op['PDV']['meta']}%", PONTOS_DISTRIB["PDV"])
+        linha_meta("BEES",    f"≥ {metas_op['BEES']['meta']}%", PONTOS_DISTRIB["BEES"])
+        linha_meta("TML",     "≤ 00:30", PONTOS_DISTRIB["TML"])
+        linha_meta("JL",      f"≥ {metas_op['JL']['meta']}%", PONTOS_DISTRIB["JL"])
+        linha_meta("ABS",     "0", PONTOS_DISTRIB["ABS"])
+        linha_meta("VALES",   "0", PONTOS_DISTRIB["VALES"])
+        linha_meta("ACIDENTE","0", PONTOS_DISTRIB["ACIDENTE"])
+        linha_meta("Desvios DTO","0", PONTOS_DISTRIB["DTO"])
 
-    if "PDV" in metas_op:
-        linha_meta("DEV PDV", f"≤ {metas_op['PDV']['meta']}%", metas_op["PDV"]["pontos"])
-    if "BEES" in metas_op:
-        linha_meta("BEES", f"≥ {metas_op['BEES']['meta']}%", metas_op["BEES"]["pontos"])
-    if "TML" in metas_op:
-        linha_meta("TML", "≤ 00:30", metas_op["TML"]["pontos"])
-    if "JL" in metas_op:
-        linha_meta("JL", f"≥ {metas_op['JL']['meta']}%", metas_op["JL"]["pontos"])
-    linha_meta("ABS", "0", metas_op["ABS"]["pontos"])
-    linha_meta("VALES", "0", metas_op["VALES"]["pontos"])
-    linha_meta("ACID", "0", metas_op["ACIDENTE"]["pontos"])
-    linha_meta("DTO", "0", metas_op["DTO"]["pontos"])
-
-    total_pts = sum(v["pontos"] for v in metas_op.values())
-    st.sidebar.markdown(f"**Total possível:** {total_pts} pts")
+    if view_mode in ["ALL", "ARMAZEM"]:
+        st.sidebar.markdown("**Armazém (Operador/Ajudante armazém)**")
+        linha_meta("ABS",        "0", PONTOS_ARMAZEM["ABS"])
+        linha_meta("ACIDENTE",   "0", PONTOS_ARMAZEM["ACIDENTE"])
+        linha_meta("Desvios DTO","0", PONTOS_ARMAZEM["DTO"])
+        linha_meta("Média RV",   "≥ 80%", PONTOS_ARMAZEM["RV"])
 
 # =========================================================
 # REFERÊNCIAS
 # - ref_last_colab: só existe quando há colaborador selecionado
-# - ref_avg_all: médias do filtro atual (para os indicadores à esquerda)
+# - ref_avg_all: médias do filtro atual (indicadores à esquerda)
 # =========================================================
 ref_last_colab = None
 ref_avg_all = None
 
 if not df.empty:
-    # médias do filtro atual (sempre)
     ref_avg_all = {
         "JL": df["JL"].mean(),
         "PDV": df["PDV"].mean(),
@@ -866,14 +927,14 @@ if not df.empty:
         "VALES": df["VALES"].mean(),
         "ACIDENTE": df["ACIDENTE"].mean(),
         "DTO": df["DTO"].mean(),
+        "PCT_RV": df["PCT_RV"].mean(),
     }
 
-    # último registro do colaborador (apenas se colaborador escolhido)
     if f_colab != "Todos":
         ref_last_colab = df.sort_values("MES", ascending=False).iloc[0].copy()
 
 # =========================================================
-# ESTILO (cores)
+# ESTILOS
 # =========================================================
 def color_risco(v):
     v = str(v)
@@ -888,7 +949,6 @@ def color_risco(v):
     return ""
 
 def color_pts_zero(v):
-    # ✅ verde se >0, vermelho se ==0 (ou vazio/NaN tratado como 0)
     try:
         vv = float(v)
     except Exception:
@@ -897,15 +957,36 @@ def color_pts_zero(v):
         return "color: #22c55e; font-weight:900;"
     return "color: #ef4444; font-weight:900;"
 
+def color_rv(v):
+    try:
+        vv = float(v)
+    except Exception:
+        return ""
+    if pd.isna(vv):
+        return ""
+    if vv >= 80.0:
+        return "color: #22c55e; font-weight:900;"
+    return "color: #ef4444; font-weight:900;"
+
+def risco_color_hex(risco: str) -> str:
+    risco = str(risco)
+    if risco == "NÃO":
+        return "#22c55e"
+    if risco == "ATENÇÃO":
+        return "#facc15"
+    if risco == "SIM":
+        return "#ef4444"
+    return "#94a3b8"
+
 # =========================================================
-# LAYOUT (coluna esquerda indicadores + TOP10 estreito; direita gráfico + tabela)
+# LAYOUT
 # =========================================================
 left, right = st.columns([1.05, 2.95], gap="large")
 
 with left:
     st.markdown("#### Colaborador")
 
-    # ✅ quando não tem colaborador selecionado, deixa em branco
+    # quando não tem colaborador selecionado, fica vazio
     nome_card = ref_last_colab["COLABORADOR"] if ref_last_colab is not None else ""
     subt_card = ""
     if ref_last_colab is not None:
@@ -927,7 +1008,7 @@ with left:
 
     st.markdown("#### Indicadores")
 
-    # ✅ aumenta fonte e remove PTS (fica só Resultado médio)
+    # fonte maior e sem PTS
     def linha_ind(icon, nome, resultado):
         st.markdown(
             f"""
@@ -948,32 +1029,31 @@ with left:
     if ref_avg_all is None:
         st.info("Sem dados para os filtros atuais.")
     else:
-        jl_res = fmt_pct(ref_avg_all.get("JL", np.nan)) or "-"
-        pdv_res = fmt_pct(ref_avg_all.get("PDV", np.nan)) or "-"
+        # resultados
+        jl_res   = fmt_pct(ref_avg_all.get("JL", np.nan)) or "-"
+        pdv_res  = fmt_pct(ref_avg_all.get("PDV", np.nan)) or "-"
         bees_res = fmt_pct(ref_avg_all.get("BEES", np.nan)) or "-"
-        tml_res = fmt_min(ref_avg_all.get("TML_MIN", np.nan)) or "-"
+        tml_res  = fmt_min(ref_avg_all.get("TML_MIN", np.nan)) or "-"
+        rv_res   = fmt_pct(ref_avg_all.get("PCT_RV", np.nan)) or "-"
 
-        linha_ind("👥", "JL", jl_res)
-        linha_ind("📦", "DEV PDV", pdv_res)
-
-        # BEES só mostra se existir na operação selecionada ou se estiver em "Todos"
-        mostrar_bees = True
-        if f_oper != "Todos":
-            m = METAS.get(norm_operacao(f_oper), {})
-            if "BEES" not in m:
-                mostrar_bees = False
-        if mostrar_bees:
+        if view_mode in ["ALL", "DISTRIB"]:
+            linha_ind("👥", "JL", jl_res)
+            linha_ind("📦", "DEV PDV", pdv_res)
             linha_ind("🟨", "BEES", bees_res)
+            linha_ind("⏱️", "TML", tml_res)
+            linha_ind("🩹", "ABS", f"{ref_avg_all.get('ABS', 0):.2f}")
+            linha_ind("🎫", "VALES", f"{ref_avg_all.get('VALES', 0):.2f}")
+            linha_ind("⚠️", "ACIDENTE", f"{ref_avg_all.get('ACIDENTE', 0):.2f}")
+            linha_ind("📄", "Desvios DTO", f"{ref_avg_all.get('DTO', 0):.2f}")
+            linha_ind("📈", "Média RV", rv_res)
 
-        linha_ind("⏱️", "TML", tml_res)
+        if view_mode == "ARMAZEM":
+            linha_ind("🩹", "ABS", f"{ref_avg_all.get('ABS', 0):.2f}")
+            linha_ind("⚠️", "ACIDENTE", f"{ref_avg_all.get('ACIDENTE', 0):.2f}")
+            linha_ind("📄", "Desvios DTO", f"{ref_avg_all.get('DTO', 0):.2f}")
+            linha_ind("📈", "Média RV", rv_res)
 
-        # contagens (média mensal)
-        linha_ind("🩹", "ABS", f"{ref_avg_all.get('ABS', 0):.2f}")
-        linha_ind("🎫", "VALES", f"{ref_avg_all.get('VALES', 0):.2f}")
-        linha_ind("⚠️", "ACID", f"{ref_avg_all.get('ACIDENTE', 0):.2f}")
-        linha_ind("📄", "DTO", f"{ref_avg_all.get('DTO', 0):.2f}")
-
-    # ✅ TOP 10 estreito (abaixo dos indicadores) + cargo após nome
+    # TOP 10 + cargo
     st.markdown("### 🏆 TOP 10")
     if df.empty:
         st.info("Sem dados para ranking com os filtros atuais.")
@@ -987,17 +1067,10 @@ with left:
         )
         rank["MEDIA_TOTAL"] = rank["MEDIA_TOTAL"].map(lambda x: f"{x:.1f}")
         rank_out = rank[["COLABORADOR", "FUNCAO", "MEDIA_TOTAL"]].rename(columns={"FUNCAO": "CARGO"})
-
-        st.dataframe(
-            centralizar_tabela(rank_out),
-            use_container_width=True,
-            height=360
-        )
+        st.dataframe(centralizar_tabela(rank_out), use_container_width=True, height=360)
 
 with right:
-    # =========================================================
-    # TOPO — cards (sem Demissão)
-    # =========================================================
+    # Top cards
     top1, top2, top3 = st.columns([2.4, 1.3, 1.3])
 
     with top1:
@@ -1018,26 +1091,23 @@ with right:
 
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
-    # =========================================================
-    # Card: RISCO DO ÚLTIMO MÊS (somente se colaborador selecionado)
-    # =========================================================
+    # Card Risco do último mês com cores
     if ref_last_colab is None:
         st.info("Selecione um colaborador para ver o risco do último mês.")
     else:
         risco_ultimo = str(ref_last_colab.get("RISCO DE TO", "-"))
+        cor = risco_color_hex(risco_ultimo)
         st.markdown(
             f"""
             <div style="padding:14px;border-radius:14px;background:#22262f;margin-bottom:14px;">
-              <div style="font-size:12px;opacity:.75;">RISCO DE TO (último mês)</div>
-              <div style="font-size:22px;font-weight:900;margin-top:4px;">{risco_ultimo}</div>
+              <div style="font-size:12px;opacity:.75;">RISCO DE TO? (último mês)</div>
+              <div style="font-size:22px;font-weight:900;margin-top:4px;color:{cor};">{risco_ultimo}</div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    # =========================================================
-    # Cards em "caixa"
-    # =========================================================
+    # Cards em caixa
     with st.container(border=True):
         cA, cB, cC, cD = st.columns(4)
 
@@ -1065,18 +1135,16 @@ with right:
         with cC:
             col = "CICLO DE GENTE 2025"
             if col in base_master.columns and ref_last_colab is not None:
-                st.metric("Ciclo de gente 2025", str(ref_last_colab.get(col, "-")) or "-")
+                st.metric("Ciclo de gente", str(ref_last_colab.get(col, "-")) or "-")
             else:
-                st.metric("Ciclo de gente 2025", "-")
+                st.metric("Ciclo de gente", "-")
 
         with cD:
-            st.metric("TOTAL (média)", "-" if df.empty else f"{df['TOTAL_PTS'].mean():.1f}")
+            st.metric("Pontuação Total (média)", "-" if df.empty else f"{df['TOTAL_PTS'].mean():.1f}")
 
     st.divider()
 
-    # =========================================================
-    # GRÁFICO: pontuação total por mês
-    # =========================================================
+    # Gráfico
     st.subheader("📊 Pontuação x mês")
 
     graf = df.copy()
@@ -1097,9 +1165,7 @@ with right:
 
     st.divider()
 
-    # =========================================================
-    # TABELA
-    # =========================================================
+    # Tabela
     st.subheader("📋 Tabela de Pontuação (por colaborador e mês)")
 
     if df.empty:
@@ -1112,14 +1178,15 @@ with right:
         t["BEES"]    = t["BEES"].apply(fmt_pct)
         t["TML"]     = t["TML_MIN"].apply(fmt_min)
         t["JL"]      = t.get("JL", np.nan).apply(fmt_pct)
+        t["MEDIA_RV"] = t.get("PCT_RV", np.nan)  # numérico 0-100
+        t["MÉDIA RV"] = t["MEDIA_RV"].apply(fmt_pct)
 
-        t["ABS"]   = t["ABS"].astype(int)
-        t["VALES"] = t["VALES"].astype(int)
-        t["ACID"]  = t["ACIDENTE"].astype(int)
-        t["DTO"]   = t["DTO"].astype(int)
+        t["ABS"]     = t["ABS"].astype(int)
+        t["VALES"]   = t["VALES"].astype(int)
+        t["ACIDENTE"]= t["ACIDENTE"].astype(int)
+        t["DTO"]     = t["DTO"].astype(int)
 
-        # ✅ STATUS exibido após CARGO
-        # Se "DESCLASSIFICADO" -> "TRABALHANDO"
+        # STATUS exibido após CARGO; DESCLASSIFICADO -> TRABALHANDO
         def status_exibir(x):
             s = "" if pd.isna(x) else str(x).strip()
             if normalizar_nome(s) == normalizar_nome("DESCLASSIFICADO"):
@@ -1128,43 +1195,46 @@ with right:
 
         t["STATUS_EXIB"] = t.get("STATUS_RAW", "").apply(status_exibir)
 
-        # Monta tabela com CARGO após nome e STATUS após cargo
+        # Base da tabela (com nomenclaturas novas)
         out = pd.DataFrame({
             ("MÊS",""): t["MÊS"],
             ("COLABORADOR",""): t["COLABORADOR"],
             ("CARGO",""): t["FUNCAO"],
             ("STATUS",""): t["STATUS_EXIB"],
-            ("RISCO DE TO",""): t["RISCO DE TO"],
+            ("RISCO DE TO?",""): t["RISCO DE TO"],
             ("TOTAL",""): t["TOTAL_PTS"],
         })
 
-        def add_indicador(nome, col_res, col_pts):
+        def add_indicador(nome, col_res, col_pts=None):
             out[(nome, "Resultado")] = t[col_res]
-            out[(nome, "PTS")] = t[col_pts]
+            if col_pts is not None:
+                out[(nome, "PTS")] = t[col_pts]
 
-        add_indicador("JL",      "JL",      "PTS_JL")
-        add_indicador("DEV PDV", "DEV PDV", "PTS_PDV")
+        # Define quais indicadores entram na tabela conforme view_mode
+        if view_mode in ["ALL", "DISTRIB"]:
+            add_indicador("JL",       "JL",       "PTS_JL")
+            add_indicador("DEV PDV",  "DEV PDV",  "PTS_PDV")
+            add_indicador("BEES",     "BEES",     "PTS_BEES")
+            add_indicador("TML",      "TML",      "PTS_TML")
+            add_indicador("ABS",      "ABS",      "PTS_ABS")
+            add_indicador("VALES",    "VALES",    "PTS_VALES")
+            add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
+            add_indicador("Desvios DTO", "DTO",   "PTS_DTO")
+            # ✅ Média RV após DTO (sem PTS para Distribuição; somente resultado)
+            out[("Média RV", "Resultado")] = t["MÉDIA RV"]
 
-        # BEES condicionado
-        tem_bees = True
-        if f_oper != "Todos":
-            m = METAS.get(norm_operacao(f_oper), {})
-            if "BEES" not in m:
-                tem_bees = False
-        if tem_bees:
-            add_indicador("BEES", "BEES", "PTS_BEES")
-
-        add_indicador("TML",   "TML",   "PTS_TML")
-        add_indicador("ABS",   "ABS",   "PTS_ABS")
-        add_indicador("VALES", "VALES", "PTS_VALES")
-        add_indicador("ACID",  "ACID",  "PTS_ACIDENTE")
-        add_indicador("DTO",   "DTO",   "PTS_DTO")
+        if view_mode == "ARMAZEM":
+            add_indicador("ABS",      "ABS",      "PTS_ABS")
+            add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
+            add_indicador("Desvios DTO", "DTO",   "PTS_DTO")
+            out[("Média RV", "Resultado")] = t["MÉDIA RV"]
+            out[("Média RV", "PTS")] = t["PTS_RV"]
 
         # ordenar por mês/colaborador
         out[("_MESKEY","")] = pd.to_datetime(t["MES"] + "-01", errors="coerce")
         out = out.sort_values([("_MESKEY",""), ("COLABORADOR","")]).drop(columns=[("_MESKEY","")])
 
-        # ✅ estilos: centralizado + risco colorido + TOTAL em negrito + PTS verde/vermelho
+        # estilos: centralizado + risco colorido + TOTAL bold + PTS verde/vermelho + RV verde/vermelho
         sty = (
             out.style
             .set_properties(**{"text-align": "center"})
@@ -1175,12 +1245,19 @@ with right:
         if pts_cols:
             sty = sty.applymap(color_pts_zero, subset=pts_cols)
 
-        sty = sty.applymap(color_risco, subset=[("RISCO DE TO","")])
+        # Risco
+        sty = sty.applymap(color_risco, subset=[("RISCO DE TO?","")])
+
+        # TOTAL em negrito
         sty = sty.applymap(lambda v: "font-weight:900;" if isinstance(v, (int, float, np.integer, np.floating)) else "", subset=[("TOTAL","")])
+
+        # Média RV (resultado) colorido por >=80
+        if ("Média RV", "Resultado") in out.columns:
+            sty = sty.applymap(lambda v: color_rv(parse_percent(v)), subset=[("Média RV", "Resultado")])
 
         st.dataframe(sty, use_container_width=True, height=520)
 
-        # Export (flatten colunas)
+        # Export
         export_df = out.copy()
         export_df.columns = [c[0] if c[1] == "" else f"{c[0]}_{c[1]}" for c in export_df.columns]
         excel = preparar_excel_para_download(export_df, sheet_name="RAIO_X")
@@ -1193,14 +1270,14 @@ with right:
         )
 
 # =========================================================
-# NOTAS IMPORTANTES
+# NOTAS
 # =========================================================
 with st.expander("ℹ️ Notas rápidas"):
     st.write(
-        "- O match entre planilhas é feito por **nome normalizado** (sem acento, sem pontuação, espaços ajustados).\n"
+        "- Match entre planilhas é feito por **nome normalizado** e com **fallback** removendo partículas (de/da/do/dos/das).\n"
         "- Prontuário: somente para **Motorista de Distribuição** e **Motorista de Van**, usando **Pontuação Ponderada**.\n"
         "- Meses anteriores à admissão **não aparecem**.\n"
-        "- Indicadores por mês: quando há mais de um registro no mês, o app usa **média** (PDV/BEES/TML/JL).\n"
+        "- Indicadores por mês: quando há mais de um registro no mês, o app usa **média** (PDV/BEES/TML/JL e RV%).\n"
         "- Se STATUS do indicador for **FERIAS** ou **AFASTADO/AFS**, a coluna **RISCO DE TO** mostra esse status.\n"
-        "- Na tabela, a coluna **STATUS** exibe o texto do arquivo de indicadores; quando for **DESCLASSIFICADO**, exibimos **TRABALHANDO**."
+        "- Na tabela, **DESCLASSIFICADO** é exibido como **TRABALHANDO**."
     )
