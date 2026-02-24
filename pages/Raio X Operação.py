@@ -815,9 +815,8 @@ f_colab = st.sidebar.selectbox("Colaborador", ["Todos"] + colabs_disp, index=0)
 # REGRAS DE PONTUAÇÃO (abaixo dos filtros)
 # =========================================================
 def render_regras_sidebar(operacao: str, funcao: str):
-    # define mode
     if funcao == "Todos":
-        mode = "DISTRIB"  # default para mostrar algo
+        mode = "DISTRIB"
     else:
         mode = view_mode_from_funcao(funcao)
 
@@ -829,7 +828,6 @@ def render_regras_sidebar(operacao: str, funcao: str):
 
     if operacao == "Todos" or funcao == "Todos":
         st.sidebar.caption("Selecione **Operação** e **Função** para ver as regras exatas.")
-        # Ainda assim mostramos o total possível por modo (para não ficar vazio)
         total_disp = sum(PONTOS_DISTRIB.values())
         total_arm = sum(PONTOS_ARMAZEM.values())
         st.sidebar.write(f"• Total possível (Distribuição): **{total_disp}**")
@@ -838,7 +836,6 @@ def render_regras_sidebar(operacao: str, funcao: str):
 
     regras = []
     if mode == "DISTRIB":
-        # metas por operação
         regras.append(("JL", metas_op.get("JL", {}).get("meta", None), PONTOS_DISTRIB["JL"], "% (>= meta)"))
         regras.append(("DEV PDV", metas_op.get("PDV", {}).get("meta", None), PONTOS_DISTRIB["PDV"], "% (<= meta)"))
         regras.append(("BEES", metas_op.get("BEES", {}).get("meta", None), PONTOS_DISTRIB["BEES"], "% (>= meta)"))
@@ -850,7 +847,6 @@ def render_regras_sidebar(operacao: str, funcao: str):
         regras.append(("Desvios DTO", 0, PONTOS_DISTRIB["DTO"], "Qtde (== 0)"))
 
         total = sum(PONTOS_DISTRIB.values())
-
     else:
         regras.append(("ABS", 0, PONTOS_ARMAZEM["ABS"], "Qtde (== 0)"))
         regras.append(("ACIDENTE", 0, PONTOS_ARMAZEM["ACIDENTE"], "Qtde (== 0)"))
@@ -1095,7 +1091,6 @@ with right:
                 )
 
         with cC:
-            # agora vem da planilha Ciclo de gente (Classificação Final)
             ciclo_val = ""
             if ref_last_colab is not None:
                 ciclo_val = str(ref_last_colab.get("CICLO_CLASSIFICACAO_FINAL", "") or "")
@@ -1191,48 +1186,55 @@ with right:
         out[("_MESKEY","")] = pd.to_datetime(t["MES"] + "-01", errors="coerce")
         out = out.sort_values([("_MESKEY",""), ("COLABORADOR","")]).drop(columns=[("_MESKEY","")])
 
-                # ---------------------------
+        # ---------------------------
         # ✅ FIX: Streamlit pode quebrar com Styler + MultiIndex.
         # Vamos achatar as colunas antes de estilizar.
+        # + ✅ AJUSTE NOMENCLATURA (pedido):
+        #   JL_Resultado -> JL
+        #   JL_PTS -> PTS
+        #   ... (idem)
         # ---------------------------
         out_flat = out.copy()
+
+        # 1) achata com padrão base
         out_flat.columns = [
-            c[0] if (isinstance(c, tuple) and c[1] == "") else f"{c[0]}_{c[1]}"
+            (c[0] if (isinstance(c, tuple) and c[1] == "") else f"{c[0]}_{c[1]}")
             for c in out_flat.columns
         ]
 
+        # 2) renomeia para o padrão desejado
+        def renomear_coluna_flat(col: str) -> str:
+            col = str(col)
+            if col.endswith("_Resultado"):
+                return col.replace("_Resultado", "")
+            if col.endswith("_PTS"):
+                return "PTS"
+            return col
+
+        out_flat.columns = [renomear_coluna_flat(c) for c in out_flat.columns]
+
+        # styler central
         sty = out_flat.style.set_properties(**{"text-align": "center"}).set_table_styles(
             [{"selector": "th", "props": [("text-align", "center")]}]
         )
 
-        # colunas de PTS (agora viram "..._PTS")
-        pts_cols = [c for c in out_flat.columns if str(c).endswith("_PTS")]
+        # colunas de PTS agora são literalmente "PTS" (duplicadas)
+        pts_cols = [c for c in out_flat.columns if str(c) == "PTS"]
         if pts_cols:
             sty = sty.applymap(color_pts_zero, subset=pts_cols)
 
-        # risco (agora é "RISCO DE TO?")
+        # risco
         if "RISCO DE TO?" in out_flat.columns:
             sty = sty.applymap(color_risco, subset=["RISCO DE TO?"])
 
-        # RV (agora é "Média RV_Resultado")
-        if "Média RV_Resultado" in out_flat.columns:
-            sty = sty.applymap(color_rv_cell, subset=["Média RV_Resultado"])
+        # RV
+        if "Média RV" in out_flat.columns:
+            sty = sty.applymap(color_rv_cell, subset=["Média RV"])
 
         st.dataframe(sty, use_container_width=True, height=520)
 
         # Export (usa o out_flat direto)
         excel = preparar_excel_para_download(out_flat, sheet_name="RAIO_X")
-        st.download_button(
-            "⬇️ Baixar Excel (Tabela RAIO X)",
-            data=excel,
-            file_name="raio_x_operacao.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-
-        export_df = out.copy()
-        export_df.columns = [c[0] if c[1] == "" else f"{c[0]}_{c[1]}" for c in export_df.columns]
-        excel = preparar_excel_para_download(export_df, sheet_name="RAIO_X")
         st.download_button(
             "⬇️ Baixar Excel (Tabela RAIO X)",
             data=excel,
