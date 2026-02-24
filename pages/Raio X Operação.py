@@ -1191,20 +1191,44 @@ with right:
         out[("_MESKEY","")] = pd.to_datetime(t["MES"] + "-01", errors="coerce")
         out = out.sort_values([("_MESKEY",""), ("COLABORADOR","")]).drop(columns=[("_MESKEY","")])
 
-        sty = out.style.set_properties(**{"text-align": "center"}).set_table_styles(
+                # ---------------------------
+        # ✅ FIX: Streamlit pode quebrar com Styler + MultiIndex.
+        # Vamos achatar as colunas antes de estilizar.
+        # ---------------------------
+        out_flat = out.copy()
+        out_flat.columns = [
+            c[0] if (isinstance(c, tuple) and c[1] == "") else f"{c[0]}_{c[1]}"
+            for c in out_flat.columns
+        ]
+
+        sty = out_flat.style.set_properties(**{"text-align": "center"}).set_table_styles(
             [{"selector": "th", "props": [("text-align", "center")]}]
         )
 
-        pts_cols = [c for c in out.columns if isinstance(c, tuple) and c[1] == "PTS"]
+        # colunas de PTS (agora viram "..._PTS")
+        pts_cols = [c for c in out_flat.columns if str(c).endswith("_PTS")]
         if pts_cols:
             sty = sty.applymap(color_pts_zero, subset=pts_cols)
 
-        sty = sty.applymap(color_risco, subset=[("RISCO DE TO?","")])
+        # risco (agora é "RISCO DE TO?")
+        if "RISCO DE TO?" in out_flat.columns:
+            sty = sty.applymap(color_risco, subset=["RISCO DE TO?"])
 
-        if ("Média RV", "Resultado") in out.columns:
-            sty = sty.applymap(color_rv_cell, subset=[("Média RV", "Resultado")])
+        # RV (agora é "Média RV_Resultado")
+        if "Média RV_Resultado" in out_flat.columns:
+            sty = sty.applymap(color_rv_cell, subset=["Média RV_Resultado"])
 
         st.dataframe(sty, use_container_width=True, height=520)
+
+        # Export (usa o out_flat direto)
+        excel = preparar_excel_para_download(out_flat, sheet_name="RAIO_X")
+        st.download_button(
+            "⬇️ Baixar Excel (Tabela RAIO X)",
+            data=excel,
+            file_name="raio_x_operacao.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
         export_df = out.copy()
         export_df.columns = [c[0] if c[1] == "" else f"{c[0]}_{c[1]}" for c in export_df.columns]
