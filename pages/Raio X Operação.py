@@ -24,13 +24,38 @@ st.markdown("<h2 style='text-align:center; margin:0;'>RAIO X OPERAÇÃO</h2>", u
 st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
 # =========================================================
-# ARQUIVOS
+# LOCALIZAR PASTA DATA (FUNCIONA LOCAL + STREAMLIT CLOUD)
 # =========================================================
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+def localizar_data_dir():
+    atual = Path(__file__).resolve()
+
+    for p in [atual] + list(atual.parents):
+        tentativa = p / "data"
+        if tentativa.exists():
+            return tentativa
+
+    raise FileNotFoundError("❌ Pasta 'data' não encontrada.")
+
+DATA_DIR = localizar_data_dir()
+
+st.write("📂 DATA_DIR:", DATA_DIR)
 
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 ARQ_SKAP   = DATA_DIR / "Skap.xlsx"
-ARQ_PRONT  = DATA_DIR / "Prontuario Condutor.xlsx"
+# =========================================================
+# AUTO-DETECTAR PRONTUÁRIO
+# =========================================================
+ARQ_PRONT = None
+
+for f in DATA_DIR.glob("*.xlsx"):
+    if "PRONT" in normalizar_nome(f.name):
+        ARQ_PRONT = f
+        break
+
+if ARQ_PRONT is None:
+    st.warning("⚠️ Arquivo de Prontuário não encontrado.")
+else:
+    st.caption(f"✅ Prontuário carregado: {ARQ_PRONT.name}")
 ARQ_VALES  = DATA_DIR / "Vales.xlsx"
 ARQ_RV     = DATA_DIR / "RV.xlsx"
 ARQ_ABS    = DATA_DIR / "Absenteismo.xlsx"
