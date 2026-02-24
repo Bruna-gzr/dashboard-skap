@@ -301,77 +301,95 @@ PONTOS_ARMAZEM = {"ABS": 10, "ACIDENTE": 10, "DTO": 10}  # 30
 # =========================================================
 def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
     """
-    - tenta header 0..4
-    - coluna nome: EMPREGADO
-    - coluna score: PONTUACAO PONDERADA ou PONTUACAO (simples)
+    Leitor robusto:
+    - varre abas e detecta a linha de header automaticamente
+    - tenta achar coluna de nome (EMPREGADO/NOME/COLABORADOR/CONDUTOR)
+    - tenta achar coluna score (PONTUACAO PONDERADA / PONTUACAO / SCORE)
     """
-    def read_with_header(h):
-        d = pd.read_excel(path_xlsx, sheet_name=0, header=h)
-        d = normalizar_colunas(d)
-        return d
 
-    df = None
-    for h in [0, 1, 2, 3, 4]:
+    def detectar_header(df_raw: pd.DataFrame) -> int | None:
+        # procura linha que contenha palavras típicas de header
+        for i in range(min(30, len(df_raw))):
+            row = df_raw.iloc[i].astype(str).map(normalizar_nome)
+            joined = " ".join(row.tolist())
+            if any(k in joined for k in ["EMPREG", "COLAB", "CONDUT", "MOTORIST", "NOME"]):
+                # boa candidata: contém palavras e tem várias colunas não vazias
+                non_empty = sum(1 for v in row.tolist() if v.strip() != "" and v.strip() != "NAN")
+                if non_empty >= 3:
+                    return i
+        return None
+
+    def achar_col(df: pd.DataFrame, keys: list[str]) -> str | None:
+        cols = list(df.columns)
+        for c in cols:
+            cc = normalizar_nome(c)
+            if any(k in cc for k in keys):
+                return c
+        return None
+
+    # lê todas as abas
+    try:
+        book = pd.read_excel(path_xlsx, sheet_name=None, header=None)
+    except Exception:
+        return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
+
+    melhor = None  # (df_final, score_col)
+
+    for sheet, raw in book.items():
+        if raw is None or raw.empty:
+            continue
+
+        h = detectar_header(raw)
+        if h is None:
+            continue
+
         try:
-            tmp = read_with_header(h)
-            if any("EMPREG" in normalizar_nome(c) for c in tmp.columns):
-                df = tmp
-                break
+            df = pd.read_excel(path_xlsx, sheet_name=sheet, header=h)
+            df = normalizar_colunas(df)
         except Exception:
             continue
 
-    if df is None or df.empty:
-        return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
+        # coluna nome (várias possibilidades)
+        col_nome = achar_col(df, ["EMPREG", "COLAB", "CONDUT", "MOTORIST", "NOME"])
+        if col_nome is None:
+            continue
 
-    # nome
-    col_nome = "EMPREGADO" if "EMPREGADO" in df.columns else None
-    if col_nome is None:
-        for c in df.columns:
-            if "EMPREG" in normalizar_nome(c):
-                col_nome = c
-                break
-    if col_nome is None:
-        return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
-
-    # pontuação
-    col_score = None
-    for c in df.columns:
-        cc = normalizar_nome(c)
-        if ("PONTUACAO" in cc or "PONTUAC" in cc) and "PONDERADA" in cc:
-            col_score = c
-            break
-
-    if col_score is None:
+        # coluna score
+        col_score = None
+        # 1) preferir ponderada
         for c in df.columns:
             cc = normalizar_nome(c)
-            if cc == "PONTUACAO" or cc.startswith("PONTUACAO"):
+            if ("PONTUACAO" in cc or "PONTUAC" in cc) and "PONDERADA" in cc:
                 col_score = c
                 break
+        # 2) pontuação normal
+        if col_score is None:
+            col_score = achar_col(df, ["PONTUACAO", "PONTUAC", "SCORE", "PONTOS", "NOTA"])
 
-    if col_score is None:
-        # último fallback: qualquer col que tenha PONT e não seja FAIXA
-        for c in df.columns:
-            cc = normalizar_nome(c)
-            if "PONT" in cc and "FAIX" not in cc:
-                col_score = c
-                break
+        if col_score is None:
+            continue
 
-    if col_score is None:
+        df["NOME_KEY"] = df[col_nome].astype(str).map(normalizar_nome)
+        df["NOME_SIMPLE"] = df["NOME_KEY"].map(nome_simple_from_key)
+        df["FIRST_LAST"] = df["NOME_KEY"].map(first_last_key)
+
+        s = df[col_score].astype(str).str.replace(",", ".", regex=False)
+        df["PRONT_PONDERADA"] = pd.to_numeric(s, errors="coerce")
+
+        out = (
+            df[["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"]]
+            .dropna(subset=["NOME_KEY"])
+            .drop_duplicates("NOME_KEY", keep="last")
+        )
+
+        # guarda a primeira aba válida (ou a maior)
+        if melhor is None or len(out) > len(melhor):
+            melhor = out
+
+    if melhor is None or melhor.empty:
         return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
 
-    df["NOME_KEY"] = df[col_nome].astype(str).map(normalizar_nome)
-    df["NOME_SIMPLE"] = df["NOME_KEY"].map(nome_simple_from_key)
-    df["FIRST_LAST"] = df["NOME_KEY"].map(first_last_key)
-
-    s = df[col_score].astype(str).str.replace(",", ".", regex=False)
-    df["PRONT_PONDERADA"] = pd.to_numeric(s, errors="coerce")
-
-    out = (
-        df[["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"]]
-        .dropna(subset=["NOME_KEY"])
-        .drop_duplicates("NOME_KEY", keep="last")
-    )
-    return out
+    return melhor
 
 # =========================================================
 # LOAD
@@ -408,10 +426,13 @@ except Exception as e:
 # ✅ DEBUG para você ver se pront tá vindo
 with st.expander("🧪 DEBUG PRONTUÁRIO"):
     st.write("Arquivo existe?", (ARQ_PRONT is not None and ARQ_PRONT.exists()))
+    st.write("Arquivo:", (ARQ_PRONT.name if ARQ_PRONT is not None else "-"))
     st.write("Linhas pront:", 0 if pront is None else len(pront))
     if pront is not None and not pront.empty:
         st.write("Colunas:", list(pront.columns))
         st.dataframe(pront.head(25), use_container_width=True)
+    else:
+        st.warning("Prontuário vazio: header/colunas não foram detectados. (Com a função nova isso quase sempre resolve.)")
 
 # =========================================================
 # NORMALIZAÇÃO ATIVOS
