@@ -28,68 +28,17 @@ st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 # =========================================================
 def localizar_data_dir():
     atual = Path(__file__).resolve()
-
     for p in [atual] + list(atual.parents):
         tentativa = p / "data"
         if tentativa.exists():
             return tentativa
-
     raise FileNotFoundError("❌ Pasta 'data' não encontrada.")
 
 DATA_DIR = localizar_data_dir()
-
 st.write("📂 DATA_DIR:", DATA_DIR)
 
-ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
-ARQ_SKAP   = DATA_DIR / "Skap.xlsx"
 # =========================================================
-# AUTO-DETECTAR PRONTUÁRIO
-# =========================================================
-ARQ_PRONT = None
-
-for f in DATA_DIR.glob("*.xlsx"):
-    if "PRONT" in normalizar_nome(f.name):
-        ARQ_PRONT = f
-        break
-
-if ARQ_PRONT is None:
-    st.warning("⚠️ Arquivo de Prontuário não encontrado.")
-else:
-    st.caption(f"✅ Prontuário carregado: {ARQ_PRONT.name}")
-ARQ_VALES  = DATA_DIR / "Vales.xlsx"
-ARQ_RV     = DATA_DIR / "RV.xlsx"
-ARQ_ABS    = DATA_DIR / "Absenteismo.xlsx"
-ARQ_ACID   = DATA_DIR / "Ocorrencia de acidentes.xlsx"
-ARQ_DTO    = DATA_DIR / "Desvios de DTOs.xlsx"
-ARQ_IND    = DATA_DIR / "Resultados indicadores operacionais.xlsx"
-
-# =========================================================
-# CACHE BUSTER
-# =========================================================
-def get_last_mtime():
-    arquivos = [ARQ_ATIVOS, ARQ_SKAP, ARQ_PRONT, ARQ_VALES, ARQ_RV, ARQ_ABS, ARQ_ACID, ARQ_DTO, ARQ_IND]
-    mtimes = [a.stat().st_mtime for a in arquivos if a.exists()]
-    return max(mtimes) if mtimes else None
-
-last_mtime = get_last_mtime()
-
-try:
-    if last_mtime is not None:
-        dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
-        st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
-    else:
-        st.caption("🕒 Última atualização: não disponível")
-except Exception:
-    st.caption("🕒 Última atualização: não disponível")
-
-c_refresh, _ = st.columns([1, 5])
-with c_refresh:
-    if st.button("🔄 Atualizar dados agora", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
-# =========================================================
-# UTILS
+# UTILS (PRECISA VIR ANTES DO AUTO-DETECT PRONTUÁRIO)
 # =========================================================
 def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [
@@ -223,6 +172,68 @@ def centralizar_tabela(df: pd.DataFrame):
         .set_properties(**{"text-align": "center"})
         .set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
     )
+
+# =========================================================
+# ARQUIVOS
+# =========================================================
+ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
+ARQ_SKAP   = DATA_DIR / "Skap.xlsx"
+
+# =========================================================
+# AUTO-DETECTAR PRONTUÁRIO (AGORA NORMALIZAR_NOME JÁ EXISTE)
+# =========================================================
+ARQ_PRONT = None
+for f in DATA_DIR.glob("*.xlsx"):
+    if "PRONT" in normalizar_nome(f.name):
+        ARQ_PRONT = f
+        break
+
+if ARQ_PRONT is None:
+    st.warning("⚠️ Arquivo de Prontuário não encontrado.")
+else:
+    st.caption(f"✅ Prontuário carregado: {ARQ_PRONT.name}")
+
+ARQ_VALES  = DATA_DIR / "Vales.xlsx"
+ARQ_RV     = DATA_DIR / "RV.xlsx"
+ARQ_ABS    = DATA_DIR / "Absenteismo.xlsx"
+ARQ_ACID   = DATA_DIR / "Ocorrencia de acidentes.xlsx"
+ARQ_DTO    = DATA_DIR / "Desvios de DTOs.xlsx"
+ARQ_IND    = DATA_DIR / "Resultados indicadores operacionais.xlsx"
+
+# =========================================================
+# CACHE BUSTER (ROBUSTO COM ARQ_PRONT = None)
+# =========================================================
+def get_last_mtime():
+    arquivos = [ARQ_ATIVOS, ARQ_SKAP, ARQ_VALES, ARQ_RV, ARQ_ABS, ARQ_ACID, ARQ_DTO, ARQ_IND]
+    if ARQ_PRONT is not None:
+        arquivos.append(ARQ_PRONT)
+
+    mtimes = []
+    for a in arquivos:
+        try:
+            if a is not None and a.exists():
+                mtimes.append(a.stat().st_mtime)
+        except Exception:
+            pass
+
+    return max(mtimes) if mtimes else None
+
+last_mtime = get_last_mtime()
+
+try:
+    if last_mtime is not None:
+        dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
+        st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
+    else:
+        st.caption("🕒 Última atualização: não disponível")
+except Exception:
+    st.caption("🕒 Última atualização: não disponível")
+
+c_refresh, _ = st.columns([1, 5])
+with c_refresh:
+    if st.button("🔄 Atualizar dados agora", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
 
 # =========================================================
 # FUNÇÕES
@@ -380,7 +391,7 @@ def carregar_bases(_cache_key: float | None):
     ind    = pd.read_excel(ARQ_IND) if ARQ_IND.exists() else pd.DataFrame()
 
     pront = pd.DataFrame()
-    if ARQ_PRONT.exists():
+    if ARQ_PRONT is not None and ARQ_PRONT.exists():
         try:
             pront = ler_prontuario_ponderada(ARQ_PRONT)
         except Exception:
@@ -396,7 +407,7 @@ except Exception as e:
 
 # ✅ DEBUG para você ver se pront tá vindo
 with st.expander("🧪 DEBUG PRONTUÁRIO"):
-    st.write("Arquivo existe?", ARQ_PRONT.exists())
+    st.write("Arquivo existe?", (ARQ_PRONT is not None and ARQ_PRONT.exists()))
     st.write("Linhas pront:", 0 if pront is None else len(pront))
     if pront is not None and not pront.empty:
         st.write("Colunas:", list(pront.columns))
