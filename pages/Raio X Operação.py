@@ -3,6 +3,11 @@
         # Vamos achatar e renomear, mantendo "PTS" visualmente repetido
         # usando sufixos invisíveis (zero-width) para ficar ÚNICO.
         # ---------------------------
+                # ---------------------------
+        # ✅ FIX: Streamlit pode quebrar com Styler + colunas duplicadas.
+        # Vamos achatar e renomear, mantendo "PTS" visualmente repetido
+        # usando sufixos invisíveis (zero-width) para ficar ÚNICO.
+        # ---------------------------
         out_flat = out.copy()
 
         # 1) achata MultiIndex
