@@ -18,13 +18,13 @@ import unicodedata
 import re
 
 # =========================================================
-# TÍTULO
+# TÍTULO (1 linha)
 # =========================================================
 st.markdown(
-    "<h2 style='text-align:center; margin-bottom:0;'>RAIO X</h2>"
-    "<h3 style='text-align:center; margin-top:0;'>OPERAÇÃO</h3>",
+    "<h2 style='text-align:center; margin:0;'>RAIO X OPERAÇÃO</h2>",
     unsafe_allow_html=True
 )
+st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
 # =========================================================
 # ARQUIVOS (pasta data/)
@@ -33,7 +33,7 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"              # BASE PRINCIPAL
 ARQ_SKAP = DATA_DIR / "Skap.xlsx"                                     # pegar coluna NIVEIS
-ARQ_PRONT = DATA_DIR / "Prontuario Condutor.xlsx"                     # Empregado + Pontuação <br> Ponderada
+ARQ_PRONT = DATA_DIR / "Prontuario Condutor.xlsx"                     # Nome + Pontuação Ponderada
 ARQ_VALES = DATA_DIR / "Vales.xlsx"                                   # COLABORADOR + DATA
 ARQ_RV = DATA_DIR / "RV.xlsx"                                         # NOME + DATA + TOTAL RV + % + RECARGA
 ARQ_ABS = DATA_DIR / "Absenteismo.xlsx"                               # COLABORADOR + DATA + Tipo de Ausência
@@ -102,7 +102,7 @@ def tratar_data_segura(series: pd.Series) -> pd.Series:
 
 def to_month_key(dt: pd.Series) -> pd.Series:
     d = pd.to_datetime(dt, errors="coerce")
-    return d.dt.to_period("M").astype(str)  # "YYYY-MM"
+    return d.dt.to_period("M").astype(str)
 
 def month_label(pt_period: str) -> str:
     try:
@@ -121,13 +121,6 @@ def safe_float(x):
     return pd.to_numeric(x, errors="coerce")
 
 def parse_percent(x):
-    """
-    Aceita:
-    - 0.6117 -> 61.17%
-    - "61,17%" / "61.17%" -> 61.17%
-    - 61.17 -> 61.17%
-    Retorna em porcentagem (0-100).
-    """
     if pd.isna(x):
         return np.nan
     s = str(x).strip()
@@ -142,20 +135,11 @@ def parse_percent(x):
     return float(v)
 
 def parse_time_mmss(x):
-    """
-    Retorna minutos como float.
-    Aceita:
-    - "00:30" / "0:30" (mm:ss)
-    - "00:30:00" (hh:mm:ss)
-    - número (já minutos)
-    """
     if pd.isna(x):
         return np.nan
     s = str(x).strip()
     if s == "":
         return np.nan
-
-    # cobre casos tipo "0 days 00:30:00"
     s = s.replace("0 days ", "").replace("0 day ", "")
 
     v = pd.to_numeric(s.replace(",", "."), errors="coerce")
@@ -179,7 +163,6 @@ def parse_time_mmss(x):
         if pd.isna(hh) or pd.isna(mm) or pd.isna(ss):
             return np.nan
         return float(hh) * 60.0 + float(mm) + float(ss) / 60.0
-
     return np.nan
 
 def fmt_pct(v):
@@ -196,8 +179,7 @@ def fmt_min(v):
     return f"{mm:02d}:{ss:02d}"
 
 def norm_operacao(op: str) -> str:
-    opn = normalizar_nome(op)
-    return opn
+    return normalizar_nome(op)
 
 def centralizar_tabela(df: pd.DataFrame):
     return (
@@ -269,6 +251,7 @@ METAS = {
     },
     "CD LONDRINA": {
         "PDV": {"meta": 3.5, "pontos": 3, "tipo": "lte_pct"},
+        # BEES não aplicável
         "TML": {"meta": 0.5, "pontos": 5, "tipo": "lte_min"},
         "JL": {"meta": 80.0, "pontos": 3, "tipo": "gte_pct"},
         "ABS": {"meta": 0, "pontos": 5, "tipo": "eq0"},
@@ -312,29 +295,40 @@ METAS = {
 METAS = {norm_operacao(k): v for k, v in METAS.items()}
 
 # =========================================================
-# PRONTUÁRIO: LER "Pontuação <br> Ponderada"
+# PRONTUÁRIO: LER "Pontuação <br> Ponderada" (robusto)
 # =========================================================
 def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
-    df = pd.read_excel(path_xlsx)
+    df = pd.read_excel(path_xlsx, sheet_name=0)
     df = normalizar_colunas(df)
 
-    # coluna de nome
-    if "EMPREGADO" not in df.columns:
-        if "COLABORADOR" in df.columns:
-            df["EMPREGADO"] = df["COLABORADOR"]
-        else:
-            df["EMPREGADO"] = ""
+    # procura coluna de nome
+    col_nome = None
+    for cand in ["EMPREGADO", "COLABORADOR", "NOME", "MOTORISTA", "CONDUTOR"]:
+        if cand in df.columns:
+            col_nome = cand
+            break
+    if col_nome is None:
+        for c in df.columns:
+            cc = normalizar_nome(c)
+            if "NOME" in cc or "EMPREG" in cc or "COLAB" in cc:
+                col_nome = c
+                break
+    if col_nome is None:
+        return pd.DataFrame(columns=["NOME_KEY", "PRONT_PONDERADA"])
 
-    df["NOME_KEY"] = df["EMPREGADO"].astype(str).map(normalizar_nome)
+    df["NOME_KEY"] = df[col_nome].astype(str).map(normalizar_nome)
 
-    # acha coluna ponderada (mesmo com <br>)
+    # acha coluna ponderada (com variações)
     col_score = None
     for c in df.columns:
         cc = normalizar_nome(c)
-        if "PONDERADA" in cc and "PONTUACAO" in cc:
+        if "PONTUACAO" in cc and "PONDERADA" in cc:
             col_score = c
             break
-        if "PONDERADA" in cc and "PONTUAC" in cc:
+        if "PONTUAC" in cc and "PONDERADA" in cc:
+            col_score = c
+            break
+        if "PONDERADA" in cc and ("PONT" in cc or "PONTU" in cc):
             col_score = c
             break
 
@@ -342,7 +336,11 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
         return pd.DataFrame(columns=["NOME_KEY", "PRONT_PONDERADA"])
 
     df["PRONT_PONDERADA"] = pd.to_numeric(df[col_score], errors="coerce")
-    out = df[["NOME_KEY", "PRONT_PONDERADA"]].drop_duplicates("NOME_KEY", keep="last")
+    out = (
+        df[["NOME_KEY", "PRONT_PONDERADA"]]
+        .dropna(subset=["NOME_KEY"])
+        .drop_duplicates("NOME_KEY", keep="last")
+    )
     return out
 
 # =========================================================
@@ -398,7 +396,7 @@ ativos["ADMISSAO"] = pd.to_datetime(ativos["DATA_ADM_DT"], errors="coerce").dt.s
 ativos = ativos[ativos["FUNCAO"].isin(FUNCOES_PERMITIDAS)].copy()
 
 # =========================================================
-# SKAP: puxar NÍVEIS (via nome normalizado)
+# SKAP: puxar NÍVEIS
 # =========================================================
 skap = normalizar_colunas(skap) if not skap.empty else skap
 if not skap.empty:
@@ -412,7 +410,7 @@ else:
     skap_niveis = pd.DataFrame(columns=["NOME_KEY", "NIVEIS"])
 
 # =========================================================
-# PRONTUÁRIO: DF já vem (NOME_KEY, PRONT_PONDERADA)
+# PRONTUÁRIO: DF (NOME_KEY, PRONT_PONDERADA)
 # =========================================================
 if pront is None or pront.empty:
     pront = pd.DataFrame(columns=["NOME_KEY", "PRONT_PONDERADA"])
@@ -424,9 +422,12 @@ else:
         pront["PRONT_PONDERADA"] = np.nan
 
 # =========================================================
-# BASE MASTER — para filtros e cards
+# BASE MASTER — filtros e cards
 # =========================================================
-base_master = ativos.merge(skap_niveis, on="NOME_KEY", how="left").merge(pront[["NOME_KEY","PRONT_PONDERADA"]], on="NOME_KEY", how="left")
+base_master = (
+    ativos.merge(skap_niveis, on="NOME_KEY", how="left")
+          .merge(pront[["NOME_KEY", "PRONT_PONDERADA"]], on="NOME_KEY", how="left")
+)
 if "NIVEIS" not in base_master.columns:
     base_master["NIVEIS"] = ""
 
@@ -646,31 +647,26 @@ def calc_pontos_row(row) -> dict:
     if metas is None:
         return res
 
-    # PDV
     if "PDV" in metas:
         v = row.get("PDV", np.nan)
         if pd.notna(v) and v <= metas["PDV"]["meta"]:
             res["PTS_PDV"] = metas["PDV"]["pontos"]
 
-    # BEES
     if "BEES" in metas:
         v = row.get("BEES", np.nan)
         if pd.notna(v) and v >= metas["BEES"]["meta"]:
             res["PTS_BEES"] = metas["BEES"]["pontos"]
 
-    # TML
     if "TML" in metas:
         v = row.get("TML_MIN", np.nan)
         if pd.notna(v) and v <= metas["TML"]["meta"]:
             res["PTS_TML"] = metas["TML"]["pontos"]
 
-    # JL
     if "JL" in metas:
         v = row.get("JL", np.nan)
         if pd.notna(v) and v >= metas["JL"]["meta"]:
             res["PTS_JL"] = metas["JL"]["pontos"]
 
-    # ABS/VALES/ACIDENTE/DTO
     if "ABS" in metas and int(row.get("ABS", 0)) == 0:
         res["PTS_ABS"] = metas["ABS"]["pontos"]
     if "VALES" in metas and int(row.get("VALES", 0)) == 0:
@@ -802,321 +798,4 @@ st.sidebar.divider()
 st.sidebar.subheader("Pontuação")
 
 op_meta_key = norm_operacao(f_oper) if f_oper != "Todos" else None
-metas_op = METAS.get(op_meta_key, None) if op_meta_key else None
-
-if metas_op is None:
-    st.sidebar.caption("Selecione uma operação com metas configuradas para ver a pontuação.")
-else:
-    def linha_meta(nome, meta, pts):
-        st.sidebar.markdown(f"- **{nome}**: meta **{meta}** · **{pts} pts**")
-
-    if "PDV" in metas_op:
-        linha_meta("DEV PDV", f"≤ {metas_op['PDV']['meta']}%", metas_op["PDV"]["pontos"])
-    if "BEES" in metas_op:
-        linha_meta("BEES", f"≥ {metas_op['BEES']['meta']}%", metas_op["BEES"]["pontos"])
-    if "TML" in metas_op:
-        linha_meta("TML", "≤ 00:30", metas_op["TML"]["pontos"])
-    if "JL" in metas_op:
-        linha_meta("JL", f"≥ {metas_op['JL']['meta']}%", metas_op["JL"]["pontos"])
-    linha_meta("ABS", "0", metas_op["ABS"]["pontos"])
-    linha_meta("VALES", "0", metas_op["VALES"]["pontos"])
-    linha_meta("ACID", "0", metas_op["ACIDENTE"]["pontos"])
-    linha_meta("DTO", "0", metas_op["DTO"]["pontos"])
-
-    total_pts = sum(v["pontos"] for v in metas_op.values())
-    st.sidebar.markdown(f"**Total possível:** {total_pts} pts")
-
-# =========================================================
-# REFERÊNCIA (linha mais recente)
-# =========================================================
-ref = None
-if not df.empty:
-    ref = df.sort_values("MES", ascending=False).iloc[0]
-
-# =========================================================
-# ESTILO (cores)
-# =========================================================
-def color_pts(v):
-    try:
-        v = int(v)
-    except Exception:
-        return ""
-    return "color: #22c55e; font-weight:800;" if v > 0 else "color: #ef4444; font-weight:800;"
-
-def color_risco(v):
-    v = str(v)
-    if v == "NÃO":
-        return "color: #22c55e; font-weight:900;"
-    if v == "ATENÇÃO":
-        return "color: #facc15; font-weight:900;"
-    if v == "SIM":
-        return "color: #ef4444; font-weight:900;"
-    if v in ["FERIAS", "AFASTADO"]:
-        return "color: #94a3b8; font-weight:900;"
-    return ""
-
-# =========================================================
-# LAYOUT (parecido com a imagem): coluna esquerda + direita
-# =========================================================
-left, right = st.columns([1.05, 2.95], gap="large")
-
-with left:
-    st.markdown("#### Colaborador")
-    st.markdown(
-        f"<div style='padding:10px;border-radius:12px;background:#22262f;'>"
-        f"<div style='font-weight:800;font-size:14px;'>{ref['COLABORADOR'] if ref is not None else '-'}</div>"
-        f"<div style='opacity:.8;font-size:12px;'>{ref['OPERACAO'] if ref is not None else ''} · {ref['FUNCAO'] if ref is not None else ''}</div>"
-        f"</div>",
-        unsafe_allow_html=True
-    )
-
-    st.markdown("#### Indicadores")
-    def linha_ind(icon, nome, resultado, pts):
-        st.markdown(
-            f"""
-            <div style="display:flex;align-items:center;justify-content:space-between;
-                        padding:10px 10px;border-radius:12px;background:#22262f;margin-bottom:8px;">
-              <div style="display:flex;align-items:center;gap:10px;">
-                <div style="font-size:18px;opacity:.9;">{icon}</div>
-                <div>
-                  <div style="font-weight:800;font-size:13px;opacity:.95;">{nome}</div>
-                  <div style="font-size:12px;opacity:.8;">Resultado: <b>{resultado}</b></div>
-                </div>
-              </div>
-              <div style="text-align:right;">
-                <div style="font-size:11px;opacity:.7;">PTS</div>
-                <div style="font-weight:900;font-size:16px;">{pts}</div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    if ref is None:
-        st.info("Sem dados para os filtros atuais.")
-    else:
-        jl_res = fmt_pct(ref.get("JL", np.nan))
-        pdv_res = fmt_pct(ref.get("PDV", np.nan))
-        bees_res = fmt_pct(ref.get("BEES", np.nan))
-        tml_res = fmt_min(ref.get("TML_MIN", np.nan))
-
-        linha_ind("👥", "JL", jl_res or "-", int(ref.get("PTS_JL", 0)))
-        linha_ind("📦", "DEV PDV", pdv_res or "-", int(ref.get("PTS_PDV", 0)))
-
-        # BEES pode não existir pra operação
-        if f_oper != "Todos":
-            m = METAS.get(norm_operacao(f_oper), {})
-            if "BEES" in m:
-                linha_ind("🟨", "BEES", bees_res or "-", int(ref.get("PTS_BEES", 0)))
-        else:
-            # no "Todos", mostra se tem coluna
-            if pd.notna(ref.get("BEES", np.nan)):
-                linha_ind("🟨", "BEES", bees_res or "-", int(ref.get("PTS_BEES", 0)))
-
-        linha_ind("⏱️", "TML", tml_res or "-", int(ref.get("PTS_TML", 0)))
-        linha_ind("🩹", "ABS", str(int(ref.get("ABS", 0))), int(ref.get("PTS_ABS", 0)))
-        linha_ind("🎫", "VALES", str(int(ref.get("VALES", 0))), int(ref.get("PTS_VALES", 0)))
-        linha_ind("⚠️", "ACID", str(int(ref.get("ACIDENTE", 0))), int(ref.get("PTS_ACIDENTE", 0)))
-        linha_ind("📄", "DTO", str(int(ref.get("DTO", 0))), int(ref.get("PTS_DTO", 0)))
-
-with right:
-    # =========================================================
-    # TOPO — cards
-    # =========================================================
-    top1, top2, top3, top4 = st.columns([2.2, 1.2, 1.2, 1.2])
-
-    with top1:
-        titulo_func = (ref["FUNCAO"] if ref is not None else "")
-        st.markdown(f"<h4 style='margin:0;'> {titulo_func} </h4>", unsafe_allow_html=True)
-
-    with top2:
-        if ref is None or pd.isna(ref.get("DATA_ADM_DT", None)):
-            st.metric("Tempo de casa (meses)", "-")
-        else:
-            meses = int((pd.Timestamp.today().normalize() - pd.to_datetime(ref["DATA_ADM_DT"]).normalize()).days / 30.44)
-            st.metric("Tempo de casa (meses)", f"{meses}")
-
-    with top3:
-        st.metric("Admissão", (ref["ADMISSAO"] if ref is not None else "-"))
-
-    with top4:
-        st.metric("Demissão", "-")
-
-    # =========================================================
-    # CARDS (SKAP / Prontuário / Risco / Total)
-    # =========================================================
-    cA, cB, cC, cD = st.columns(4)
-
-    with cA:
-        st.metric("SKAP - Níveis", (ref["NIVEIS"] if ref is not None and str(ref.get("NIVEIS","")).strip() != "" else "-"))
-
-    with cB:
-        v = ref.get("PRONT_PONDERADA", np.nan) if ref is not None else np.nan
-        faixa = ref.get("PRONT_FAIXA", "-") if ref is not None else "-"
-        cor = ref.get("PRONT_COR", "#94a3b8") if ref is not None else "#94a3b8"
-        if pd.isna(v):
-            st.metric("Prontuário", "-")
-        else:
-            st.markdown(
-                f"""
-                <div style="padding:12px;border-radius:12px;background:#2b2f38;">
-                  <div style="font-weight:700;margin-bottom:6px;">Prontuário do condutor</div>
-                  <div style="display:flex;flex-direction:column;gap:4px;">
-                    <div style="font-weight:900;color:{cor};">{faixa}</div>
-                    <div style="opacity:0.95;">Pontuação ponderada: <b>{v:.3f}</b></div>
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-    with cC:
-        col = "CICLO DE GENTE 2025"
-        if col in base_master.columns and ref is not None:
-            st.metric("Ciclo de gente 2025", str(ref.get(col, "-")) or "-")
-        else:
-            st.metric("Ciclo de gente 2025", "-")
-
-    with cD:
-        if df.empty:
-            st.metric("TOTAL (média)", "-")
-        else:
-            st.metric("TOTAL (média)", f"{df['TOTAL_PTS'].mean():.1f}")
-
-    st.divider()
-
-    # =========================================================
-    # GRÁFICO: pontuação total por mês
-    # =========================================================
-    st.subheader("📊 Pontuação x mês")
-
-    graf = df.copy()
-    if graf.empty:
-        st.info("Sem dados para o gráfico com os filtros atuais.")
-    else:
-        g = (
-            graf.groupby(["MES"], dropna=False)["TOTAL_PTS"]
-            .mean()
-            .reset_index()
-            .sort_values("MES")
-        )
-        g["MÊS"] = g["MES"].apply(month_label)
-
-        fig = px.bar(g, x="MÊS", y="TOTAL_PTS", text=g["TOTAL_PTS"].map(lambda x: f"{x:.0f}"))
-        fig.update_layout(yaxis_title="Pontuação (TOTAL)", xaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.divider()
-
-    # =========================================================
-    # RANKING TOP 10
-    # =========================================================
-    st.subheader("🏆 TOP 10 melhores colaboradores (por TOTAL médio no filtro)")
-    if df.empty:
-        st.info("Sem dados para ranking com os filtros atuais.")
-    else:
-        rank = (
-            df.groupby(["COLABORADOR"], dropna=False)
-            .agg(
-                OPERACAO=("OPERACAO", "first"),
-                FUNCAO=("FUNCAO", "first"),
-                MEDIA_TOTAL=("TOTAL_PTS", "mean"),
-            )
-            .reset_index()
-            .sort_values("MEDIA_TOTAL", ascending=False)
-            .head(10)
-        )
-        st.dataframe(centralizar_tabela(rank), use_container_width=True)
-
-    st.divider()
-
-    # =========================================================
-    # TABELA PRINCIPAL (nomenclatura + PTS)
-    # =========================================================
-    st.subheader("📋 Tabela de Pontuação (por colaborador e mês)")
-
-    if df.empty:
-        st.info("Sem dados para tabela com os filtros atuais.")
-    else:
-        t = df.copy()
-
-        t["DEV PDV"] = t["PDV"].apply(fmt_pct)
-        t["BEES"]    = t["BEES"].apply(fmt_pct)
-        t["TML"]     = t["TML_MIN"].apply(fmt_min)
-        t["JL"]      = t.get("JL", np.nan).apply(fmt_pct)
-
-        t["ABS"]   = t["ABS"].astype(int)
-        t["VALES"] = t["VALES"].astype(int)
-        t["ACID"]  = t["ACIDENTE"].astype(int)
-        t["DTO"]   = t["DTO"].astype(int)
-
-        out = pd.DataFrame({
-            ("MÊS",""): t["MÊS"],
-            ("COLABORADOR",""): t["COLABORADOR"],
-            ("RISCO DE TO",""): t["RISCO DE TO"],
-            ("TOTAL",""): t["TOTAL_PTS"],
-        })
-
-        def add_indicador(nome, col_res, col_pts):
-            out[(nome, "Resultado")] = t[col_res]
-            out[(nome, "PTS")] = t[col_pts]
-
-        add_indicador("JL",      "JL",      "PTS_JL")
-        add_indicador("DEV PDV", "DEV PDV", "PTS_PDV")
-
-        # BEES condicionado
-        tem_bees = True
-        if f_oper != "Todos":
-            m = METAS.get(norm_operacao(f_oper), {})
-            if "BEES" not in m:
-                tem_bees = False
-        if tem_bees:
-            add_indicador("BEES", "BEES", "PTS_BEES")
-
-        add_indicador("TML",   "TML",   "PTS_TML")
-        add_indicador("ABS",   "ABS",   "PTS_ABS")
-        add_indicador("VALES", "VALES", "PTS_VALES")
-        add_indicador("ACID",  "ACID",  "PTS_ACIDENTE")
-        add_indicador("DTO",   "DTO",   "PTS_DTO")
-
-        out[("_MESKEY","")] = pd.to_datetime(t["MES"] + "-01", errors="coerce")
-        out = out.sort_values([("_MESKEY",""), ("COLABORADOR","")]).drop(columns=[("_MESKEY","")])
-
-        sty = (
-            out.style
-            .set_properties(**{"text-align": "center"})
-            .set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
-        )
-
-        pts_cols = [c for c in out.columns if isinstance(c, tuple) and c[1] == "PTS"]
-        if pts_cols:
-            sty = sty.applymap(color_pts, subset=pts_cols)
-
-        sty = sty.applymap(color_risco, subset=[("RISCO DE TO","")])
-        sty = sty.applymap(lambda v: "font-weight:900;" if isinstance(v, (int, float, np.integer, np.floating)) else "", subset=[("TOTAL","")])
-
-        st.dataframe(sty, use_container_width=True, height=520)
-
-        # Export (flatten colunas)
-        export_df = out.copy()
-        export_df.columns = [c[0] if c[1] == "" else f"{c[0]}_{c[1]}" for c in export_df.columns]
-        excel = preparar_excel_para_download(export_df, sheet_name="RAIO_X")
-        st.download_button(
-            "⬇️ Baixar Excel (Tabela RAIO X)",
-            data=excel,
-            file_name="raio_x_operacao.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-
-# =========================================================
-# NOTAS IMPORTANTES
-# =========================================================
-with st.expander("ℹ️ Notas rápidas"):
-    st.write(
-        "- O match entre planilhas é feito por **nome normalizado** (sem acento, sem pontuação, espaços ajustados).\n"
-        "- Prontuário: somente para **Motorista de Distribuição** e **Motorista de Van**, usando **Pontuação Ponderada**.\n"
-        "- Meses anteriores à admissão **não aparecem**.\n"
-        "- Indicadores por mês: quando há mais de um registro no mês, o app usa **média** (PDV/BEES/TML/JL).\n"
-        "- Se STATUS do indicador for **FERIAS** ou **AFASTADO/AFS**, a coluna **RISCO DE TO** mostra esse status."
-    )
+metas_op = METAS.get(op
