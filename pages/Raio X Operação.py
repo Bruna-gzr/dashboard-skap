@@ -35,10 +35,9 @@ def localizar_data_dir():
     raise FileNotFoundError("❌ Pasta 'data' não encontrada.")
 
 DATA_DIR = localizar_data_dir()
-st.write("📂 DATA_DIR:", DATA_DIR)
 
 # =========================================================
-# UTILS (PRECISA VIR ANTES DO AUTO-DETECT PRONTUÁRIO)
+# UTILS
 # =========================================================
 def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [
@@ -101,9 +100,6 @@ def preparar_excel_para_download(df: pd.DataFrame, sheet_name="Dados") -> bytes:
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
     return output.getvalue()
-
-def safe_float(x):
-    return pd.to_numeric(x, errors="coerce")
 
 def parse_percent(x):
     if pd.isna(x):
@@ -173,25 +169,21 @@ def centralizar_tabela(df: pd.DataFrame):
         .set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
     )
 
+def safe_float(x):
+    return pd.to_numeric(x, errors="coerce")
+
 # =========================================================
 # ARQUIVOS
 # =========================================================
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 ARQ_SKAP   = DATA_DIR / "Skap.xlsx"
 
-# =========================================================
-# AUTO-DETECTAR PRONTUÁRIO (AGORA NORMALIZAR_NOME JÁ EXISTE)
-# =========================================================
+# AUTO-DETECTAR PRONTUÁRIO
 ARQ_PRONT = None
 for f in DATA_DIR.glob("*.xlsx"):
     if "PRONT" in normalizar_nome(f.name):
         ARQ_PRONT = f
         break
-
-if ARQ_PRONT is None:
-    st.warning("⚠️ Arquivo de Prontuário não encontrado.")
-else:
-    st.caption(f"✅ Prontuário carregado: {ARQ_PRONT.name}")
 
 ARQ_VALES  = DATA_DIR / "Vales.xlsx"
 ARQ_RV     = DATA_DIR / "RV.xlsx"
@@ -199,12 +191,13 @@ ARQ_ABS    = DATA_DIR / "Absenteismo.xlsx"
 ARQ_ACID   = DATA_DIR / "Ocorrencia de acidentes.xlsx"
 ARQ_DTO    = DATA_DIR / "Desvios de DTOs.xlsx"
 ARQ_IND    = DATA_DIR / "Resultados indicadores operacionais.xlsx"
+ARQ_CICLO  = DATA_DIR / "Ciclo de gente.xlsx"
 
 # =========================================================
-# CACHE BUSTER (ROBUSTO COM ARQ_PRONT = None)
+# CACHE BUSTER
 # =========================================================
 def get_last_mtime():
-    arquivos = [ARQ_ATIVOS, ARQ_SKAP, ARQ_VALES, ARQ_RV, ARQ_ABS, ARQ_ACID, ARQ_DTO, ARQ_IND]
+    arquivos = [ARQ_ATIVOS, ARQ_SKAP, ARQ_VALES, ARQ_RV, ARQ_ABS, ARQ_ACID, ARQ_DTO, ARQ_IND, ARQ_CICLO]
     if ARQ_PRONT is not None:
         arquivos.append(ARQ_PRONT)
 
@@ -215,7 +208,6 @@ def get_last_mtime():
                 mtimes.append(a.stat().st_mtime)
         except Exception:
             pass
-
     return max(mtimes) if mtimes else None
 
 last_mtime = get_last_mtime()
@@ -297,48 +289,36 @@ PONTOS_DISTRIB = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, 
 PONTOS_ARMAZEM = {"ABS": 10, "ACIDENTE": 10, "DTO": 10}  # 30
 
 # =========================================================
-# PRONTUÁRIO - LEITOR ROBUSTO
+# PRONTUÁRIO (mantém seu leitor atual — já funcionando)
 # =========================================================
 def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
-    """
-    Leitor robusto:
-    - varre abas e detecta a linha de header automaticamente
-    - tenta achar coluna de nome (EMPREGADO/NOME/COLABORADOR/CONDUTOR)
-    - tenta achar coluna score (PONTUACAO PONDERADA / PONTUACAO / SCORE)
-    """
-
     def detectar_header(df_raw: pd.DataFrame) -> int | None:
-        # procura linha que contenha palavras típicas de header
         for i in range(min(30, len(df_raw))):
             row = df_raw.iloc[i].astype(str).map(normalizar_nome)
             joined = " ".join(row.tolist())
             if any(k in joined for k in ["EMPREG", "COLAB", "CONDUT", "MOTORIST", "NOME"]):
-                # boa candidata: contém palavras e tem várias colunas não vazias
                 non_empty = sum(1 for v in row.tolist() if v.strip() != "" and v.strip() != "NAN")
                 if non_empty >= 3:
                     return i
         return None
 
     def achar_col(df: pd.DataFrame, keys: list[str]) -> str | None:
-        cols = list(df.columns)
-        for c in cols:
+        for c in df.columns:
             cc = normalizar_nome(c)
             if any(k in cc for k in keys):
                 return c
         return None
 
-    # lê todas as abas
     try:
         book = pd.read_excel(path_xlsx, sheet_name=None, header=None)
     except Exception:
         return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
 
-    melhor = None  # (df_final, score_col)
+    melhor = None
 
     for sheet, raw in book.items():
         if raw is None or raw.empty:
             continue
-
         h = detectar_header(raw)
         if h is None:
             continue
@@ -349,20 +329,16 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
         except Exception:
             continue
 
-        # coluna nome (várias possibilidades)
         col_nome = achar_col(df, ["EMPREG", "COLAB", "CONDUT", "MOTORIST", "NOME"])
         if col_nome is None:
             continue
 
-        # coluna score
         col_score = None
-        # 1) preferir ponderada
         for c in df.columns:
             cc = normalizar_nome(c)
             if ("PONTUACAO" in cc or "PONTUAC" in cc) and "PONDERADA" in cc:
                 col_score = c
                 break
-        # 2) pontuação normal
         if col_score is None:
             col_score = achar_col(df, ["PONTUACAO", "PONTUAC", "SCORE", "PONTOS", "NOTA"])
 
@@ -382,7 +358,6 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
             .drop_duplicates("NOME_KEY", keep="last")
         )
 
-        # guarda a primeira aba válida (ou a maior)
         if melhor is None or len(out) > len(melhor):
             melhor = out
 
@@ -407,6 +382,7 @@ def carregar_bases(_cache_key: float | None):
     acid   = pd.read_excel(ARQ_ACID) if ARQ_ACID.exists() else pd.DataFrame()
     dto    = pd.read_excel(ARQ_DTO) if ARQ_DTO.exists() else pd.DataFrame()
     ind    = pd.read_excel(ARQ_IND) if ARQ_IND.exists() else pd.DataFrame()
+    ciclo  = pd.read_excel(ARQ_CICLO) if ARQ_CICLO.exists() else pd.DataFrame()
 
     pront = pd.DataFrame()
     if ARQ_PRONT is not None and ARQ_PRONT.exists():
@@ -415,24 +391,13 @@ def carregar_bases(_cache_key: float | None):
         except Exception:
             pront = pd.DataFrame()
 
-    return ativos, skap, pront, vales, rv, abs_, acid, dto, ind
+    return ativos, skap, pront, vales, rv, abs_, acid, dto, ind, ciclo
 
 try:
-    ativos, skap, pront, vales, rv, abs_, acid, dto, ind = carregar_bases(last_mtime)
+    ativos, skap, pront, vales, rv, abs_, acid, dto, ind, ciclo = carregar_bases(last_mtime)
 except Exception as e:
     st.error(f"❌ Erro ao carregar bases: {e}")
     st.stop()
-
-# ✅ DEBUG para você ver se pront tá vindo
-with st.expander("🧪 DEBUG PRONTUÁRIO"):
-    st.write("Arquivo existe?", (ARQ_PRONT is not None and ARQ_PRONT.exists()))
-    st.write("Arquivo:", (ARQ_PRONT.name if ARQ_PRONT is not None else "-"))
-    st.write("Linhas pront:", 0 if pront is None else len(pront))
-    if pront is not None and not pront.empty:
-        st.write("Colunas:", list(pront.columns))
-        st.dataframe(pront.head(25), use_container_width=True)
-    else:
-        st.warning("Prontuário vazio: header/colunas não foram detectados. (Com a função nova isso quase sempre resolve.)")
 
 # =========================================================
 # NORMALIZAÇÃO ATIVOS
@@ -471,9 +436,38 @@ else:
     skap_niveis = pd.DataFrame(columns=["NOME_KEY", "NIVEIS"])
 
 # =========================================================
-# BASE MASTER + PRONTUÁRIO (lookup robusto)
+# CICLO DE GENTE (Classificação Final)
 # =========================================================
-base_master = ativos.merge(skap_niveis, on="NOME_KEY", how="left")
+ciclo_map = pd.DataFrame(columns=["NOME_KEY", "CICLO_CLASSIFICACAO_FINAL"])
+if ciclo is not None and not ciclo.empty:
+    ciclo = normalizar_colunas(ciclo)
+    # tenta achar coluna de nome
+    col_nome = None
+    for c in ciclo.columns:
+        cc = normalizar_nome(c)
+        if any(k in cc for k in ["COLAB", "EMPREG", "NOME"]):
+            col_nome = c
+            break
+    col_final = None
+    for c in ciclo.columns:
+        if normalizar_nome(c) == normalizar_nome("CLASSIFICACAO FINAL"):
+            col_final = c
+            break
+
+    if col_nome is not None and col_final is not None:
+        tmp = ciclo[[col_nome, col_final]].copy()
+        tmp["NOME_KEY"] = tmp[col_nome].astype(str).map(normalizar_nome)
+        tmp["CICLO_CLASSIFICACAO_FINAL"] = tmp[col_final].astype(str).replace("nan", "", regex=False)
+        ciclo_map = (
+            tmp[["NOME_KEY", "CICLO_CLASSIFICACAO_FINAL"]]
+            .dropna(subset=["NOME_KEY"])
+            .drop_duplicates("NOME_KEY", keep="last")
+        )
+
+# =========================================================
+# BASE MASTER + PRONTUÁRIO + CICLO
+# =========================================================
+base_master = ativos.merge(skap_niveis, on="NOME_KEY", how="left").merge(ciclo_map, on="NOME_KEY", how="left")
 
 if pront is None or pront.empty:
     base_master["PRONT_PONDERADA"] = np.nan
@@ -490,6 +484,8 @@ else:
 
 if "NIVEIS" not in base_master.columns:
     base_master["NIVEIS"] = ""
+if "CICLO_CLASSIFICACAO_FINAL" not in base_master.columns:
+    base_master["CICLO_CLASSIFICACAO_FINAL"] = ""
 
 # prontuário só motoristas
 MOTORISTAS_OK = {normalizar_nome("Motorista de Distribuição"), normalizar_nome("Motorista de Van")}
@@ -557,8 +553,8 @@ if abs_ is not None and not abs_.empty:
     abs_ = abs_[abs_["TIPO"].isin([normalizar_nome("JUSTIFICADA"), normalizar_nome("NÃO JUSTIFICADA"), normalizar_nome("NAO JUSTIFICADA")])]
     abs_ev = abs_[["NOME_KEY", "DT", "MES", "TIPO"]].copy()
 
-# RV (por mês) - só resultado
-rv_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PCT_RV"])
+# RV (por mês) - resultado + recarga
+rv_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PCT_RV", "RECARGAS"])
 if rv is not None and not rv.empty:
     rv = normalizar_colunas(rv)
     if "NOME" not in rv.columns:
@@ -567,13 +563,24 @@ if rv is not None and not rv.empty:
         rv["DATA"] = ""
 
     col_pct = "%" if "%" in rv.columns else ("PCT" if "PCT" in rv.columns else ("PERCENTUAL" if "PERCENTUAL" in rv.columns else ""))
+    col_rec = "RECARGA" if "RECARGA" in rv.columns else ("RECARGAS" if "RECARGAS" in rv.columns else "")
+
     rv["NOME_KEY"] = rv["NOME"].astype(str).map(normalizar_nome)
     rv["DT"] = tratar_data_segura(rv["DATA"])
     rv = rv.dropna(subset=["DT"])
     rv["MES"] = to_month_key(rv["DT"])
-    rv["PCT_RV_NUM"] = rv[col_pct].apply(parse_percent) if col_pct else np.nan
 
-    rv_m = rv.groupby(["NOME_KEY", "MES"], dropna=False).agg(PCT_RV=("PCT_RV_NUM", "mean")).reset_index()
+    rv["PCT_RV_NUM"] = rv[col_pct].apply(parse_percent) if col_pct else np.nan
+    rv["RECARGA_NUM"] = safe_float(rv[col_rec]) if col_rec else np.nan
+
+    rv_m = (
+        rv.groupby(["NOME_KEY", "MES"], dropna=False)
+        .agg(
+            PCT_RV=("PCT_RV_NUM", "mean"),
+            RECARGAS=("RECARGA_NUM", "sum"),
+        )
+        .reset_index()
+    )
 
 # Indicadores operacionais
 ind_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PDV", "BEES", "TML_MIN", "JL", "STATUS", "STATUS_RAW"])
@@ -650,7 +657,8 @@ colab_univ = base_master[[
     "NOME_KEY","NOME_SIMPLE","FIRST_LAST",
     "COLABORADOR","OPERACAO","OPER_KEY","ATIVIDADE",
     "FUNCAO","DATA_ADM_DT","ADMISSAO","NIVEIS",
-    "PRONT_PONDERADA","PRONT_FAIXA","PRONT_COR"
+    "PRONT_PONDERADA","PRONT_FAIXA","PRONT_COR",
+    "CICLO_CLASSIFICACAO_FINAL"
 ]].copy()
 
 grid = colab_univ.assign(key=1).merge(pd.DataFrame({"MES": meses_all, "key": 1}), on="key").drop(columns=["key"])
@@ -668,11 +676,14 @@ grid = left_join(grid, abs_m, ["ABS"])
 grid = left_join(grid, vales_m, ["VALES"])
 grid = left_join(grid, acid_m, ["ACIDENTE"])
 grid = left_join(grid, dto_m, ["DTO"])
-grid = left_join(grid, rv_m, ["PCT_RV"])
+grid = left_join(grid, rv_m, ["PCT_RV", "RECARGAS"])
 
 for c in ["ABS","VALES","ACIDENTE","DTO"]:
     if c in grid.columns:
         grid[c] = pd.to_numeric(grid[c], errors="coerce").fillna(0).astype(int)
+
+if "RECARGAS" in grid.columns:
+    grid["RECARGAS"] = pd.to_numeric(grid["RECARGAS"], errors="coerce").fillna(0).astype(int)
 
 # ✅ MÊS DE ADMISSÃO NÃO APARECE (só mês seguinte)
 grid["_MES_DT"] = pd.to_datetime(grid["MES"] + "-01", errors="coerce")
@@ -801,6 +812,60 @@ colabs_disp = sorted(base_fil["COLABORADOR"].dropna().astype(str).unique().tolis
 f_colab = st.sidebar.selectbox("Colaborador", ["Todos"] + colabs_disp, index=0)
 
 # =========================================================
+# REGRAS DE PONTUAÇÃO (abaixo dos filtros)
+# =========================================================
+def render_regras_sidebar(operacao: str, funcao: str):
+    # define mode
+    if funcao == "Todos":
+        mode = "DISTRIB"  # default para mostrar algo
+    else:
+        mode = view_mode_from_funcao(funcao)
+
+    op_key = norm_operacao(operacao) if operacao != "Todos" else None
+    metas_op = METAS.get(op_key, {}) if op_key else {}
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Regras de pontuação")
+
+    if operacao == "Todos" or funcao == "Todos":
+        st.sidebar.caption("Selecione **Operação** e **Função** para ver as regras exatas.")
+        # Ainda assim mostramos o total possível por modo (para não ficar vazio)
+        total_disp = sum(PONTOS_DISTRIB.values())
+        total_arm = sum(PONTOS_ARMAZEM.values())
+        st.sidebar.write(f"• Total possível (Distribuição): **{total_disp}**")
+        st.sidebar.write(f"• Total possível (Armazém): **{total_arm}**")
+        return
+
+    regras = []
+    if mode == "DISTRIB":
+        # metas por operação
+        regras.append(("JL", metas_op.get("JL", {}).get("meta", None), PONTOS_DISTRIB["JL"], "% (>= meta)"))
+        regras.append(("DEV PDV", metas_op.get("PDV", {}).get("meta", None), PONTOS_DISTRIB["PDV"], "% (<= meta)"))
+        regras.append(("BEES", metas_op.get("BEES", {}).get("meta", None), PONTOS_DISTRIB["BEES"], "% (>= meta)"))
+        regras.append(("TML", metas_op.get("TML", {}).get("meta", None), PONTOS_DISTRIB["TML"], "min (<= meta)"))
+
+        regras.append(("ABS", 0, PONTOS_DISTRIB["ABS"], "Qtde (== 0)"))
+        regras.append(("VALES", 0, PONTOS_DISTRIB["VALES"], "Qtde (== 0)"))
+        regras.append(("ACIDENTE", 0, PONTOS_DISTRIB["ACIDENTE"], "Qtde (== 0)"))
+        regras.append(("Desvios DTO", 0, PONTOS_DISTRIB["DTO"], "Qtde (== 0)"))
+
+        total = sum(PONTOS_DISTRIB.values())
+
+    else:
+        regras.append(("ABS", 0, PONTOS_ARMAZEM["ABS"], "Qtde (== 0)"))
+        regras.append(("ACIDENTE", 0, PONTOS_ARMAZEM["ACIDENTE"], "Qtde (== 0)"))
+        regras.append(("Desvios DTO", 0, PONTOS_ARMAZEM["DTO"], "Qtde (== 0)"))
+        total = sum(PONTOS_ARMAZEM.values())
+
+    for nome, meta, peso, regra in regras:
+        meta_txt = "-" if meta is None else str(meta)
+        st.sidebar.write(f"• **{nome}** — Meta: **{meta_txt}** / Peso: **{peso}** ({regra})")
+
+    st.sidebar.markdown(f"**Total de pontos possíveis:** **{total}**")
+
+render_regras_sidebar(f_oper, f_func)
+
+# =========================================================
 # FILTROS NO DF
 # =========================================================
 df = grid.copy()
@@ -847,6 +912,7 @@ if not df.empty:
         "ACIDENTE": df["ACIDENTE"].mean(),
         "DTO": df["DTO"].mean(),
         "PCT_RV": df["PCT_RV"].mean(),
+        "RECARGAS": df["RECARGAS"].mean() if "RECARGAS" in df.columns else np.nan,
     }
     if f_colab != "Todos":
         ref_last_colab = df.sort_values("MES", ascending=False).iloc[0].copy()
@@ -936,6 +1002,7 @@ with left:
         bees_res = fmt_pct(ref_avg.get("BEES", np.nan)) or "-"
         tml_res  = fmt_min(ref_avg.get("TML_MIN", np.nan)) or "-"
         rv_res   = fmt_pct(ref_avg.get("PCT_RV", np.nan)) or "-"
+        rec_res  = "-" if pd.isna(ref_avg.get("RECARGAS", np.nan)) else f"{ref_avg.get('RECARGAS', 0):.0f}"
 
         if view_mode in ["ALL", "DISTRIB"]:
             linha_ind("👥", "JL", jl_res)
@@ -946,6 +1013,7 @@ with left:
             linha_ind("🎫", "VALES", f"{ref_avg.get('VALES', 0):.2f}")
             linha_ind("⚠️", "ACIDENTE", f"{ref_avg.get('ACIDENTE', 0):.2f}")
             linha_ind("📄", "Desvios DTO", f"{ref_avg.get('DTO', 0):.2f}")
+            linha_ind("🔁", "Recargas", rec_res)
             linha_ind("📈", "Média RV", rv_res)
 
         if view_mode == "ARMAZEM":
@@ -1027,11 +1095,13 @@ with right:
                 )
 
         with cC:
-            col = "CICLO DE GENTE 2025"
-            if col in base_master.columns and ref_last_colab is not None:
-                st.metric("Ciclo de gente", str(ref_last_colab.get(col, "-")) or "-")
-            else:
-                st.metric("Ciclo de gente", "-")
+            # agora vem da planilha Ciclo de gente (Classificação Final)
+            ciclo_val = ""
+            if ref_last_colab is not None:
+                ciclo_val = str(ref_last_colab.get("CICLO_CLASSIFICACAO_FINAL", "") or "")
+                if normalizar_nome(ciclo_val) == "NAN":
+                    ciclo_val = ""
+            st.metric("Ciclo de gente", ciclo_val)
 
         with cD:
             st.metric("Pontuação Total (média)", "-" if df.empty else f"{df['TOTAL_PTS'].mean():.1f}")
@@ -1060,6 +1130,7 @@ with right:
         t["TML"]     = t["TML_MIN"].apply(fmt_min)
         t["JL"]      = t.get("JL", np.nan).apply(fmt_pct)
         t["MÉDIA RV"] = t.get("PCT_RV", np.nan).apply(fmt_pct)
+        t["RECARGAS_TXT"] = t.get("RECARGAS", 0).fillna(0).astype(int).astype(str)
 
         t["ABS"]      = t["ABS"].astype(int)
         t["VALES"]    = t["VALES"].astype(int)
@@ -1100,6 +1171,15 @@ with right:
             add_indicador("VALES", "VALES", "PTS_VALES")
             add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
             add_indicador("Desvios DTO", "DTO", "PTS_DTO")
+
+            # ✅ Recargas antes de %RV SOMENTE para Motorista/VAN/Ajudante Dist
+            fun_ok = {normalizar_nome("Motorista de Distribuição"), normalizar_nome("Motorista de Van"), normalizar_nome("Ajudante de Distribuição")}
+            mask_fun = t["FUNCAO"].astype(str).map(normalizar_nome).isin(fun_ok)
+
+            rec_col = pd.Series([""] * len(t), index=t.index)
+            rec_col.loc[mask_fun] = t.loc[mask_fun, "RECARGAS_TXT"]
+            out[("Recargas", "Resultado")] = rec_col
+
             out[("Média RV", "Resultado")] = t["MÉDIA RV"]  # sem PTS
 
         if view_mode == "ARMAZEM":
@@ -1136,12 +1216,3 @@ with right:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
-
-with st.expander("ℹ️ Notas rápidas"):
-    st.write(
-        "- Colaborador só aparece a partir do **mês seguinte** ao mês de admissão.\n"
-        "- %RV aparece só como **resultado** (não pontua).\n"
-        "- Prontuário é lido de forma robusta (header 0..4) e match por 3 chaves.\n"
-        "- Para Operador/Ajudante de armazém, a tabela não mostra STATUS.\n"
-        "- DESCLASSIFICADO vira TRABALHANDO."
-    )
