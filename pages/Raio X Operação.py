@@ -300,13 +300,13 @@ def view_mode_from_funcao(funcao: str) -> str:
 # METAS
 # =========================================================
 METAS = {
-    "CD CASCAVEL": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 0.5}, "JL": {"meta": 80.0}},
-    "CD DIADEMA": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 0.5}, "JL": {"meta": 80.0}},
-    "CD FOZ DO IGUACU": {"PDV": {"meta": 3.01}, "BEES": {"meta": 95.0}, "TML": {"meta": 0.5}, "JL": {"meta": 80.0}},
-    "CD LONDRINA": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 0.5}, "JL": {"meta": 80.0}},
-    "CD LITORAL": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 0.5}, "JL": {"meta": 80.0}},
-    "CD SAO CRISTOVAO": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 0.5}, "JL": {"meta": 80.0}},
-    "CD FRANCISCO BELTRAO": {"PDV": {"meta": 2.84}, "BEES": {"meta": 95.0}, "TML": {"meta": 0.5}, "JL": {"meta": 89.0}},
+    "CD CASCAVEL": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
+    "CD DIADEMA": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
+    "CD FOZ DO IGUACU": {"PDV": {"meta": 3.01}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
+    "CD LONDRINA": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
+    "CD LITORAL": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
+    "CD SAO CRISTOVAO": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
+    "CD FRANCISCO BELTRAO": {"PDV": {"meta": 2.84}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 89.0}},
 }
 METAS = {norm_operacao(k): v for k, v in METAS.items()}
 
@@ -743,8 +743,15 @@ def calc_pontos_row(row) -> dict:
             res["PTS_PDV"] = PONTOS_DISTRIB["PDV"]
         if pd.notna(v_bees) and "BEES" in metas_op and v_bees >= metas_op["BEES"]["meta"]:
             res["PTS_BEES"] = PONTOS_DISTRIB["BEES"]
-        if pd.notna(v_tml) and "TML" in metas_op and v_tml <= metas_op["TML"]["meta"]:
-            res["PTS_TML"] = PONTOS_DISTRIB["TML"]
+        meta_tml = metas_op.get("TML", {}).get("meta", None)
+
+# aceita meta em horas (0.5) OU minutos (30)
+meta_tml_min = None
+if meta_tml is not None and pd.notna(meta_tml):
+    meta_tml = float(meta_tml)
+    meta_tml_min = meta_tml * 60 if 0 < meta_tml <= 1.5 else meta_tml
+if pd.notna(v_tml) and meta_tml_min is not None and v_tml <= meta_tml_min:
+    res["PTS_TML"] = PONTOS_DISTRIB["TML"]
         if pd.notna(v_jl) and "JL" in metas_op and v_jl >= metas_op["JL"]["meta"]:
             res["PTS_JL"] = PONTOS_DISTRIB["JL"]
 
