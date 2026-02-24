@@ -1199,7 +1199,7 @@ with right:
             for c in out_flat.columns
         ]
 
-                ZERO = "\u200b"  # zero-width space (invisível)
+        ZERO = "\u200b"  # zero-width space (invisível)
 
         new_cols = []
         pts_counter = 0  # garante unicidade para cada coluna PTS
@@ -1208,12 +1208,10 @@ with right:
             col = str(col)
 
             if col.endswith("_Resultado"):
-                # JL_Resultado -> JL / Média RV_Resultado -> Média RV / Recargas_Resultado -> Recargas
                 new_cols.append(col.replace("_Resultado", ""))
                 continue
 
             if col.endswith("_PTS"):
-                # vira "PTS" visualmente, mas único internamente
                 pts_counter += 1
                 new_cols.append("PTS" + (ZERO * pts_counter))
                 continue
@@ -1221,36 +1219,35 @@ with right:
             new_cols.append(col)
 
         out_flat.columns = new_cols
-        
-                MAX_ROWS_STYLE = 800  # ajuste como quiser
-        if len(out_flat) > MAX_ROWS_STYLE:
-            st.warning(f"Mostrando só os primeiros {MAX_ROWS_STYLE} registros com formatação (limite do Streamlit).")
-            out_flat_view = out_flat.head(MAX_ROWS_STYLE).copy()
-        else:
-            out_flat_view = out_flat
 
-        sty = out_flat.style.set_properties(**{"text-align": "center"}).set_table_styles(
+        # =========================================================
+        # ✅ Limite de linhas para Styler (evita crash do Streamlit)
+        # =========================================================
+        MAX_ROWS_STYLE = 800
+        if len(out_flat) > MAX_ROWS_STYLE:
+            st.warning(
+                f"Mostrando só os primeiros {MAX_ROWS_STYLE} registros com formatação (limite do Streamlit)."
+            )
+            out_view = out_flat.head(MAX_ROWS_STYLE).copy()
+        else:
+            out_view = out_flat
+
+        # =========================================================
+        # ✅ Styler (usa out_view, não out_flat)
+        # =========================================================
+        sty = out_view.style.set_properties(**{"text-align": "center"}).set_table_styles(
             [{"selector": "th", "props": [("text-align", "center")]}]
         )
 
-        # colunas PTS (com sufixo invisível)
-        pts_cols = [c for c in out_flat.columns if str(c).startswith("PTS")]
+        # colunas PTS (agora começam com "PTS" e têm sufixo invisível)
+        pts_cols = [c for c in out_view.columns if str(c).startswith("PTS")]
         if pts_cols:
             sty = sty.applymap(color_pts_zero, subset=pts_cols)
 
-        if "RISCO DE TO?" in out_flat.columns:
+        if "RISCO DE TO?" in out_view.columns:
             sty = sty.applymap(color_risco, subset=["RISCO DE TO?"])
 
-        if "Média RV" in out_flat.columns:
+        if "Média RV" in out_view.columns:
             sty = sty.applymap(color_rv_cell, subset=["Média RV"])
 
         st.dataframe(sty, use_container_width=True, height=520)
-
-        excel = preparar_excel_para_download(out_flat, sheet_name="RAIO_X")
-        st.download_button(
-            "⬇️ Baixar Excel (Tabela RAIO X)",
-            data=excel,
-            file_name="raio_x_operacao.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
