@@ -1221,6 +1221,13 @@ with right:
             new_cols.append(col)
 
         out_flat.columns = new_cols
+        
+                MAX_ROWS_STYLE = 800  # ajuste como quiser
+        if len(out_flat) > MAX_ROWS_STYLE:
+            st.warning(f"Mostrando só os primeiros {MAX_ROWS_STYLE} registros com formatação (limite do Streamlit).")
+            out_flat_view = out_flat.head(MAX_ROWS_STYLE).copy()
+        else:
+            out_flat_view = out_flat
 
         sty = out_flat.style.set_properties(**{"text-align": "center"}).set_table_styles(
             [{"selector": "th", "props": [("text-align", "center")]}]
