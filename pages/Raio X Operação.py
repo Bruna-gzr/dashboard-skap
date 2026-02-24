@@ -39,7 +39,7 @@ ARQ_DTO    = DATA_DIR / "Desvios de DTOs.xlsx"
 ARQ_IND    = DATA_DIR / "Resultados indicadores operacionais.xlsx"
 
 # =========================================================
-# ATUALIZAÇÃO + CACHE
+# CACHE BUSTER
 # =========================================================
 def get_last_mtime():
     arquivos = [ARQ_ATIVOS, ARQ_SKAP, ARQ_PRONT, ARQ_VALES, ARQ_RV, ARQ_ABS, ARQ_ACID, ARQ_DTO, ARQ_IND]
@@ -174,7 +174,6 @@ def parse_time_mmss(x):
         if pd.isna(hh) or pd.isna(mm) or pd.isna(ss):
             return np.nan
         return float(hh) * 60.0 + float(mm) + float(ss) / 60.0
-
     return np.nan
 
 def fmt_pct(v):
@@ -201,7 +200,7 @@ def centralizar_tabela(df: pd.DataFrame):
     )
 
 # =========================================================
-# FUNÇÕES (unificação)
+# FUNÇÕES
 # =========================================================
 FUNCOES_MAP = {
     normalizar_nome("Ajudante Distribuição"): "Ajudante de Distribuição",
@@ -220,15 +219,11 @@ FUNCOES_MAP = {
     normalizar_nome("Operador de Empilhadeira"): "Operador",
     normalizar_nome("Operador Conferente"): "Operador",
 }
-
 FUNCOES_PERMITIDAS = sorted(list(set(FUNCOES_MAP.values())))
 
 def unificar_funcao(cargo: str) -> str:
     return FUNCOES_MAP.get(normalizar_nome(cargo), "")
 
-# =========================================================
-# GRUPOS DE FUNÇÃO
-# =========================================================
 FUNCOES_DISTRIB = {
     normalizar_nome("Ajudante de Distribuição"),
     normalizar_nome("Motorista de Distribuição"),
@@ -239,16 +234,16 @@ FUNCOES_ARMAZEM = {
     normalizar_nome("Ajudante de armazem"),
 }
 
-def grupo_funcao(funcao: str) -> str:
+def view_mode_from_funcao(funcao: str) -> str:
     fk = normalizar_nome(funcao)
     if fk in FUNCOES_ARMAZEM:
         return "ARMAZEM"
     if fk in FUNCOES_DISTRIB:
         return "DISTRIB"
-    return "OUTROS"
+    return "DISTRIB"
 
 # =========================================================
-# METAS (thresholds)
+# METAS
 # =========================================================
 METAS = {
     "CD CASCAVEL": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 0.5}, "JL": {"meta": 80.0}},
@@ -261,20 +256,18 @@ METAS = {
 }
 METAS = {norm_operacao(k): v for k, v in METAS.items()}
 
-# Pontuação total ainda 30 (como você definiu anteriormente)
-# %RV NÃO pontua (pedido novo) -> removemos de pontos e deixamos só resultado
-PONTOS_DISTRIB = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}  # = 30
-PONTOS_ARMAZEM = {"ABS": 10, "ACIDENTE": 10, "DTO": 10}  # = 30 (sem RV)
+# pontos (RV não pontua)
+PONTOS_DISTRIB = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}  # 30
+PONTOS_ARMAZEM = {"ABS": 10, "ACIDENTE": 10, "DTO": 10}  # 30
 
 # =========================================================
-# PRONTUÁRIO
+# PRONTUÁRIO - LEITOR ROBUSTO
 # =========================================================
 def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
     """
-    Lê prontuário robusto:
-    - tenta header=0..4 (muito comum export quebrar o header)
-    - pega nome em 'EMPREGADO' (preferência) ou similares
-    - pega pontuação em 'PONTUAÇÃO' / 'PONTUACAO' / 'PONTUAÇÃO PONDERADA' etc
+    - tenta header 0..4
+    - coluna nome: EMPREGADO
+    - coluna score: PONTUACAO PONDERADA ou PONTUACAO (simples)
     """
     def read_with_header(h):
         d = pd.read_excel(path_xlsx, sheet_name=0, header=h)
@@ -285,7 +278,6 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
     for h in [0, 1, 2, 3, 4]:
         try:
             tmp = read_with_header(h)
-            # precisa ter coluna que pareça "EMPREGADO"
             if any("EMPREG" in normalizar_nome(c) for c in tmp.columns):
                 df = tmp
                 break
@@ -295,7 +287,7 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
 
-    # --- coluna nome
+    # nome
     col_nome = "EMPREGADO" if "EMPREGADO" in df.columns else None
     if col_nome is None:
         for c in df.columns:
@@ -305,25 +297,23 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
     if col_nome is None:
         return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
 
-    # --- coluna pontuação (AGORA aceita "PONTUACAO" simples)
+    # pontuação
     col_score = None
-    # prioridade: PONTUACAO PONDERADA / PONTUACAO ... PONDERADA
     for c in df.columns:
         cc = normalizar_nome(c)
         if ("PONTUACAO" in cc or "PONTUAC" in cc) and "PONDERADA" in cc:
             col_score = c
             break
 
-    # fallback: PONTUACAO (simples), PONTUACAO TOTAL, etc
     if col_score is None:
         for c in df.columns:
             cc = normalizar_nome(c)
-            if cc in ["PONTUACAO", "PONTUAÇÃO".upper()] or cc.startswith("PONTUACAO"):
+            if cc == "PONTUACAO" or cc.startswith("PONTUACAO"):
                 col_score = c
                 break
 
-    # fallback final: qualquer coluna com "PONT" (menos "PONTOS" etc) — segura
     if col_score is None:
+        # último fallback: qualquer col que tenha PONT e não seja FAIXA
         for c in df.columns:
             cc = normalizar_nome(c)
             if "PONT" in cc and "FAIX" not in cc:
@@ -333,7 +323,6 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
     if col_score is None:
         return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
 
-    # --- chaves + numérico
     df["NOME_KEY"] = df[col_nome].astype(str).map(normalizar_nome)
     df["NOME_SIMPLE"] = df["NOME_KEY"].map(nome_simple_from_key)
     df["FIRST_LAST"] = df["NOME_KEY"].map(first_last_key)
@@ -355,13 +344,6 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
 def carregar_bases(_cache_key: float | None):
     if not ARQ_ATIVOS.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_ATIVOS.name}")
-
-    with st.expander("🧪 DEBUG PRONTUÁRIO"):
-    st.write("ARQ_PRONT existe?", ARQ_PRONT.exists())
-    st.write("Linhas pront carregadas:", 0 if pront is None else len(pront))
-    if pront is not None and not pront.empty:
-        st.write("Colunas:", list(pront.columns))
-        st.dataframe(pront.head(20), use_container_width=True)
 
     ativos = pd.read_excel(ARQ_ATIVOS)
     skap   = pd.read_excel(ARQ_SKAP) if ARQ_SKAP.exists() else pd.DataFrame()
@@ -387,8 +369,16 @@ except Exception as e:
     st.error(f"❌ Erro ao carregar bases: {e}")
     st.stop()
 
+# ✅ DEBUG para você ver se pront tá vindo
+with st.expander("🧪 DEBUG PRONTUÁRIO"):
+    st.write("Arquivo existe?", ARQ_PRONT.exists())
+    st.write("Linhas pront:", 0 if pront is None else len(pront))
+    if pront is not None and not pront.empty:
+        st.write("Colunas:", list(pront.columns))
+        st.dataframe(pront.head(25), use_container_width=True)
+
 # =========================================================
-# NORMALIZAÇÃO (ATIVOS)
+# NORMALIZAÇÃO ATIVOS
 # =========================================================
 ativos = normalizar_colunas(ativos)
 
@@ -424,26 +414,13 @@ else:
     skap_niveis = pd.DataFrame(columns=["NOME_KEY", "NIVEIS"])
 
 # =========================================================
-# PRONTUÁRIO (normaliza e garante colunas)
+# BASE MASTER + PRONTUÁRIO (lookup robusto)
 # =========================================================
-if pront is None or pront.empty:
-    pront = pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
-else:
-    pront = normalizar_colunas(pront)
-    for c in ["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"]:
-        if c not in pront.columns:
-            pront[c] = np.nan if c == "PRONT_PONDERADA" else ""
-
-# =========================
-# BASE MASTER + PRONTUÁRIO (merge robusto)
-# =========================
 base_master = ativos.merge(skap_niveis, on="NOME_KEY", how="left")
 
-# garante colunas de match no prontuário
 if pront is None or pront.empty:
     base_master["PRONT_PONDERADA"] = np.nan
 else:
-    # dicionários por chave (último valor válido)
     d_key = pront.dropna(subset=["PRONT_PONDERADA"]).drop_duplicates("NOME_KEY", keep="last").set_index("NOME_KEY")["PRONT_PONDERADA"].to_dict()
     d_simple = pront.dropna(subset=["PRONT_PONDERADA"]).drop_duplicates("NOME_SIMPLE", keep="last").set_index("NOME_SIMPLE")["PRONT_PONDERADA"].to_dict()
     d_fl = pront.dropna(subset=["PRONT_PONDERADA"]).drop_duplicates("FIRST_LAST", keep="last").set_index("FIRST_LAST")["PRONT_PONDERADA"].to_dict()
@@ -454,7 +431,10 @@ else:
     miss = base_master["PRONT_PONDERADA"].isna()
     base_master.loc[miss, "PRONT_PONDERADA"] = base_master.loc[miss, "FIRST_LAST"].map(d_fl)
 
-# Prontuário só para motoristas
+if "NIVEIS" not in base_master.columns:
+    base_master["NIVEIS"] = ""
+
+# prontuário só motoristas
 MOTORISTAS_OK = {normalizar_nome("Motorista de Distribuição"), normalizar_nome("Motorista de Van")}
 base_master["FUNCAO_KEY"] = base_master["FUNCAO"].astype(str).map(normalizar_nome)
 mask_motorista = base_master["FUNCAO_KEY"].isin(MOTORISTAS_OK)
@@ -520,7 +500,7 @@ if abs_ is not None and not abs_.empty:
     abs_ = abs_[abs_["TIPO"].isin([normalizar_nome("JUSTIFICADA"), normalizar_nome("NÃO JUSTIFICADA"), normalizar_nome("NAO JUSTIFICADA")])]
     abs_ev = abs_[["NOME_KEY", "DT", "MES", "TIPO"]].copy()
 
-# RV (por mês) -> só resultado (%), sem pontuação
+# RV (por mês) - só resultado
 rv_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PCT_RV"])
 if rv is not None and not rv.empty:
     rv = normalizar_colunas(rv)
@@ -530,20 +510,15 @@ if rv is not None and not rv.empty:
         rv["DATA"] = ""
 
     col_pct = "%" if "%" in rv.columns else ("PCT" if "PCT" in rv.columns else ("PERCENTUAL" if "PERCENTUAL" in rv.columns else ""))
-
     rv["NOME_KEY"] = rv["NOME"].astype(str).map(normalizar_nome)
     rv["DT"] = tratar_data_segura(rv["DATA"])
     rv = rv.dropna(subset=["DT"])
     rv["MES"] = to_month_key(rv["DT"])
     rv["PCT_RV_NUM"] = rv[col_pct].apply(parse_percent) if col_pct else np.nan
 
-    rv_m = (
-        rv.groupby(["NOME_KEY", "MES"], dropna=False)
-        .agg(PCT_RV=("PCT_RV_NUM", "mean"))
-        .reset_index()
-    )
+    rv_m = rv.groupby(["NOME_KEY", "MES"], dropna=False).agg(PCT_RV=("PCT_RV_NUM", "mean")).reset_index()
 
-# Indicadores operacionais (por mês) + STATUS
+# Indicadores operacionais
 ind_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PDV", "BEES", "TML_MIN", "JL", "STATUS", "STATUS_RAW"])
 if ind is not None and not ind.empty:
     ind = normalizar_colunas(ind)
@@ -597,7 +572,7 @@ if ind is not None and not ind.empty:
         .reset_index()
     )
 
-# Contagens por mês
+# contagens
 vales_m = vales_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="VALES")
 acid_m  = acid_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ACIDENTE")
 dto_m   = dto_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="DTO")
@@ -615,12 +590,11 @@ if not meses_all:
     meses_all = [pd.Timestamp.today().to_period("M").astype(str)]
 
 colab_univ = base_master[[
-    "NOME_KEY", "NOME_SIMPLE", "FIRST_LAST",
-    "COLABORADOR", "OPERACAO", "OPER_KEY", "ATIVIDADE",
-    "FUNCAO", "DATA_ADM_DT", "ADMISSAO", "NIVEIS",
-    "PRONT_PONDERADA", "PRONT_FAIXA", "PRONT_COR"
+    "NOME_KEY","NOME_SIMPLE","FIRST_LAST",
+    "COLABORADOR","OPERACAO","OPER_KEY","ATIVIDADE",
+    "FUNCAO","DATA_ADM_DT","ADMISSAO","NIVEIS",
+    "PRONT_PONDERADA","PRONT_FAIXA","PRONT_COR"
 ]].copy()
-colab_univ["OPER_KEY"] = colab_univ["OPER_KEY"].fillna(colab_univ["OPERACAO"].astype(str).map(norm_operacao))
 
 grid = colab_univ.assign(key=1).merge(pd.DataFrame({"MES": meses_all, "key": 1}), on="key").drop(columns=["key"])
 
@@ -632,32 +606,32 @@ def left_join(grid_, df_, cols_keep):
         return grid_
     return grid_.merge(df_[["NOME_KEY", "MES"] + cols_keep], on=["NOME_KEY", "MES"], how="left")
 
-grid = left_join(grid, ind_m, ["PDV", "BEES", "TML_MIN", "JL", "STATUS", "STATUS_RAW"])
+grid = left_join(grid, ind_m, ["PDV","BEES","TML_MIN","JL","STATUS","STATUS_RAW"])
 grid = left_join(grid, abs_m, ["ABS"])
 grid = left_join(grid, vales_m, ["VALES"])
 grid = left_join(grid, acid_m, ["ACIDENTE"])
 grid = left_join(grid, dto_m, ["DTO"])
 grid = left_join(grid, rv_m, ["PCT_RV"])
 
-for c in ["ABS", "VALES", "ACIDENTE", "DTO"]:
+for c in ["ABS","VALES","ACIDENTE","DTO"]:
     if c in grid.columns:
         grid[c] = pd.to_numeric(grid[c], errors="coerce").fillna(0).astype(int)
 
-# ✅ AJUSTE 1: no mês de admissão NÃO aparece -> começa no mês seguinte
+# ✅ MÊS DE ADMISSÃO NÃO APARECE (só mês seguinte)
 grid["_MES_DT"] = pd.to_datetime(grid["MES"] + "-01", errors="coerce")
 grid["_ADM_MES_DT"] = pd.to_datetime(grid["DATA_ADM_DT"], errors="coerce").dt.to_period("M").dt.to_timestamp()
-grid = grid[grid["_MES_DT"] > grid["_ADM_MES_DT"]].copy()  # <-- era >=
-grid = grid.drop(columns=["_MES_DT", "_ADM_MES_DT"])
+grid = grid[grid["_MES_DT"] > grid["_ADM_MES_DT"]].copy()
+grid = grid.drop(columns=["_MES_DT","_ADM_MES_DT"])
 
 grid["MÊS"] = grid["MES"].apply(month_label)
 
 # =========================================================
-# PONTUAÇÃO (RV sem PTS)
+# PONTUAÇÃO
 # =========================================================
 def calc_pontos_row(row) -> dict:
     op_key = norm_operacao(row.get("OPERACAO", ""))
     metas_op = METAS.get(op_key, {})
-    grp = grupo_funcao(row.get("FUNCAO", ""))
+    mode = view_mode_from_funcao(row.get("FUNCAO",""))
 
     res = {
         "PTS_PDV": 0, "PTS_BEES": 0, "PTS_TML": 0, "PTS_JL": 0,
@@ -665,7 +639,7 @@ def calc_pontos_row(row) -> dict:
         "TOTAL_PTS": 0
     }
 
-    if grp in ["DISTRIB", "OUTROS"]:
+    if mode == "DISTRIB":
         v_pdv = row.get("PDV", np.nan)
         v_bees = row.get("BEES", np.nan)
         v_tml = row.get("TML_MIN", np.nan)
@@ -695,17 +669,15 @@ def calc_pontos_row(row) -> dict:
         )
         return res
 
-    if grp == "ARMAZEM":
-        if int(row.get("ABS", 0)) == 0:
-            res["PTS_ABS"] = PONTOS_ARMAZEM["ABS"]
-        if int(row.get("ACIDENTE", 0)) == 0:
-            res["PTS_ACIDENTE"] = PONTOS_ARMAZEM["ACIDENTE"]
-        if int(row.get("DTO", 0)) == 0:
-            res["PTS_DTO"] = PONTOS_ARMAZEM["DTO"]
+    # ARMAZEM
+    if int(row.get("ABS", 0)) == 0:
+        res["PTS_ABS"] = PONTOS_ARMAZEM["ABS"]
+    if int(row.get("ACIDENTE", 0)) == 0:
+        res["PTS_ACIDENTE"] = PONTOS_ARMAZEM["ACIDENTE"]
+    if int(row.get("DTO", 0)) == 0:
+        res["PTS_DTO"] = PONTOS_ARMAZEM["DTO"]
 
-        res["TOTAL_PTS"] = res["PTS_ABS"] + res["PTS_ACIDENTE"] + res["PTS_DTO"]
-        return res
-
+    res["TOTAL_PTS"] = res["PTS_ABS"] + res["PTS_ACIDENTE"] + res["PTS_DTO"]
     return res
 
 pts_df = grid.apply(calc_pontos_row, axis=1, result_type="expand")
@@ -726,7 +698,7 @@ if "STATUS" in grid.columns:
     grid.loc[grid["STATUS"].isin(["FERIAS", "AFASTADO"]), "RISCO DE TO"] = grid["STATUS"]
 
 # =========================================================
-# SIDEBAR — FILTROS
+# SIDEBAR FILTROS
 # =========================================================
 st.sidebar.header("Filtros")
 
@@ -750,28 +722,13 @@ if pd.isna(min_adm) or pd.isna(max_adm):
 st.sidebar.subheader("Período de admissão")
 col_ini, col_fim = st.sidebar.columns(2)
 with col_ini:
-    adm_ini = st.date_input(
-        "Início",
-        value=min_adm.date(),
-        min_value=min_adm.date(),
-        max_value=max_adm.date(),
-        format="DD/MM/YYYY",
-        key="raiox_adm_ini",
-    )
+    adm_ini = st.date_input("Início", value=min_adm.date(), min_value=min_adm.date(), max_value=max_adm.date(), format="DD/MM/YYYY")
 with col_fim:
-    adm_fim = st.date_input(
-        "Fim",
-        value=max_adm.date(),
-        min_value=min_adm.date(),
-        max_value=max_adm.date(),
-        format="DD/MM/YYYY",
-        key="raiox_adm_fim",
-    )
+    adm_fim = st.date_input("Fim", value=max_adm.date(), min_value=min_adm.date(), max_value=max_adm.date(), format="DD/MM/YYYY")
 if adm_ini > adm_fim:
     st.sidebar.warning("⚠️ Início maior que Fim. Ajustei automaticamente.")
     adm_ini, adm_fim = adm_fim, adm_ini
 
-# Colaborador
 base_fil = base_master.copy()
 if f_oper != "Todos":
     base_fil = base_fil[base_fil["OPERACAO"] == f_oper]
@@ -781,16 +738,13 @@ if f_ativ != "Todos":
     base_fil = base_fil[base_fil["ATIVIDADE"].astype(str) == str(f_ativ)]
 
 base_fil["DATA_ADM_DT"] = pd.to_datetime(base_fil["DATA_ADM_DT"], errors="coerce")
-base_fil = base_fil[
-    (base_fil["DATA_ADM_DT"].dt.date >= adm_ini) &
-    (base_fil["DATA_ADM_DT"].dt.date <= adm_fim)
-]
+base_fil = base_fil[(base_fil["DATA_ADM_DT"].dt.date >= adm_ini) & (base_fil["DATA_ADM_DT"].dt.date <= adm_fim)]
 
 colabs_disp = sorted(base_fil["COLABORADOR"].dropna().astype(str).unique().tolist())
 f_colab = st.sidebar.selectbox("Colaborador", ["Todos"] + colabs_disp, index=0)
 
 # =========================================================
-# APLICA FILTROS NA GRID
+# FILTROS NO DF
 # =========================================================
 df = grid.copy()
 
@@ -802,10 +756,7 @@ if f_ativ != "Todos":
     df = df[df["ATIVIDADE"].astype(str) == str(f_ativ)]
 
 df["DATA_ADM_DT"] = pd.to_datetime(df["DATA_ADM_DT"], errors="coerce")
-df = df[
-    (df["DATA_ADM_DT"].dt.date >= adm_ini) &
-    (df["DATA_ADM_DT"].dt.date <= adm_fim)
-]
+df = df[(df["DATA_ADM_DT"].dt.date >= adm_ini) & (df["DATA_ADM_DT"].dt.date <= adm_fim)]
 
 if f_mes != "Todos":
     mm, yy = f_mes.split("/")
@@ -816,23 +767,20 @@ if f_colab != "Todos":
     nome_key = normalizar_nome(f_colab)
     df = df[df["NOME_KEY"] == nome_key]
 
-# =========================================================
-# VIEW MODE
-# =========================================================
+# view mode
 if f_func == "Todos":
     view_mode = "ALL"
 else:
-    fk = normalizar_nome(f_func)
-    view_mode = "ARMAZEM" if fk in FUNCOES_ARMAZEM else "DISTRIB"
+    view_mode = "ARMAZEM" if normalizar_nome(f_func) in FUNCOES_ARMAZEM else "DISTRIB"
 
 # =========================================================
-# REFERÊNCIAS (médias + último mês do colab selecionado)
+# REF: médias + último mês do colab (se selecionado)
 # =========================================================
 ref_last_colab = None
-ref_avg_all = None
+ref_avg = None
 
 if not df.empty:
-    ref_avg_all = {
+    ref_avg = {
         "JL": df["JL"].mean(),
         "PDV": df["PDV"].mean(),
         "BEES": df["BEES"].mean(),
@@ -847,7 +795,7 @@ if not df.empty:
         ref_last_colab = df.sort_values("MES", ascending=False).iloc[0].copy()
 
 # =========================================================
-# ESTILOS
+# CORES
 # =========================================================
 def color_risco(v):
     v = str(v)
@@ -876,11 +824,9 @@ def color_pts_zero(v):
         vv = float(v)
     except Exception:
         vv = 0.0
-    if vv > 0:
-        return "color: #22c55e; font-weight:900;"
-    return "color: #ef4444; font-weight:900;"
+    return "color: #22c55e; font-weight:900;" if vv > 0 else "color: #ef4444; font-weight:900;"
 
-def color_rv_str(v):
+def color_rv_cell(v):
     vv = parse_percent(v)
     if pd.isna(vv):
         return ""
@@ -893,11 +839,8 @@ left, right = st.columns([1.05, 2.95], gap="large")
 
 with left:
     st.markdown("#### Colaborador")
-
     nome_card = ref_last_colab["COLABORADOR"] if ref_last_colab is not None else ""
-    subt_card = ""
-    if ref_last_colab is not None:
-        subt_card = f"{ref_last_colab['OPERACAO']} · {ref_last_colab['FUNCAO']}"
+    subt_card = f"{ref_last_colab['OPERACAO']} · {ref_last_colab['FUNCAO']}" if ref_last_colab is not None else ""
 
     st.markdown(
         f"""
@@ -928,30 +871,30 @@ with left:
             unsafe_allow_html=True
         )
 
-    if ref_avg_all is None:
+    if ref_avg is None:
         st.info("Sem dados para os filtros atuais.")
     else:
-        jl_res   = fmt_pct(ref_avg_all.get("JL", np.nan)) or "-"
-        pdv_res  = fmt_pct(ref_avg_all.get("PDV", np.nan)) or "-"
-        bees_res = fmt_pct(ref_avg_all.get("BEES", np.nan)) or "-"
-        tml_res  = fmt_min(ref_avg_all.get("TML_MIN", np.nan)) or "-"
-        rv_res   = fmt_pct(ref_avg_all.get("PCT_RV", np.nan)) or "-"
+        jl_res   = fmt_pct(ref_avg.get("JL", np.nan)) or "-"
+        pdv_res  = fmt_pct(ref_avg.get("PDV", np.nan)) or "-"
+        bees_res = fmt_pct(ref_avg.get("BEES", np.nan)) or "-"
+        tml_res  = fmt_min(ref_avg.get("TML_MIN", np.nan)) or "-"
+        rv_res   = fmt_pct(ref_avg.get("PCT_RV", np.nan)) or "-"
 
         if view_mode in ["ALL", "DISTRIB"]:
             linha_ind("👥", "JL", jl_res)
             linha_ind("📦", "DEV PDV", pdv_res)
             linha_ind("🟨", "BEES", bees_res)
             linha_ind("⏱️", "TML", tml_res)
-            linha_ind("🩹", "ABS", f"{ref_avg_all.get('ABS', 0):.2f}")
-            linha_ind("🎫", "VALES", f"{ref_avg_all.get('VALES', 0):.2f}")
-            linha_ind("⚠️", "ACIDENTE", f"{ref_avg_all.get('ACIDENTE', 0):.2f}")
-            linha_ind("📄", "Desvios DTO", f"{ref_avg_all.get('DTO', 0):.2f}")
+            linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}")
+            linha_ind("🎫", "VALES", f"{ref_avg.get('VALES', 0):.2f}")
+            linha_ind("⚠️", "ACIDENTE", f"{ref_avg.get('ACIDENTE', 0):.2f}")
+            linha_ind("📄", "Desvios DTO", f"{ref_avg.get('DTO', 0):.2f}")
             linha_ind("📈", "Média RV", rv_res)
 
         if view_mode == "ARMAZEM":
-            linha_ind("🩹", "ABS", f"{ref_avg_all.get('ABS', 0):.2f}")
-            linha_ind("⚠️", "ACIDENTE", f"{ref_avg_all.get('ACIDENTE', 0):.2f}")
-            linha_ind("📄", "Desvios DTO", f"{ref_avg_all.get('DTO', 0):.2f}")
+            linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}")
+            linha_ind("⚠️", "ACIDENTE", f"{ref_avg.get('ACIDENTE', 0):.2f}")
+            linha_ind("📄", "Desvios DTO", f"{ref_avg.get('DTO', 0):.2f}")
             linha_ind("📈", "Média RV", rv_res)
 
     st.markdown("### 🏆 TOP 10")
@@ -966,7 +909,7 @@ with left:
             .head(10)
         )
         rank["MEDIA_TOTAL"] = rank["MEDIA_TOTAL"].map(lambda x: f"{x:.1f}")
-        rank_out = rank[["COLABORADOR", "FUNCAO", "MEDIA_TOTAL"]].rename(columns={"FUNCAO": "CARGO"})
+        rank_out = rank[["COLABORADOR", "FUNCAO", "MEDIA_TOTAL"]].rename(columns={"FUNCAO":"CARGO"})
         st.dataframe(centralizar_tabela(rank_out), use_container_width=True, height=360)
 
 with right:
@@ -1011,7 +954,7 @@ with right:
         with cB:
             v = ref_last_colab.get("PRONT_PONDERADA", np.nan) if ref_last_colab is not None else np.nan
             faixa = ref_last_colab.get("PRONT_FAIXA", "-") if ref_last_colab is not None else "-"
-            cor = ref_last_colab.get("PRONT_COR", "#94a3b8") if ref_last_colab is not None else "#94a3b8"
+            corp = ref_last_colab.get("PRONT_COR", "#94a3b8") if ref_last_colab is not None else "#94a3b8"
             if pd.isna(v):
                 st.metric("Prontuário", "-")
             else:
@@ -1019,8 +962,8 @@ with right:
                     f"""
                     <div style="padding:10px;border-radius:12px;background:#2b2f38;">
                       <div style="font-weight:700;margin-bottom:4px;">Prontuário</div>
-                      <div style="font-weight:900;color:{cor};">{faixa}</div>
-                      <div style="opacity:0.9;font-size:12px;">Ponderada: <b>{v:.3f}</b></div>
+                      <div style="font-weight:900;color:{corp};">{faixa}</div>
+                      <div style="opacity:0.9;font-size:12px;">Pontuação: <b>{v:.3f}</b></div>
                     </div>
                     """,
                     unsafe_allow_html=True
@@ -1059,7 +1002,6 @@ with right:
         t["BEES"]    = t["BEES"].apply(fmt_pct)
         t["TML"]     = t["TML_MIN"].apply(fmt_min)
         t["JL"]      = t.get("JL", np.nan).apply(fmt_pct)
-
         t["MÉDIA RV"] = t.get("PCT_RV", np.nan).apply(fmt_pct)
 
         t["ABS"]      = t["ABS"].astype(int)
@@ -1073,14 +1015,12 @@ with right:
 
         t["STATUS_EXIB"] = t.get("STATUS_RAW", "").apply(status_exibir)
 
-        # BASE da tabela
         base_cols = {
             ("MÊS",""): t["MÊS"],
             ("COLABORADOR",""): t["COLABORADOR"],
             ("CARGO",""): t["FUNCAO"],
         }
 
-        # ✅ AJUSTE 3: para ARMAZEM, tirar STATUS da tabela
         if view_mode in ["ALL", "DISTRIB"]:
             base_cols[("STATUS","")] = t["STATUS_EXIB"]
 
@@ -1103,36 +1043,29 @@ with right:
             add_indicador("VALES", "VALES", "PTS_VALES")
             add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
             add_indicador("Desvios DTO", "DTO", "PTS_DTO")
-            # ✅ AJUSTE 2: RV só resultado, sem PTS
-            out[("Média RV", "Resultado")] = t["MÉDIA RV"]
+            out[("Média RV", "Resultado")] = t["MÉDIA RV"]  # sem PTS
 
         if view_mode == "ARMAZEM":
             add_indicador("ABS", "ABS", "PTS_ABS")
             add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
             add_indicador("Desvios DTO", "DTO", "PTS_DTO")
-            out[("Média RV", "Resultado")] = t["MÉDIA RV"]
+            out[("Média RV", "Resultado")] = t["MÉDIA RV"]  # sem PTS
 
-        # ordenação
         out[("_MESKEY","")] = pd.to_datetime(t["MES"] + "-01", errors="coerce")
         out = out.sort_values([("_MESKEY",""), ("COLABORADOR","")]).drop(columns=[("_MESKEY","")])
 
-        sty = (
-            out.style
-            .set_properties(**{"text-align": "center"})
-            .set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
+        sty = out.style.set_properties(**{"text-align": "center"}).set_table_styles(
+            [{"selector": "th", "props": [("text-align", "center")]}]
         )
 
-        # PTS verde/vermelho
         pts_cols = [c for c in out.columns if isinstance(c, tuple) and c[1] == "PTS"]
         if pts_cols:
             sty = sty.applymap(color_pts_zero, subset=pts_cols)
 
         sty = sty.applymap(color_risco, subset=[("RISCO DE TO?","")])
-        sty = sty.applymap(lambda v: "font-weight:900;" if isinstance(v, (int, float, np.integer, np.floating)) else "", subset=[("TOTAL","")])
 
-        # RV verde/vermelho pelo resultado
         if ("Média RV", "Resultado") in out.columns:
-            sty = sty.applymap(color_rv_str, subset=[("Média RV", "Resultado")])
+            sty = sty.applymap(color_rv_cell, subset=[("Média RV", "Resultado")])
 
         st.dataframe(sty, use_container_width=True, height=520)
 
@@ -1150,8 +1083,8 @@ with right:
 with st.expander("ℹ️ Notas rápidas"):
     st.write(
         "- Colaborador só aparece a partir do **mês seguinte** ao mês de admissão.\n"
-        "- %RV aparece apenas como **resultado** (não pontua).\n"
-        "- Prontuário: match em 3 camadas (**NOME_KEY**, **NOME_SIMPLE**, **FIRST+LAST**) e só para **Motorista de Distribuição** e **Motorista de Van**.\n"
-        "- Se STATUS do indicador for **FERIAS** ou **AFASTADO/AFS**, a coluna risco mostra esse status.\n"
-        "- Na tabela, **DESCLASSIFICADO** é exibido como **TRABALHANDO**."
+        "- %RV aparece só como **resultado** (não pontua).\n"
+        "- Prontuário é lido de forma robusta (header 0..4) e match por 3 chaves.\n"
+        "- Para Operador/Ajudante de armazém, a tabela não mostra STATUS.\n"
+        "- DESCLASSIFICADO vira TRABALHANDO."
     )
