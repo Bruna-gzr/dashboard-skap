@@ -1002,22 +1002,24 @@ def render_regras_sidebar(operacao: str, funcao: str):
     st.sidebar.markdown("---")
     st.sidebar.subheader("Regras de pontuação")
 
+    # Quando não escolheu operação ou função: só mostra totais
     if operacao == "Todos" or funcao == "Todos":
-    st.sidebar.caption("Selecione **Operação** e **Função** para ver as regras exatas.")
-    total_disp = sum(PONTOS_DISTRIB_PADRAO.values())
-    total_arm = sum(PONTOS_ARMAZEM.values())
-    st.sidebar.write(f"• Total possível (Distribuição): **{total_disp}**")
-    st.sidebar.write(f"• Total possível (Armazém): **{total_arm}**")
-    return
+        st.sidebar.caption("Selecione **Operação** e **Função** para ver as regras exatas.")
+        total_disp = sum(PONTOS_DISTRIB_PADRAO.values())
+        total_arm = sum(PONTOS_ARMAZEM.values())
+        st.sidebar.write(f"• Total possível (Distribuição): **{total_disp}**")
+        st.sidebar.write(f"• Total possível (Armazém): **{total_arm}**")
+        return
 
     regras = []
+
     if mode == "DISTRIB":
         pts = pontos_distrib_por_operacao(op_key)
 
         regras.append(("JL", metas_op.get("JL", {}).get("meta", None), pts["JL"], "% (>= meta)"))
         regras.append(("DEV PDV", metas_op.get("PDV", {}).get("meta", None), pts["PDV"], "% (<= meta)"))
 
-        # ✅ BEES só se não for Londrina
+        # BEES só se não for Londrina
         if not operacao_sem_bees(op_key):
             regras.append(("BEES", metas_op.get("BEES", {}).get("meta", None), pts["BEES"], "% (>= meta)"))
 
@@ -1027,6 +1029,7 @@ def render_regras_sidebar(operacao: str, funcao: str):
         regras.append(("ACIDENTE", 0, pts["ACIDENTE"], "Qtde (== 0)"))
         regras.append(("Desvios DTO", 0, pts["DTO"], "Qtde (== 0)"))
         total = sum(pts.values())
+
     else:
         regras.append(("ABS", 0, PONTOS_ARMAZEM["ABS"], "Qtde (== 0)"))
         regras.append(("ACIDENTE", 0, PONTOS_ARMAZEM["ACIDENTE"], "Qtde (== 0)"))
