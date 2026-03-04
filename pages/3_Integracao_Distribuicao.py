@@ -15,6 +15,7 @@ from io import BytesIO
 import unicodedata
 import plotly.express as px
 from zoneinfo import ZoneInfo
+import re
 
 # =========================
 # Página
@@ -29,8 +30,6 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 ARQ_IDS = DATA_DIR / "Base IDs Logon.xlsx"
 ARQ_RESPOSTAS = DATA_DIR / "Respostas Logon.xlsx"
-
-# >>> Base de ADMITIDOS (ajuste o nome do arquivo se o seu for diferente)
 ARQ_ADMITIDOS = DATA_DIR / "Admitidos.xlsx"
 
 # =========================
@@ -123,9 +122,21 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
     return sorted(vals)
 
 def limpar_id(v):
+    """
+    Normaliza ID para bater melhor entre bases:
+    - remove .0 final (excel)
+    - remove espaços
+    - se for só dígito, remove zeros à esquerda (ex: 000123 -> 123)
+    """
     s = "" if pd.isna(v) else str(v).strip()
     if s.endswith(".0"):
         s = s[:-2]
+    s = s.strip()
+    # remove espaços internos acidentais
+    s = re.sub(r"\s+", "", s)
+    if s.isdigit():
+        s2 = s.lstrip("0")
+        return s2 if s2 != "" else "0"
     return s
 
 # =========================
@@ -267,6 +278,7 @@ IGNORAR_NOMES = [
     "CLEITON VINICIUS CESARIO DE CARVALHO",
     "ALEXANDER DE SOUZA GOMES",
     "RIVALDO BERNABE DE MELO",
+    "NELSON JOSE FELICIO JUNIOR",  # ✅ novo
 ]
 ignorar_up = set(normalizar_texto(x) for x in IGNORAR_NOMES)
 base = base[~base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ignorar_up)]
@@ -288,7 +300,6 @@ first_adm = base.groupby("_KEY_REHIRES")["_ADM_DT"].transform("min")
 base = base[base["_ADM_DT"] == first_adm].copy()
 
 base = base.sort_values(["_KEY_REHIRES", "_ADM_DT"]).drop_duplicates(subset=["_KEY_REHIRES"], keep="first")
-
 base = base.drop(columns=["_NOME_KEY", "_KEY_REHIRES", "_ADM_DT"], errors="ignore")
 
 # =========================
@@ -296,19 +307,6 @@ base = base.drop(columns=["_NOME_KEY", "_KEY_REHIRES", "_ADM_DT"], errors="ignor
 # =========================
 base["DATA ADMISSAO"] = pd.to_datetime(base["DATA_ADM_DT"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 hoje = pd.Timestamp.now(tz=ZoneInfo("America/Sao_Paulo")).normalize().tz_localize(None)
-
-# =========================
-# Respostas por ID + Curso (match robusto por CURSO_UP)
-# =========================
-respostas["DATA_ENTREGA_DT"] = tratar_data_segura(respostas["DATA ENTREGA"])
-respostas["CURSO_UP"] = respostas["CURSO"].astype(str).map(normalizar_texto)
-
-resp_min = (
-    respostas.dropna(subset=["ID"])
-    .groupby(["ID", "CURSO_UP"], dropna=False)["DATA_ENTREGA_DT"]
-    .min()
-    .reset_index()
-)
 
 # =========================
 # Etapas + prazos
@@ -323,6 +321,64 @@ ETAPAS = [
     ("1ª Quinzena - Distribuição Urbana", 12, 18),
     ("1° Mês - Distribuição Urbana", 24, 34),
 ]
+
+# =========================
+# Match robusto de CURSO -> ETAPA (✅ ajuste p/ casos tipo o BRUNO)
+# =========================
+def curso_para_etapa_canon(curso: str) -> str | None:
+    """
+    Converte variações do nome do curso para a ETAPA canônica.
+    Ex: 'DIA 1 - DISTRIBUICAO URBANA (LOG20)' -> 'Dia 01 - Distribuição Urbana'
+    """
+    c = normalizar_texto(curso)
+    if c == "":
+        return None
+
+    # garantias (tirar múltiplos espaços)
+    c = re.sub(r"\s+", " ", c)
+
+    def tem(*tokens):
+        return all(t in c for t in tokens)
+
+    # Dias
+    if re.search(r"\bDIA\s*0?1\b", c) and tem("DISTRIBUICAO", "URBANA"):
+        return "Dia 01 - Distribuição Urbana"
+    if re.search(r"\bDIA\s*0?2\b", c) and tem("DISTRIBUICAO", "URBANA"):
+        return "Dia 02 - Distribuição Urbana"
+    if re.search(r"\bDIA\s*0?3\b", c) and tem("DISTRIBUICAO", "URBANA"):
+        return "Dia 03 - Distribuição Urbana"
+    if re.search(r"\bDIA\s*0?4\b", c) and tem("DISTRIBUICAO", "URBANA"):
+        return "Dia 04 - Distribuição Urbana"
+    if re.search(r"\bDIA\s*0?5\b", c) and tem("DISTRIBUICAO", "URBANA"):
+        return "Dia 05 - Distribuição Urbana"
+
+    # Gradativa
+    if tem("GRADATIVA", "DISTRIBUICAO", "URBANA"):
+        return "Gradativa - Distribuição Urbana"
+
+    # 1ª Quinzena
+    if tem("QUINZENA", "DISTRIBUICAO", "URBANA") and (re.search(r"\b1\b", c) or "PRIMEIRA" in c):
+        return "1ª Quinzena - Distribuição Urbana"
+
+    # 1° Mês
+    if tem("MES", "DISTRIBUICAO", "URBANA") and re.search(r"\b1\b", c):
+        return "1° Mês - Distribuição Urbana"
+
+    return None
+
+# =========================
+# Respostas por ID + ETAPA_CANON (min data)
+# =========================
+respostas["DATA_ENTREGA_DT"] = tratar_data_segura(respostas["DATA ENTREGA"])
+respostas["ETAPA_CANON"] = respostas["CURSO"].astype(str).map(curso_para_etapa_canon)
+
+resp_min = (
+    respostas.dropna(subset=["ID"])
+    .dropna(subset=["ETAPA_CANON"])
+    .groupby(["ID", "ETAPA_CANON"], dropna=False)["DATA_ENTREGA_DT"]
+    .min()
+    .reset_index()
+)
 
 # =========================
 # Montagem da base LONGA
@@ -340,8 +396,7 @@ for _, r in base[base_cols].iterrows():
 
         realizado_dt = pd.NaT
         if pd.notna(_id):
-            etapa_up = normalizar_texto(etapa)
-            hit = resp_min[(resp_min["ID"] == str(_id)) & (resp_min["CURSO_UP"] == etapa_up)]
+            hit = resp_min[(resp_min["ID"] == str(_id)) & (resp_min["ETAPA_CANON"] == etapa)]
             if len(hit) > 0:
                 realizado_dt = hit["DATA_ENTREGA_DT"].iloc[0]
 
@@ -391,14 +446,20 @@ if pd.isna(min_adm) or pd.isna(max_adm):
     min_adm = pd.to_datetime("2024-09-01")
     max_adm = pd.to_datetime(datetime.today().date()).normalize()
 
-# >>> AJUSTE: dois campos separados "Início" / "Fim" (igual ao exemplo)
+# ✅ default: 01/01/2025 até o último admitido (mas mantendo o range todo disponível)
+default_ini = pd.to_datetime("2025-01-01")
+if default_ini < min_adm:
+    default_ini = min_adm
+if default_ini > max_adm:
+    default_ini = min_adm
+
 st.sidebar.subheader("Período de admissão")
 col_ini, col_fim = st.sidebar.columns(2)
 
 with col_ini:
     data_ini = st.date_input(
         "Início",
-        value=min_adm.date(),
+        value=default_ini.date(),
         min_value=min_adm.date(),
         max_value=max_adm.date(),
         format="DD/MM/YYYY",
@@ -426,10 +487,12 @@ f_status = st.sidebar.multiselect(
     "Status (etapa)",
     ["Pendente em atraso", "Pendente mas no prazo", "Concluido em atraso", "Concluido adiantado", "Conforme esperado"]
 )
+
+# ✅ default: só Ativo (mantendo Ativo/Inativo disponíveis)
 f_status_colab = st.sidebar.multiselect(
     "Status do colaborador",
     ["Ativo", "Inativo"],
-    default=["Ativo", "Inativo"]
+    default=["Ativo"]
 )
 
 df_f = etapas_df.copy()
