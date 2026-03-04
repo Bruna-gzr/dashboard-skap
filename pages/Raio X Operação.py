@@ -16,6 +16,7 @@ from io import BytesIO
 from zoneinfo import ZoneInfo
 import unicodedata
 import re
+from difflib import SequenceMatcher
 
 # =========================================================
 # TÍTULO
@@ -47,9 +48,19 @@ def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def normalizar_nome(s: str) -> str:
+    """
+    Normalização mais forte:
+    - remove acentos/pontuação
+    - colapsa espaços
+    - corrige confusões comuns (0->O, 1->I)
+    """
     s = "" if s is None else str(s)
     s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("utf-8")
     s = s.upper().strip()
+
+    # ✅ correções comuns em bases (ex.: 0LIVEIRA -> OLIVEIRA)
+    s = s.replace("0", "O").replace("1", "I")
+
     s = re.sub(r"[^\w\s]", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
@@ -125,16 +136,15 @@ def parse_time_mmss(x):
 
     s = s.replace("0 days ", "").replace("0 day ", "")
 
-    # ✅ Se vier número do Excel (fração do dia)
+    # ✅ número do Excel (fração do dia)
     s_num = s.replace(",", ".")
     v = pd.to_numeric(s_num, errors="coerce")
 
     if not pd.isna(v) and re.fullmatch(r"[-+]?\d+(\.\d+)?", s_num):
         v = float(v)
 
-        # horário Excel = fração do dia
         if 0 <= v < 1:
-            return v * 24 * 60  # converte para minutos
+            return v * 24 * 60
 
         return v
 
@@ -163,27 +173,14 @@ def parse_time_mmss(x):
 def fmt_hms_from_minutes(v):
     if pd.isna(v):
         return ""
-
     total_seconds = int(round(float(v) * 60))
-
     hh = total_seconds // 3600
     mm = (total_seconds % 3600) // 60
     ss = total_seconds % 60
-
     return f"{hh:02d}:{mm:02d}:{ss:02d}"
 
 def fmt_pct(v):
     return "" if pd.isna(v) else f"{v:.2f}%"
-
-def fmt_min(v):
-    if pd.isna(v):
-        return ""
-    mm = int(v)
-    ss = int(round((v - mm) * 60))
-    if ss == 60:
-        mm += 1
-        ss = 0
-    return f"{mm:02d}:{ss:02d}"
 
 def norm_operacao(op: str) -> str:
     return normalizar_nome(op)
@@ -197,6 +194,90 @@ def centralizar_tabela(df: pd.DataFrame):
 
 def safe_float(x):
     return pd.to_numeric(x, errors="coerce")
+
+# =========================================================
+# MATCHER (similaridade de nomes) - baseado em ATIVOS
+# =========================================================
+def build_name_matcher(target_df: pd.DataFrame):
+    """
+    Retorna uma função que converte nomes "crus" de qualquer base -> NOME_KEY do target_df,
+    tentando:
+      1) match exato NOME_KEY
+      2) match por NOME_SIMPLE
+      3) match por FIRST_LAST
+      4) fallback fuzzy leve (SequenceMatcher) com filtro por primeiro nome
+    """
+    t = target_df.copy()
+    t["NOME_KEY"] = t["COLABORADOR"].astype(str).map(normalizar_nome)
+    t["NOME_SIMPLE"] = t["NOME_KEY"].map(nome_simple_from_key)
+    t["FIRST_LAST"] = t["NOME_KEY"].map(first_last_key)
+
+    # dicionários diretos
+    d_key = t.drop_duplicates("NOME_KEY").set_index("NOME_KEY")["NOME_KEY"].to_dict()
+    d_simple = t.drop_duplicates("NOME_SIMPLE").set_index("NOME_SIMPLE")["NOME_KEY"].to_dict()
+    d_fl = t.drop_duplicates("FIRST_LAST").set_index("FIRST_LAST")["NOME_KEY"].to_dict()
+
+    # índice por primeiro token (pra reduzir candidatos)
+    by_first = {}
+    for nk in t["NOME_KEY"].dropna().unique().tolist():
+        toks = nk.split()
+        if not toks:
+            continue
+        by_first.setdefault(toks[0], []).append(nk)
+
+    def token_score(a: str, b: str) -> float:
+        ta = set(a.split())
+        tb = set(b.split())
+        if not ta or not tb:
+            return 0.0
+        inter = len(ta & tb)
+        return inter / max(1, min(len(ta), len(tb)))  # cobertura do menor
+
+    def best_fuzzy(nk: str) -> str | None:
+        if not nk:
+            return None
+        toks = nk.split()
+        first = toks[0] if toks else ""
+        cands = by_first.get(first, [])
+        if not cands:
+            return None
+
+        best = (0.0, None)
+        for cand in cands:
+            # mistura cobertura de tokens + similaridade de string
+            r = SequenceMatcher(None, nk, cand).ratio()
+            ts = token_score(nk, cand)
+            score = 0.65 * r + 0.35 * ts
+            if score > best[0]:
+                best = (score, cand)
+
+        # threshold conservador pra não casar errado
+        if best[0] >= 0.86:
+            return best[1]
+        return None
+
+    def map_series(series: pd.Series) -> pd.Series:
+        raw_key = series.astype(str).map(normalizar_nome)
+        mapped = raw_key.map(d_key)
+
+        miss = mapped.isna()
+        if miss.any():
+            simp = raw_key[miss].map(nome_simple_from_key)
+            mapped.loc[miss] = simp.map(d_simple)
+
+        miss = mapped.isna()
+        if miss.any():
+            fl = raw_key[miss].map(first_last_key)
+            mapped.loc[miss] = fl.map(d_fl)
+
+        miss = mapped.isna()
+        if miss.any():
+            # fuzzy leve
+            mapped.loc[miss] = raw_key[miss].apply(best_fuzzy)
+
+        return mapped
+
+    return map_series
 
 # =========================================================
 # ARQUIVOS
@@ -310,9 +391,21 @@ METAS = {
 }
 METAS = {norm_operacao(k): v for k, v in METAS.items()}
 
-# pontos (RV não pontua)
-PONTOS_DISTRIB = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}  # 30
+OP_LONDRINA_KEY = norm_operacao("CD LONDRINA")
+
+# pontos padrão (RV não pontua)
+PONTOS_DISTRIB_PADRAO = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}  # 30
+
+# ✅ CD LONDRINA: desconsidera BEES e TML vira 3 (mantém total 30)
+PONTOS_DISTRIB_LONDRINA = {"PDV": 5, "TML": 3, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}  # 30
+
 PONTOS_ARMAZEM = {"ABS": 10, "ACIDENTE": 10, "DTO": 10}  # 30
+
+def pontos_distrib_por_operacao(op_key: str) -> dict:
+    return PONTOS_DISTRIB_LONDRINA if op_key == OP_LONDRINA_KEY else PONTOS_DISTRIB_PADRAO
+
+def operacao_sem_bees(op_key: str) -> bool:
+    return op_key == OP_LONDRINA_KEY
 
 # =========================================================
 # PRONTUÁRIO
@@ -446,8 +539,11 @@ ativos["DATA_ADM_DT"] = tratar_data_segura(ativos["DATA ULT. ADM"])
 ativos["ADMISSAO"] = pd.to_datetime(ativos["DATA_ADM_DT"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 ativos = ativos[ativos["FUNCAO"].isin(FUNCOES_PERMITIDAS)].copy()
 
+# ✅ matcher baseado em ATIVOS (pra harmonizar nomes das outras bases)
+map_to_ativos_key = build_name_matcher(ativos[["COLABORADOR"]].copy())
+
 # =========================================================
-# SKAP
+# SKAP (harmoniza nome por similaridade)
 # =========================================================
 skap = normalizar_colunas(skap) if not skap.empty else skap
 if not skap.empty:
@@ -455,13 +551,13 @@ if not skap.empty:
         skap["COLABORADOR"] = ""
     if "NIVEIS" not in skap.columns:
         skap["NIVEIS"] = ""
-    skap["NOME_KEY"] = skap["COLABORADOR"].astype(str).map(normalizar_nome)
-    skap_niveis = skap[["NOME_KEY", "NIVEIS"]].drop_duplicates(subset=["NOME_KEY"], keep="last")
+    skap["NOME_KEY"] = map_to_ativos_key(skap["COLABORADOR"])
+    skap_niveis = skap[["NOME_KEY", "NIVEIS"]].dropna(subset=["NOME_KEY"]).drop_duplicates(subset=["NOME_KEY"], keep="last")
 else:
     skap_niveis = pd.DataFrame(columns=["NOME_KEY", "NIVEIS"])
 
 # =========================================================
-# CICLO DE GENTE (Classificação Final)
+# CICLO DE GENTE (Classificação Final) - harmoniza nome
 # =========================================================
 ciclo_map = pd.DataFrame(columns=["NOME_KEY", "CICLO_CLASSIFICACAO_FINAL"])
 if ciclo is not None and not ciclo.empty:
@@ -482,7 +578,7 @@ if ciclo is not None and not ciclo.empty:
 
     if col_nome is not None and col_final is not None:
         tmp = ciclo[[col_nome, col_final]].copy()
-        tmp["NOME_KEY"] = tmp[col_nome].astype(str).map(normalizar_nome)
+        tmp["NOME_KEY"] = map_to_ativos_key(tmp[col_nome])
         tmp["CICLO_CLASSIFICACAO_FINAL"] = tmp[col_final].astype(str).replace("nan", "", regex=False)
         ciclo_map = (
             tmp[["NOME_KEY", "CICLO_CLASSIFICACAO_FINAL"]]
@@ -540,7 +636,7 @@ base_master["PRONT_FAIXA"] = tmp.apply(lambda t: t[0])
 base_master["PRONT_COR"] = tmp.apply(lambda t: t[1])
 
 # =========================================================
-# EVENTOS
+# EVENTOS (harmoniza nomes por similaridade)
 # =========================================================
 def prep_evento(df: pd.DataFrame, col_nome: str, col_data: str, nome_out="NOME_KEY", data_out="DT"):
     if df is None or df.empty:
@@ -552,9 +648,9 @@ def prep_evento(df: pd.DataFrame, col_nome: str, col_data: str, nome_out="NOME_K
         df[col_data.upper()] = ""
 
     out = df[[col_nome.upper(), col_data.upper()]].copy()
-    out[nome_out] = out[col_nome.upper()].astype(str).map(normalizar_nome)
+    out[nome_out] = map_to_ativos_key(out[col_nome.upper()])
     out[data_out] = tratar_data_segura(out[col_data.upper()])
-    out = out.dropna(subset=[data_out])
+    out = out.dropna(subset=[data_out, nome_out])
     out["MES"] = to_month_key(out[data_out])
     return out[[nome_out, data_out, "MES"]]
 
@@ -571,10 +667,10 @@ if abs_ is not None and not abs_.empty:
     for c in ["COLABORADOR", "DATA", "TIPO DE AUSENCIA"]:
         if c not in abs_.columns:
             abs_[c] = ""
-    abs_["NOME_KEY"] = abs_["COLABORADOR"].astype(str).map(normalizar_nome)
+    abs_["NOME_KEY"] = map_to_ativos_key(abs_["COLABORADOR"])
     abs_["DT"] = tratar_data_segura(abs_["DATA"])
     abs_["TIPO"] = abs_["TIPO DE AUSENCIA"].astype(str).map(normalizar_nome)
-    abs_ = abs_.dropna(subset=["DT"])
+    abs_ = abs_.dropna(subset=["DT", "NOME_KEY"])
     abs_["MES"] = to_month_key(abs_["DT"])
     abs_ = abs_[abs_["TIPO"].isin([normalizar_nome("JUSTIFICADA"), normalizar_nome("NÃO JUSTIFICADA"), normalizar_nome("NAO JUSTIFICADA")])]
     abs_ev = abs_[["NOME_KEY", "DT", "MES", "TIPO"]].copy()
@@ -591,9 +687,9 @@ if rv is not None and not rv.empty:
     col_pct = "%" if "%" in rv.columns else ("PCT" if "PCT" in rv.columns else ("PERCENTUAL" if "PERCENTUAL" in rv.columns else ""))
     col_rec = "RECARGA" if "RECARGA" in rv.columns else ("RECARGAS" if "RECARGAS" in rv.columns else "")
 
-    rv["NOME_KEY"] = rv["NOME"].astype(str).map(normalizar_nome)
+    rv["NOME_KEY"] = map_to_ativos_key(rv["NOME"])
     rv["DT"] = tratar_data_segura(rv["DATA"])
-    rv = rv.dropna(subset=["DT"])
+    rv = rv.dropna(subset=["DT", "NOME_KEY"])
     rv["MES"] = to_month_key(rv["DT"])
 
     rv["PCT_RV_NUM"] = rv[col_pct].apply(parse_percent) if col_pct else np.nan
@@ -616,9 +712,9 @@ if ind is not None and not ind.empty:
         if c not in ind.columns:
             ind[c] = ""
 
-    ind["NOME_KEY"] = ind["COLABORADOR"].astype(str).map(normalizar_nome)
+    ind["NOME_KEY"] = map_to_ativos_key(ind["COLABORADOR"])
     ind["DT"] = tratar_data_segura(ind["DATA"])
-    ind = ind.dropna(subset=["DT"])
+    ind = ind.dropna(subset=["DT", "NOME_KEY"])
     ind["MES"] = to_month_key(ind["DT"])
 
     ind["PDV_NUM"] = ind["PDV"].apply(parse_percent)
@@ -727,6 +823,9 @@ def calc_pontos_row(row) -> dict:
     metas_op = METAS.get(op_key, {})
     mode = view_mode_from_funcao(row.get("FUNCAO", ""))
 
+    pts_distrib = pontos_distrib_por_operacao(op_key)
+    sem_bees = operacao_sem_bees(op_key)
+
     res = {
         "PTS_PDV": 0, "PTS_BEES": 0, "PTS_TML": 0, "PTS_JL": 0,
         "PTS_ABS": 0, "PTS_VALES": 0, "PTS_ACIDENTE": 0, "PTS_DTO": 0,
@@ -736,44 +835,45 @@ def calc_pontos_row(row) -> dict:
     if mode == "DISTRIB":
         v_pdv  = row.get("PDV", np.nan)
         v_bees = row.get("BEES", np.nan)
-        v_tml  = row.get("TML_MIN", np.nan)   # ✅ minutos
+        v_tml  = row.get("TML_MIN", np.nan)
         v_jl   = row.get("JL", np.nan)
 
         # PDV
         if pd.notna(v_pdv) and "PDV" in metas_op and pd.notna(metas_op["PDV"].get("meta", None)):
             if float(v_pdv) <= float(metas_op["PDV"]["meta"]):
-                res["PTS_PDV"] = PONTOS_DISTRIB["PDV"]
+                res["PTS_PDV"] = pts_distrib["PDV"]
 
-        # BEES
-        if pd.notna(v_bees) and "BEES" in metas_op and pd.notna(metas_op["BEES"].get("meta", None)):
-            if float(v_bees) >= float(metas_op["BEES"]["meta"]):
-                res["PTS_BEES"] = PONTOS_DISTRIB["BEES"]
+        # BEES (✅ ignorar CD LONDRINA)
+        if (not sem_bees) and ("BEES" in pts_distrib):
+            if pd.notna(v_bees) and "BEES" in metas_op and pd.notna(metas_op["BEES"].get("meta", None)):
+                if float(v_bees) >= float(metas_op["BEES"]["meta"]):
+                    res["PTS_BEES"] = pts_distrib["BEES"]
 
-        # TML (meta em minutos OU horas)
+        # TML
         meta_tml = metas_op.get("TML", {}).get("meta", None)
         meta_tml_min = None
         if meta_tml is not None and pd.notna(meta_tml):
             meta_tml = float(meta_tml)
-            meta_tml_min = meta_tml * 60.0 if 0 < meta_tml <= 1.5 else meta_tml  # 0.5h -> 30min
+            meta_tml_min = meta_tml * 60.0 if 0 < meta_tml <= 1.5 else meta_tml
 
         if pd.notna(v_tml) and meta_tml_min is not None:
             if float(v_tml) <= float(meta_tml_min):
-                res["PTS_TML"] = PONTOS_DISTRIB["TML"]
+                res["PTS_TML"] = pts_distrib["TML"]
 
         # JL
         if pd.notna(v_jl) and "JL" in metas_op and pd.notna(metas_op["JL"].get("meta", None)):
             if float(v_jl) >= float(metas_op["JL"]["meta"]):
-                res["PTS_JL"] = PONTOS_DISTRIB["JL"]
+                res["PTS_JL"] = pts_distrib["JL"]
 
         # eventos
         if int(row.get("ABS", 0) or 0) == 0:
-            res["PTS_ABS"] = PONTOS_DISTRIB["ABS"]
+            res["PTS_ABS"] = pts_distrib["ABS"]
         if int(row.get("VALES", 0) or 0) == 0:
-            res["PTS_VALES"] = PONTOS_DISTRIB["VALES"]
+            res["PTS_VALES"] = pts_distrib["VALES"]
         if int(row.get("ACIDENTE", 0) or 0) == 0:
-            res["PTS_ACIDENTE"] = PONTOS_DISTRIB["ACIDENTE"]
+            res["PTS_ACIDENTE"] = pts_distrib["ACIDENTE"]
         if int(row.get("DTO", 0) or 0) == 0:
-            res["PTS_DTO"] = PONTOS_DISTRIB["DTO"]
+            res["PTS_DTO"] = pts_distrib["DTO"]
 
         res["TOTAL_PTS"] = (
             res["PTS_PDV"] + res["PTS_BEES"] + res["PTS_TML"] + res["PTS_JL"] +
@@ -795,14 +895,21 @@ def calc_pontos_row(row) -> dict:
 pts_df = grid.apply(calc_pontos_row, axis=1, result_type="expand")
 grid = pd.concat([grid, pts_df], axis=1)
 
-def risco_to(total_pts: int) -> str:
+def risco_to_row(total_pts: int, funcao: str) -> str:
+    mode = view_mode_from_funcao(funcao)
+
+    # ✅ regra especial Armazém: >=10 NÃO, senão SIM
+    if mode == "ARMAZEM":
+        return "NÃO" if int(total_pts) >= 10 else "SIM"
+
+    # Distribuição (mantém tua regra antiga)
     if total_pts > 20:
         return "NÃO"
     if total_pts >= 15:
         return "ATENÇÃO"
     return "SIM"
 
-grid["RISCO DE TO"] = grid["TOTAL_PTS"].apply(lambda x: risco_to(int(x) if pd.notna(x) else 0))
+grid["RISCO DE TO"] = grid.apply(lambda r: risco_to_row(int(r["TOTAL_PTS"]) if pd.notna(r["TOTAL_PTS"]) else 0, str(r.get("FUNCAO",""))), axis=1)
 
 # sobrescreve risco com STATUS (FERIAS/AFASTADO)
 if "STATUS" in grid.columns:
@@ -872,23 +979,30 @@ def render_regras_sidebar(operacao: str, funcao: str):
 
     if operacao == "Todos" or funcao == "Todos":
         st.sidebar.caption("Selecione **Operação** e **Função** para ver as regras exatas.")
-        total_disp = sum(PONTOS_DISTRIB.values())
+        total_disp = sum(PONTOS_DISTRIB_PADRAO.values())
         total_arm = sum(PONTOS_ARMAZEM.values())
         st.sidebar.write(f"• Total possível (Distribuição): **{total_disp}**")
         st.sidebar.write(f"• Total possível (Armazém): **{total_arm}**")
+        st.sidebar.write("• Obs.: **CD LONDRINA** desconsidera **BEES** e TML vale **3**.")
         return
 
     regras = []
     if mode == "DISTRIB":
-        regras.append(("JL", metas_op.get("JL", {}).get("meta", None), PONTOS_DISTRIB["JL"], "% (>= meta)"))
-        regras.append(("DEV PDV", metas_op.get("PDV", {}).get("meta", None), PONTOS_DISTRIB["PDV"], "% (<= meta)"))
-        regras.append(("BEES", metas_op.get("BEES", {}).get("meta", None), PONTOS_DISTRIB["BEES"], "% (>= meta)"))
-        regras.append(("TML", metas_op.get("TML", {}).get("meta", None), PONTOS_DISTRIB["TML"], "min (<= meta)"))
-        regras.append(("ABS", 0, PONTOS_DISTRIB["ABS"], "Qtde (== 0)"))
-        regras.append(("VALES", 0, PONTOS_DISTRIB["VALES"], "Qtde (== 0)"))
-        regras.append(("ACIDENTE", 0, PONTOS_DISTRIB["ACIDENTE"], "Qtde (== 0)"))
-        regras.append(("Desvios DTO", 0, PONTOS_DISTRIB["DTO"], "Qtde (== 0)"))
-        total = sum(PONTOS_DISTRIB.values())
+        pts = pontos_distrib_por_operacao(op_key)
+
+        regras.append(("JL", metas_op.get("JL", {}).get("meta", None), pts["JL"], "% (>= meta)"))
+        regras.append(("DEV PDV", metas_op.get("PDV", {}).get("meta", None), pts["PDV"], "% (<= meta)"))
+
+        # ✅ BEES só se não for Londrina
+        if not operacao_sem_bees(op_key):
+            regras.append(("BEES", metas_op.get("BEES", {}).get("meta", None), pts["BEES"], "% (>= meta)"))
+
+        regras.append(("TML", metas_op.get("TML", {}).get("meta", None), pts["TML"], "min (<= meta)"))
+        regras.append(("ABS", 0, pts["ABS"], "Qtde (== 0)"))
+        regras.append(("VALES", 0, pts["VALES"], "Qtde (== 0)"))
+        regras.append(("ACIDENTE", 0, pts["ACIDENTE"], "Qtde (== 0)"))
+        regras.append(("Desvios DTO", 0, pts["DTO"], "Qtde (== 0)"))
+        total = sum(pts.values())
     else:
         regras.append(("ABS", 0, PONTOS_ARMAZEM["ABS"], "Qtde (== 0)"))
         regras.append(("ACIDENTE", 0, PONTOS_ARMAZEM["ACIDENTE"], "Qtde (== 0)"))
@@ -954,6 +1068,15 @@ if not df.empty:
     }
     if f_colab != "Todos":
         ref_last_colab = df.sort_values("MES", ascending=False).iloc[0].copy()
+
+# contexto da operação (pra esconder BEES só quando for Londrina)
+ctx_oper_key = None
+if f_oper != "Todos":
+    ctx_oper_key = norm_operacao(f_oper)
+elif ref_last_colab is not None:
+    ctx_oper_key = norm_operacao(ref_last_colab.get("OPERACAO", ""))
+
+hide_bees_ctx = (ctx_oper_key == OP_LONDRINA_KEY)
 
 # =========================================================
 # CORES
@@ -1045,7 +1168,11 @@ with left:
         if view_mode in ["ALL", "DISTRIB"]:
             linha_ind("👥", "JL", jl_res)
             linha_ind("📦", "DEV PDV", pdv_res)
-            linha_ind("🟨", "BEES", bees_res)
+
+            # ✅ BEES não aparece em CD LONDRINA
+            if not hide_bees_ctx:
+                linha_ind("🟨", "BEES", bees_res)
+
             linha_ind("⏱️", "TML", tml_res)
             linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}")
             linha_ind("🎫", "VALES", f"{ref_avg.get('VALES', 0):.2f}")
@@ -1202,14 +1329,17 @@ with right:
         if view_mode in ["ALL", "DISTRIB"]:
             add_indicador("JL", "JL", "PTS_JL")
             add_indicador("DEV PDV", "DEV PDV", "PTS_PDV")
-            add_indicador("BEES", "BEES", "PTS_BEES")
+
+            # ✅ BEES não aparece se o filtro estiver em CD LONDRINA
+            if not hide_bees_ctx:
+                add_indicador("BEES", "BEES", "PTS_BEES")
+
             add_indicador("TML", "TML", "PTS_TML")
             add_indicador("ABS", "ABS", "PTS_ABS")
             add_indicador("VALES", "VALES", "PTS_VALES")
             add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
             add_indicador("Desvios DTO", "DTO", "PTS_DTO")
 
-            # Recargas antes de %RV SOMENTE para Motorista/VAN/Ajudante Dist
             fun_ok = {
                 normalizar_nome("Motorista de Distribuição"),
                 normalizar_nome("Motorista de Van"),
@@ -1221,69 +1351,51 @@ with right:
             rec_col.loc[mask_fun] = t.loc[mask_fun, "RECARGAS_TXT"]
             out[("Recargas", "Resultado")] = rec_col
 
-            out[("Média RV", "Resultado")] = t["MÉDIA RV"]  # sem PTS
+            out[("Média RV", "Resultado")] = t["MÉDIA RV"]
 
         if view_mode == "ARMAZEM":
             add_indicador("ABS", "ABS", "PTS_ABS")
             add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
             add_indicador("Desvios DTO", "DTO", "PTS_DTO")
-            out[("Média RV", "Resultado")] = t["MÉDIA RV"]  # sem PTS
+            out[("Média RV", "Resultado")] = t["MÉDIA RV"]
 
         out[("_MESKEY","")] = pd.to_datetime(t["MES"] + "-01", errors="coerce")
         out = out.sort_values([("_MESKEY",""), ("COLABORADOR","")]).drop(columns=[("_MESKEY","")])
 
-        # =========================================================
-        # ✅ AJUSTE NOMENCLATURA (sem quebrar o Streamlit):
-        # - *_Resultado -> nome do indicador (JL, DEV PDV, ...)
-        # - *_PTS -> "PTS" visualmente repetido, mas com sufixo invisível p/ ficar único
-        # =========================================================
         out_flat = out.copy()
         out_flat.columns = [
             (c[0] if (isinstance(c, tuple) and c[1] == "") else f"{c[0]}_{c[1]}")
             for c in out_flat.columns
         ]
 
-        ZERO = "\u200b"  # zero-width space (invisível)
-
+        ZERO = "\u200b"
         new_cols = []
-        pts_counter = 0  # garante unicidade para cada coluna PTS
+        pts_counter = 0
 
         for col in out_flat.columns:
             col = str(col)
-
             if col.endswith("_Resultado"):
                 new_cols.append(col.replace("_Resultado", ""))
                 continue
-
             if col.endswith("_PTS"):
                 pts_counter += 1
                 new_cols.append("PTS" + (ZERO * pts_counter))
                 continue
-
             new_cols.append(col)
 
         out_flat.columns = new_cols
 
-        # =========================================================
-        # ✅ Limite de linhas para Styler (evita crash do Streamlit)
-        # =========================================================
         MAX_ROWS_STYLE = 800
         if len(out_flat) > MAX_ROWS_STYLE:
-            st.warning(
-                f"Mostrando só os primeiros {MAX_ROWS_STYLE} registros com formatação (limite do Streamlit)."
-            )
+            st.warning(f"Mostrando só os primeiros {MAX_ROWS_STYLE} registros com formatação (limite do Streamlit).")
             out_view = out_flat.head(MAX_ROWS_STYLE).copy()
         else:
             out_view = out_flat
 
-        # =========================================================
-        # ✅ Styler (usa out_view, não out_flat)
-        # =========================================================
         sty = out_view.style.set_properties(**{"text-align": "center"}).set_table_styles(
             [{"selector": "th", "props": [("text-align", "center")]}]
         )
 
-        # colunas PTS (agora começam com "PTS" e têm sufixo invisível)
         pts_cols = [c for c in out_view.columns if str(c).startswith("PTS")]
         if pts_cols:
             sty = sty.applymap(color_pts_zero, subset=pts_cols)
