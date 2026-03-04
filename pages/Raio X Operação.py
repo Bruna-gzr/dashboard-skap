@@ -1008,7 +1008,7 @@ def render_regras_sidebar(operacao: str, funcao: str):
         total_arm = sum(PONTOS_ARMAZEM.values())
         st.sidebar.write(f"• Total possível (Distribuição): **{total_disp}**")
         st.sidebar.write(f"• Total possível (Armazém): **{total_arm}**")
-        st.sidebar.write("• Obs.: **CD LONDRINA** desconsidera **BEES** e TML vale **3**.")
+        )
         return
 
     regras = []
