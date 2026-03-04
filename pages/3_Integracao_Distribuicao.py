@@ -122,23 +122,13 @@ def opcoes(df: pd.DataFrame, col: str) -> list[str]:
     return sorted(vals)
 
 def limpar_id(v):
-    """
-    Normaliza ID para bater melhor entre bases:
-    - remove .0 final (excel)
-    - remove espaços
-    - se for só dígito, remove zeros à esquerda (ex: 000123 -> 123)
-    """
     s = "" if pd.isna(v) else str(v).strip()
     if s.endswith(".0"):
         s = s[:-2]
-    s = s.strip()
     # remove espaços internos acidentais
     s = re.sub(r"\s+", "", s)
-    if s.isdigit():
-        s2 = s.lstrip("0")
-        return s2 if s2 != "" else "0"
     return s
-
+    
 # =========================
 # Status colors (coluna STATUS)
 # =========================
@@ -210,12 +200,14 @@ for c in ["COLABORADOR", "ID"]:
     ids_logon = garantir_coluna(ids_logon, c, "")
 ids_logon = limpar_texto(ids_logon, ["COLABORADOR", "ID"])
 ids_logon["ID"] = ids_logon["ID"].apply(limpar_id)
+ids_logon["ID_AUX"] = ids_logon["ID"].astype(str).apply(lambda x: x.lstrip("0") if x.isdigit() else x)
 
 # Respostas
 for c in ["ID", "CURSO", "DATA ENTREGA"]:
     respostas = garantir_coluna(respostas, c, "")
 respostas = limpar_texto(respostas, ["ID", "CURSO"])
 respostas["ID"] = respostas["ID"].apply(limpar_id)
+respostas["ID_AUX"] = respostas["ID"].astype(str).apply(lambda x: x.lstrip("0") if x.isdigit() else x)
 
 # =========================
 # Regras: cargos + data admissão (BASE = ADMITIDOS)
@@ -246,9 +238,11 @@ base = admitidos[
 # IDs por colaborador (merge)
 # =========================
 ids_logon = ids_logon.drop_duplicates(subset=["COLABORADOR"], keep="last")
-base = base.merge(ids_logon[["COLABORADOR", "ID"]], on="COLABORADOR", how="left")
+base = base.merge(ids_logon[["COLABORADOR", "ID", "ID_AUX"]], on="COLABORADOR", how="left")
 base["ID"] = base["ID"].astype(str).str.strip().replace(["", "nan", "None"], pd.NA)
 base["ID"] = base["ID"].apply(limpar_id)
+base["ID"] = base["ID"].astype(str).str.strip().replace(["", "nan", "None"], pd.NA).apply(limpar_id)
+base["ID_AUX"] = base["ID_AUX"].astype(str).str.strip().replace(["", "nan", "None"], pd.NA)
 
 # =========================
 # Status do colaborador (Ativo/Inativo)
@@ -375,7 +369,7 @@ respostas["ETAPA_CANON"] = respostas["CURSO"].astype(str).map(curso_para_etapa_c
 resp_min = (
     respostas.dropna(subset=["ID"])
     .dropna(subset=["ETAPA_CANON"])
-    .groupby(["ID", "ETAPA_CANON"], dropna=False)["DATA_ENTREGA_DT"]
+    .groupby(["ID", "ID_AUX", "ETAPA_CANON"], dropna=False)["DATA_ENTREGA_DT"]
     .min()
     .reset_index()
 )
@@ -395,10 +389,23 @@ for _, r in base[base_cols].iterrows():
         prazo_max_dt = (adm + pd.Timedelta(days=off_max)).normalize()
 
         realizado_dt = pd.NaT
-        if pd.notna(_id):
-            hit = resp_min[(resp_min["ID"] == str(_id)) & (resp_min["ETAPA_CANON"] == etapa)]
-            if len(hit) > 0:
-                realizado_dt = hit["DATA_ENTREGA_DT"].iloc[0]
+        _id = r["ID"]
+_id_aux = r.get("ID_AUX", pd.NA)
+
+if pd.notna(_id) or pd.notna(_id_aux):
+    _id_str = str(_id) if pd.notna(_id) else None
+    _aux_str = str(_id_aux) if pd.notna(_id_aux) else None
+
+    hit = resp_min[
+        (resp_min["ETAPA_CANON"] == etapa) &
+        (
+            ((resp_min["ID"] == _id_str) if _id_str else False) |
+            ((resp_min["ID_AUX"] == _aux_str) if _aux_str else False)
+        )
+    ]
+
+    if len(hit) > 0:
+        realizado_dt = hit["DATA_ENTREGA_DT"].iloc[0]
 
         if pd.notna(realizado_dt):
             realizado_dt = pd.to_datetime(realizado_dt).normalize()
