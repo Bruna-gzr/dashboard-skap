@@ -208,18 +208,41 @@ def build_name_matcher(target_df: pd.DataFrame):
       4) fallback fuzzy leve (SequenceMatcher) com filtro por primeiro nome
     """
     t = target_df.copy()
+
+    # garante COLABORADOR
+    if "COLABORADOR" not in t.columns:
+        # se vier só uma coluna sem nome, tenta pegar a primeira
+        if len(t.columns) >= 1:
+            t = t.rename(columns={t.columns[0]: "COLABORADOR"})
+        else:
+            t["COLABORADOR"] = ""
+
     t["NOME_KEY"] = t["COLABORADOR"].astype(str).map(normalizar_nome)
     t["NOME_SIMPLE"] = t["NOME_KEY"].map(nome_simple_from_key)
     t["FIRST_LAST"] = t["NOME_KEY"].map(first_last_key)
 
     # dicionários diretos
-    d_key = t.drop_duplicates("NOME_KEY").set_index("NOME_KEY")["NOME_KEY"].to_dict()
-    d_simple = t.drop_duplicates("NOME_SIMPLE").set_index("NOME_SIMPLE")["NOME_KEY"].to_dict()
-    d_fl = t.drop_duplicates("FIRST_LAST").set_index("FIRST_LAST")["NOME_KEY"].to_dict()
+    # ✅ aqui é o ajuste do KeyError: não dá pra pegar ["NOME_KEY"] depois do set_index
+    keys = t["NOME_KEY"].dropna().astype(str)
+    d_key = {k: k for k in keys.unique().tolist()}
 
-    # índice por primeiro token (pra reduzir candidatos)
+    d_simple = (
+        t.dropna(subset=["NOME_SIMPLE", "NOME_KEY"])
+         .drop_duplicates("NOME_SIMPLE")
+         .set_index("NOME_SIMPLE")["NOME_KEY"]
+         .to_dict()
+    )
+
+    d_fl = (
+        t.dropna(subset=["FIRST_LAST", "NOME_KEY"])
+         .drop_duplicates("FIRST_LAST")
+         .set_index("FIRST_LAST")["NOME_KEY"]
+         .to_dict()
+    )
+
+    # índice por primeiro token (reduz candidatos do fuzzy)
     by_first = {}
-    for nk in t["NOME_KEY"].dropna().unique().tolist():
+    for nk in keys.unique().tolist():
         toks = nk.split()
         if not toks:
             continue
@@ -231,29 +254,32 @@ def build_name_matcher(target_df: pd.DataFrame):
         if not ta or not tb:
             return 0.0
         inter = len(ta & tb)
-        return inter / max(1, min(len(ta), len(tb)))  # cobertura do menor
+        return inter / max(1, min(len(ta), len(tb)))
 
     def best_fuzzy(nk: str) -> str | None:
         if not nk:
             return None
+
         toks = nk.split()
         first = toks[0] if toks else ""
         cands = by_first.get(first, [])
         if not cands:
             return None
 
-        best = (0.0, None)
+        best_score = 0.0
+        best_cand = None
+
         for cand in cands:
-            # mistura cobertura de tokens + similaridade de string
             r = SequenceMatcher(None, nk, cand).ratio()
             ts = token_score(nk, cand)
             score = 0.65 * r + 0.35 * ts
-            if score > best[0]:
-                best = (score, cand)
+            if score > best_score:
+                best_score = score
+                best_cand = cand
 
-        # threshold conservador pra não casar errado
-        if best[0] >= 0.86:
-            return best[1]
+        # threshold conservador
+        if best_score >= 0.86:
+            return best_cand
         return None
 
     def map_series(series: pd.Series) -> pd.Series:
@@ -272,7 +298,6 @@ def build_name_matcher(target_df: pd.DataFrame):
 
         miss = mapped.isna()
         if miss.any():
-            # fuzzy leve
             mapped.loc[miss] = raw_key[miss].apply(best_fuzzy)
 
         return mapped
