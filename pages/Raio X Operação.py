@@ -1003,13 +1003,12 @@ def render_regras_sidebar(operacao: str, funcao: str):
     st.sidebar.subheader("Regras de pontuação")
 
     if operacao == "Todos" or funcao == "Todos":
-        st.sidebar.caption("Selecione **Operação** e **Função** para ver as regras exatas.")
-        total_disp = sum(PONTOS_DISTRIB_PADRAO.values())
-        total_arm = sum(PONTOS_ARMAZEM.values())
-        st.sidebar.write(f"• Total possível (Distribuição): **{total_disp}**")
-        st.sidebar.write(f"• Total possível (Armazém): **{total_arm}**")
-        )
-        return
+    st.sidebar.caption("Selecione **Operação** e **Função** para ver as regras exatas.")
+    total_disp = sum(PONTOS_DISTRIB_PADRAO.values())
+    total_arm = sum(PONTOS_ARMAZEM.values())
+    st.sidebar.write(f"• Total possível (Distribuição): **{total_disp}**")
+    st.sidebar.write(f"• Total possível (Armazém): **{total_arm}**")
+    return
 
     regras = []
     if mode == "DISTRIB":
