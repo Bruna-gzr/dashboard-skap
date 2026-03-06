@@ -3,6 +3,7 @@ import unicodedata
 from pathlib import Path
 from datetime import datetime
 from difflib import SequenceMatcher
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
@@ -135,9 +136,6 @@ def ult_nome(a: str) -> str:
     return toks[-1] if toks else ""
 
 def similaridade_nome(resp_nome: str, cand_nome: str) -> float:
-    """
-    Score mais robusto para nomes incompletos / com erros / pontuação.
-    """
     if not resp_nome or not cand_nome:
         return 0
 
@@ -154,7 +152,6 @@ def similaridade_nome(resp_nome: str, cand_nome: str) -> float:
             s4 * 0.95,
         )
 
-        # bônus por interseção de tokens
         inter = token_overlap(resp_nome, cand_nome)
         if inter >= 2:
             score += 2
@@ -165,7 +162,6 @@ def similaridade_nome(resp_nome: str, cand_nome: str) -> float:
 
         return min(score, 100)
 
-    # fallback simples
     base = sequence_ratio(resp_nome, cand_nome)
     inter = token_overlap(resp_nome, cand_nome)
     if inter >= 2:
@@ -201,20 +197,30 @@ def style_table(df):
         return df.style.applymap(cor_status, subset=["Status"]).set_properties(**{"text-align": "center"})
     return df
 
+@st.cache_data(show_spinner=True)
 def carregar_excel_primeira_aba(path: Path) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {path}")
     xls = pd.ExcelFile(path)
     return pd.read_excel(xls, sheet_name=xls.sheet_names[0])
 
+def to_excel_bytes(df: pd.DataFrame, sheet_name: str = "dados") -> bytes:
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name=sheet_name)
+    return output.getvalue()
+
+def formatar_datas_para_tabela(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    for c in ["Data Admissão", "Prazo Mín", "Prazo Máx", "Data Realização", "Data Cadastro"]:
+        if c in out.columns:
+            out[c] = pd.to_datetime(out[c], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
+    return out
+
 # =========================
 # Match de nomes
 # =========================
 def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_min=85):
-    """
-    Procura o melhor colaborador da base admitidos a partir do nome digitado.
-    Usa operação como filtro auxiliar quando existir.
-    """
     if base_lookup.empty or not nome_resp:
         return None, 0
 
@@ -247,7 +253,6 @@ def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_m
     pool["token_overlap"] = pool["nome_norm"].apply(lambda x: token_overlap(nome_resp, x))
     pool["primeiro_nome_ok"] = pool["nome_norm"].apply(lambda x: primeiro_nome(nome_resp) == primeiro_nome(x))
 
-    # prioriza bom score + mais tokens em comum
     pool = pool.sort_values(
         ["score_nome", "token_overlap", "primeiro_nome_ok"],
         ascending=[False, False, False]
@@ -260,11 +265,9 @@ def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_m
     row = best.iloc[0]
     score = float(row["score_nome"])
 
-    # trava mínima de qualidade
     if score < score_min:
         return None, score
 
-    # regra extra pra evitar falso positivo grotesco
     if row["token_overlap"] == 0 and score < 92:
         return None, score
 
@@ -328,28 +331,25 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
             merged.loc[falt, "cargo_match_score"] = tipo_score.apply(lambda t: t[1])
 
     merged["Tipo Cargo"] = merged["Tipo Cargo"].fillna("")
-
-    # Mantém só operacional logístico
     oper = merged[merged["Tipo Cargo"].str.upper().eq("OPERACIONAL LOGÍSTICO")].copy()
 
-    # Corte geral
     oper = oper[oper["Data_dt"] >= pd.Timestamp("2024-10-03")].copy()
 
-    # Padroniza operação novamente por garantia
     oper["Operação"] = oper["Operação"].astype(str).str.strip()
     oper["op_norm"] = oper["Operação"].apply(norm_text)
 
-    # Cortes especiais
     corte_petropolis = pd.Timestamp("2025-08-01")
     corte_vidros_pr = pd.Timestamp("2026-02-01")
+    corte_ponta_grossa = pd.Timestamp("2025-09-01")
 
     mask_petropolis = oper["op_norm"].eq("CD PETROPOLIS")
     mask_vidros_pr = oper["op_norm"].eq("VIDROS PR")
+    mask_ponta_grossa = oper["op_norm"].str.contains("PONTA GROSSA", na=False)
 
     oper = oper[
-        (~mask_petropolis | (oper["Data_dt"] >= corte_petropolis))
-        &
-        (~mask_vidros_pr | (oper["Data_dt"] >= corte_vidros_pr))
+        (~mask_petropolis | (oper["Data_dt"] >= corte_petropolis)) &
+        (~mask_vidros_pr | (oper["Data_dt"] >= corte_vidros_pr)) &
+        (~mask_ponta_grossa | (oper["Data_dt"] >= corte_ponta_grossa))
     ].copy()
 
     return oper
@@ -361,7 +361,6 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
     base = base_oper.copy()
     atv = base_ativos.copy()
 
-    # normalizações auxiliares
     if "CPF" in atv.columns:
         atv["cpf_clean"] = atv["CPF"].apply(clean_cpf)
     else:
@@ -381,20 +380,17 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
     base["match_ativo_tipo"] = "NAO_ENCONTRADO"
     base["match_ativo_score"] = pd.NA
 
-    # 1) CPF
     ativos_cpf = set(atv.loc[atv["cpf_clean"].astype(str).str.len() == 11, "cpf_clean"].unique().tolist())
     mask_cpf = base["cpf_clean"].isin(ativos_cpf)
     base.loc[mask_cpf, "Status Colaborador"] = "Ativo"
     base.loc[mask_cpf, "match_ativo_tipo"] = "CPF"
 
-    # 2) Nome exato normalizado
     falt = base["Status Colaborador"].eq("Inativo")
     ativos_nome_exato = set(atv.loc[atv["nome_norm"].astype(str).str.strip() != "", "nome_norm"].unique().tolist())
     mask_nome = falt & base["nome_norm"].isin(ativos_nome_exato)
     base.loc[mask_nome, "Status Colaborador"] = "Ativo"
     base.loc[mask_nome, "match_ativo_tipo"] = "NOME_EXATO"
 
-    # 3) Fuzzy nome
     falt = base["Status Colaborador"].eq("Inativo")
     if falt.any():
         atv_lookup = atv[["nome_norm", "op_norm"]].drop_duplicates().copy()
@@ -403,9 +399,9 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
         def match_ativo(row):
             nome = row.get("nome_norm", "")
             op = row.get("op_norm", "")
-            cand, score = buscar_melhor_candidato_por_nome(
+            _, score = buscar_melhor_candidato_por_nome(
                 nome_resp=nome,
-                base_lookup=atv_lookup.rename(columns={"nome_norm": "nome_norm"}),
+                base_lookup=atv_lookup,
                 op_resp=op,
                 score_min=91
             )
@@ -428,7 +424,6 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     base["nome_norm"] = base["nome_norm"].fillna("")
     base["op_norm"] = base["Operação"].apply(norm_text)
 
-    # ---------- NPS ----------
     nps_df = nps.copy()
     nps_nome_col = "Informe seu nome completo:"
     nps_cpf_col = "Informe seu CPF:"
@@ -443,7 +438,6 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     nps_df["op_norm"] = nps_df[nps_op_col].apply(norm_text) if nps_op_col in nps_df.columns else ""
     nps_df["Data Cadastro"] = pd.to_datetime(nps_df["Data Cadastro"], errors="coerce", dayfirst=True)
 
-    # ---------- Bate-papo ----------
     bp = batepapo.copy()
     bp_nome_col = "Insira o nome do colaborador:"
     bp_cpf_col = "Inserir o CPF do colaborador:"
@@ -462,7 +456,6 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         "Data", "Data_dt", "nome_norm", "op_norm", "Status Colaborador"
     ]
 
-    # Primeiro tenta por CPF
     nps_m = nps_df.merge(base[base_cols], on="cpf_clean", how="left", suffixes=("", "_base"))
     bp_m = bp.merge(base[base_cols], on="cpf_clean", how="left", suffixes=("", "_base"))
 
@@ -471,7 +464,6 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     nps_m["match_score"] = pd.NA
     bp_m["match_score"] = pd.NA
 
-    # Depois tenta por nome
     base_lookup = base.copy()
 
     def fuzzy_match_row(row):
@@ -480,7 +472,6 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         if not nome:
             return None, 0
 
-        # score levemente mais permissivo porque a digitação é bem bagunçada
         cand, score = buscar_melhor_candidato_por_nome(
             nome_resp=nome,
             base_lookup=base_lookup,
@@ -489,7 +480,6 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         )
         return cand, score
 
-    # NPS fallback
     falt = nps_m["Colaborador"].isna()
     if falt.any():
         resultados = nps_m.loc[falt].apply(lambda r: fuzzy_match_row(r), axis=1)
@@ -503,7 +493,6 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
                     nps_m.at[idx, col] = base_row[col]
                 nps_m.at[idx, "match_tipo"] = "NOME_FUZZY"
 
-    # BP fallback
     falt = bp_m["Colaborador"].isna()
     if falt.any():
         resultados = bp_m.loc[falt].apply(lambda r: fuzzy_match_row(r), axis=1)
@@ -611,7 +600,6 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
         else:
             form_et = form[form[campo].astype(str).str.strip().eq(valor)].copy()
 
-            # pega a primeira realização válida encontrada por cpf_clean ou por colaborador já vinculado
             real = (
                 form_et.dropna(subset=["Data Cadastro"])
                 .dropna(subset=["Colaborador"])
@@ -645,13 +633,6 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
 
     return farois
 
-def formatar_datas_para_tabela(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    for c in ["Data Admissão", "Prazo Mín", "Prazo Máx", "Data Realização"]:
-        if c in out.columns:
-            out[c] = pd.to_datetime(out[c], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
-    return out
-
 def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     if df_farol.empty:
         st.info("Sem dados para os filtros selecionados.")
@@ -664,22 +645,27 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     st.markdown(
         f'<div class="card">'
         f'<h3 style="margin:0; text-align:center;">{titulo}</h3>'
-        f'<div class="small-muted" style="text-align:center;">Aderência por operação + lista de pendências</div>'
         f'</div>',
         unsafe_allow_html=True
     )
 
     total = len(df_farol)
     pend_fora = int((df_farol["Status"] == "Não realizado - Fora do prazo").sum())
-    pend_atenc = int((df_farol["Status"] == "Não realizado - Atenção").sum())
+    pend_atenc_7 = int(
+        (
+            (df_farol["Status"] == "Não realizado - Atenção") &
+            (pd.to_numeric(df_farol["Dias p/ Prazo Máx"], errors="coerce") <= 7)
+        ).sum()
+    )
+    pend_atenc_total = int((df_farol["Status"] == "Não realizado - Atenção").sum())
     realizados = int(
         df_farol["Status"].isin(["Realizado no prazo", "Realizado fora do prazo", "Realizado antes do prazo"]).sum()
     )
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total", f"{total:,}".replace(",", "."))
-    c2.metric("Pend. fora do prazo", f"{pend_fora:,}".replace(",", "."))
-    c3.metric("Pend. atenção (no prazo)", f"{pend_atenc:,}".replace(",", "."))
+    c2.metric("🔴 Pendentes em atraso", f"{pend_fora:,}".replace(",", "."))
+    c3.metric("🟡 No prazo vencendo em até 7 dias", f"{pend_atenc_7:,}".replace(",", "."))
     c4.metric("Realizados", f"{realizados:,}".replace(",", "."))
 
     st.markdown("<hr/>", unsafe_allow_html=True)
@@ -718,23 +704,153 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     fig.update_traces(textposition="outside", cliponaxis=False)
     st.plotly_chart(fig, use_container_width=True, key=f"chart_{key_prefix}")
 
-    st.markdown(
-        '<div class="card"><h4 style="margin:0; text-align:center;">LISTA — PENDÊNCIAS PARA COBRANÇA</h4></div>',
-        unsafe_allow_html=True
-    )
-
-    pend = df_farol[df_farol["Status"].isin(["Não realizado - Fora do prazo", "Não realizado - Atenção"])].copy()
-
+    tabela = df_farol.copy()
     cols_show = [
         "Status Colaborador", "Operação", "Colaborador", "CPF", "Cargo",
         "Data_dt", "Prazo Mín", "Prazo Máx", "Data Realização",
         "Dias p/ Prazo Máx", "Status"
     ]
-    cols_show = [c for c in cols_show if c in pend.columns]
-    pend = pend[cols_show].rename(columns={"Data_dt": "Data Admissão"})
+    cols_show = [c for c in cols_show if c in tabela.columns]
+    tabela = tabela[cols_show].rename(columns={"Data_dt": "Data Admissão"})
+    tabela = formatar_datas_para_tabela(tabela)
 
-    pend = formatar_datas_para_tabela(pend)
-    st.dataframe(style_table(pend), use_container_width=True, height=380, key=f"df_{key_prefix}")
+    st.dataframe(
+        style_table(tabela),
+        use_container_width=True,
+        height=420,
+        key=f"df_{key_prefix}"
+    )
+
+    excel_bytes = to_excel_bytes(tabela, sheet_name="farol")
+    st.download_button(
+        "⬇️ Baixar Excel",
+        data=excel_bytes,
+        file_name=f"farol_padrinhos_{key_prefix.lower()}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=f"download_{key_prefix}",
+        use_container_width=True
+    )
+
+# =========================
+# Respostas - acompanhamento
+# =========================
+def filtrar_respostas_por_sidebar(df_resp: pd.DataFrame) -> pd.DataFrame:
+    df = df_resp.copy()
+
+    if "Operação" in df.columns and filtro_ops:
+        df = df[df["Operação"].isin(filtro_ops)]
+
+    if "Data_dt" in df.columns:
+        df = df[(df["Data_dt"] >= dt_ini) & (df["Data_dt"] <= dt_fim)]
+
+    if "Cargo" in df.columns and filtro_cargos:
+        df = df[df["Cargo"].isin(filtro_cargos)]
+
+    if "Status Colaborador" in df.columns and filtro_status_colaborador:
+        df = df[df["Status Colaborador"].isin(filtro_status_colaborador)]
+
+    return df
+
+def identificar_colunas_perguntas(df: pd.DataFrame, origem: str) -> list:
+    cols_excluir = {
+        "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt",
+        "cpf_clean", "nome_norm", "op_norm", "Status Colaborador", "match_tipo",
+        "match_score", "Data Cadastro"
+    }
+
+    if origem == "NPS":
+        cols_excluir.update({
+            "Informe seu nome completo:", "Informe seu CPF:", "Informe a operação que você trabalha:",
+            "Selecione a semana da avaliação:"
+        })
+    else:
+        cols_excluir.update({
+            "Insira o nome do colaborador:", "Inserir o CPF do colaborador:",
+            "Selecione a semana do bate papo:"
+        })
+
+    colunas = []
+    for c in df.columns:
+        if c in cols_excluir:
+            continue
+        serie = df[c]
+        if serie.dropna().empty:
+            continue
+        nunique = serie.dropna().astype(str).str.strip().replace("", pd.NA).dropna().nunique()
+        if nunique <= 1:
+            continue
+        if nunique > 20:
+            continue
+        colunas.append(c)
+
+    return colunas
+
+def mapa_cores_respostas(valor: str) -> str:
+    v = norm_text(valor)
+    if v in {"SIM", "SATISFATORIO", "SATISFATÓRIO", "POSITIVO"}:
+        return "#79c257"
+    if v in {"NAO", "NÃO", "INSATISFATORIO", "INSATISFATÓRIO", "NEGATIVO"}:
+        return "#d9534f"
+    return "#f0d36b"
+
+def render_graficos_respostas(df_resp: pd.DataFrame, origem: str, key_prefix: str):
+    df = filtrar_respostas_por_sidebar(df_resp)
+    perguntas = identificar_colunas_perguntas(df, origem=origem)
+
+    if df.empty:
+        st.info("Sem respostas para os filtros selecionados.")
+        return
+
+    if not perguntas:
+        st.info("Não encontrei colunas de respostas válidas para exibir em gráfico.")
+        return
+
+    cols = st.columns(4)
+
+    for i, pergunta in enumerate(perguntas):
+        base = (
+            df[pergunta]
+            .astype(str)
+            .str.strip()
+            .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
+            .dropna()
+            .value_counts(dropna=False)
+            .rename_axis("Resposta")
+            .reset_index(name="Qtd")
+        )
+
+        if base.empty:
+            continue
+
+        total = base["Qtd"].sum()
+        base["%"] = (base["Qtd"] / total) * 100
+        base["cor"] = base["Resposta"].apply(mapa_cores_respostas)
+
+        fig = px.bar(
+            base,
+            x="Resposta",
+            y="%",
+            text=base["%"].round(2).astype(str) + "%",
+        )
+        fig.update_traces(
+            marker_color=base["cor"].tolist(),
+            textposition="outside",
+            cliponaxis=False
+        )
+        fig.update_layout(
+            height=290,
+            template="plotly_dark",
+            margin=dict(l=10, r=10, t=60, b=10),
+            showlegend=False,
+            title=dict(text=pergunta, x=0.5, xanchor="center", font=dict(size=15)),
+            yaxis=dict(range=[0, 100], title=""),
+            xaxis_title="",
+            plot_bgcolor="#4a4a4a",
+            paper_bgcolor="#2f2f2f",
+        )
+
+        with cols[i % 4]:
+            st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}_resp_{i}")
 
 # =========================
 # Paths
@@ -771,7 +887,6 @@ except Exception as e:
     st.error(f"Erro no pipeline de mentoria: {e}")
     st.stop()
 
-
 # =========================
 # Cards topo
 # =========================
@@ -783,23 +898,41 @@ c4.metric("Bate-papo (linhas)", f"{len(df_bp):,}".replace(",", "."))
 
 with st.expander("🔧 Diagnóstico de matching"):
     st.write(f"rapidfuzz instalado? **{RAPIDFUZZ_OK}**")
-    st.caption("Para melhorar bastante o reconhecimento de nomes parecidos, vale instalar: pip install rapidfuzz")
+    st.caption("Para melhorar o reconhecimento de nomes parecidos, vale instalar: pip install rapidfuzz")
 
     if "match_tipo" in df_nps.columns:
         st.write("**NPS — match por tipo**")
-        st.dataframe(df_nps["match_tipo"].value_counts(dropna=False).rename_axis("Tipo").reset_index(name="Qtd"), use_container_width=True)
+        st.dataframe(
+            df_nps["match_tipo"].value_counts(dropna=False).rename_axis("Tipo").reset_index(name="Qtd"),
+            use_container_width=True
+        )
 
     if "match_tipo" in df_bp.columns:
         st.write("**Bate-papo — match por tipo**")
-        st.dataframe(df_bp["match_tipo"].value_counts(dropna=False).rename_axis("Tipo").reset_index(name="Qtd"), use_container_width=True)
+        st.dataframe(
+            df_bp["match_tipo"].value_counts(dropna=False).rename_axis("Tipo").reset_index(name="Qtd"),
+            use_container_width=True
+        )
 
 # =========================
 # Sidebar — filtros
 # =========================
 st.sidebar.markdown("## 🔎 Filtros")
 
-if "Data_dt" not in base_oper.columns:
-    base_oper["Data_dt"] = pd.to_datetime(base_oper["Data"], errors="coerce", dayfirst=True)
+adm_datas = admitidos.copy()
+adm_datas["Data_dt"] = pd.to_datetime(adm_datas["Data"], errors="coerce", dayfirst=True)
+
+data_min_disponivel = adm_datas["Data_dt"].min()
+data_max_disponivel = adm_datas["Data_dt"].max()
+
+if pd.isna(data_min_disponivel):
+    data_min_disponivel = pd.Timestamp("2024-10-03")
+if pd.isna(data_max_disponivel):
+    data_max_disponivel = pd.Timestamp(datetime.now().date())
+
+data_padrao_ini = pd.Timestamp("2025-01-01")
+if data_padrao_ini < data_min_disponivel:
+    data_padrao_ini = data_min_disponivel
 
 ops_all = sorted([x for x in base_oper["Operação"].fillna("").astype(str).unique().tolist() if x.strip()])
 cargos_all = sorted([x for x in base_oper["Cargo"].fillna("").astype(str).unique().tolist() if x.strip()])
@@ -814,14 +947,6 @@ status_options = [
 
 status_colaborador_options = ["Ativo", "Inativo"]
 
-data_min = pd.to_datetime(base_oper["Data_dt"], errors="coerce").min()
-data_max = pd.to_datetime(base_oper["Data_dt"], errors="coerce").max()
-
-if pd.isna(data_min):
-    data_min = pd.Timestamp("2024-10-03")
-if pd.isna(data_max):
-    data_max = pd.Timestamp(datetime.now().date())
-
 filtro_ops = st.sidebar.multiselect(
     "Operação",
     options=ops_all,
@@ -835,7 +960,9 @@ col_ini, col_fim = st.sidebar.columns(2)
 with col_ini:
     dt_ini = st.date_input(
         "Início",
-        value=data_min.date(),
+        value=data_padrao_ini.date(),
+        min_value=data_min_disponivel.date(),
+        max_value=data_max_disponivel.date(),
         format="DD/MM/YYYY",
         key="f_dt_ini_sidebar"
     )
@@ -843,7 +970,9 @@ with col_ini:
 with col_fim:
     dt_fim = st.date_input(
         "Fim",
-        value=data_max.date(),
+        value=data_max_disponivel.date(),
+        min_value=data_min_disponivel.date(),
+        max_value=data_max_disponivel.date(),
         format="DD/MM/YYYY",
         key="f_dt_fim_sidebar"
     )
@@ -933,3 +1062,17 @@ with tabs[4]:
 with tabs[5]:
     df = aplicar_filtros_farol(farois["BP_ULTIMA"])
     render_farol(df, "BATE-PAPO — ÚLTIMA SEMANA", key_prefix="BPU")
+
+# =========================
+# Acompanhamento processo padrinhos
+# =========================
+st.markdown("<br>", unsafe_allow_html=True)
+st.header("📋 Acompanhamento Processo Padrinhos")
+
+resp_tabs = st.tabs(["NPS Mentor", "Bate papo mentor"])
+
+with resp_tabs[0]:
+    render_graficos_respostas(df_nps, origem="NPS", key_prefix="nps")
+
+with resp_tabs[1]:
+    render_graficos_respostas(df_bp, origem="BP", key_prefix="bp")
