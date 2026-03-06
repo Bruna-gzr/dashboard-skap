@@ -113,27 +113,13 @@ def garantir_coluna(df: pd.DataFrame, col: str, default="") -> pd.DataFrame:
         df[col] = default
     return df
 
-def consolidar_xy(df: pd.DataFrame, nome: str) -> pd.DataFrame:
-    if nome in df.columns:
-        return df
-    x = f"{nome}_X"
-    y = f"{nome}_Y"
-    if x in df.columns and y in df.columns:
-        df[nome] = df[x]
-        vazio = df[nome].astype(str).str.strip().isin(["", "nan", "None"])
-        df.loc[vazio, nome] = df.loc[vazio, y]
-        df.drop(columns=[x, y], inplace=True)
-    elif x in df.columns:
-        df[nome] = df[x]
-        df.drop(columns=[x], inplace=True)
-    elif y in df.columns:
-        df[nome] = df[y]
-        df.drop(columns=[y], inplace=True)
-    else:
-        df[nome] = ""
-    return df
-
 def tratar_data_adm(df: pd.DataFrame, col_data: str = "DATA ULT. ADM") -> pd.DataFrame:
+    """
+    Converte data em:
+    - aceita texto BR dd/mm/aaaa
+    - aceita serial excel (somente faixa plausível e finita)
+    Evita overflow no Streamlit Cloud.
+    """
     df = garantir_coluna(df, col_data, "")
     df[f"{col_data}_RAW"] = df[col_data]
 
@@ -206,12 +192,16 @@ for col in [
 for col in ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "DATA ULT. ADM"]:
     ativos = garantir_coluna(ativos, col, "")
 
-for col in ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA"]:
+for col in ["COLABORADOR"]:
     comentarios = garantir_coluna(comentarios, col, "")
 
 skap = limpar_texto(skap, ["COLABORADOR", "NIVEIS"])
-comentarios = limpar_texto(comentarios, ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA"])
+comentarios = limpar_texto(comentarios, ["COLABORADOR"])
 ativos = limpar_texto(ativos, ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA"])
+
+# garante colunas de comentário se existirem
+for col in ["HABILIDADE TECNICA", "HABILIDADE ESPECIFICA", "HABILIDADE EMPODERAMENTO"]:
+    comentarios = garantir_coluna(comentarios, col, "")
 
 # =========================
 # Chave normalizada para cruzar por nome
@@ -224,47 +214,67 @@ ativos["CHAVE_COLABORADOR"] = ativos["COLABORADOR"].apply(normalizar_texto)
 ativos = ativos.drop_duplicates(subset=["CHAVE_COLABORADOR"], keep="first").copy()
 
 # =========================
-# Trazer dados da Base colaboradores ativos para dentro do SKAP
+# Merge SKAP + comentários
 # =========================
-campos_ativos = [
-    "CHAVE_COLABORADOR",
-    "COLABORADOR",
-    "CARGO",
-    "OPERACAO",
-    "ATIVIDADE",
-    "LIDERANCA",
-    "DATA ULT. ADM"
-]
-
-skap = skap.merge(
-    ativos[campos_ativos].rename(columns={"COLABORADOR": "COLABORADOR_ATIVOS"}),
+base = skap.merge(
+    comentarios.drop(columns=["COLABORADOR"], errors="ignore"),
     on="CHAVE_COLABORADOR",
-    how="left"
+    how="left",
+    suffixes=("", "_COM")
+).fillna("")
+
+# =========================
+# Trazer dados OFICIAIS da base de ativos
+# =========================
+ativos_ref = ativos[
+    [
+        "CHAVE_COLABORADOR",
+        "CARGO",
+        "LIDERANCA",
+        "OPERACAO",
+        "ATIVIDADE",
+        "DATA ULT. ADM",
+    ]
+].copy()
+
+base = base.merge(
+    ativos_ref,
+    on="CHAVE_COLABORADOR",
+    how="left",
+    suffixes=("", "_ATIVOS")
 )
 
-# Se vier nome melhor da base ativos, usa ele
-if "COLABORADOR_ATIVOS" in skap.columns:
-    skap["COLABORADOR"] = np.where(
-        skap["COLABORADOR_ATIVOS"].astype(str).str.strip().ne(""),
-        skap["COLABORADOR_ATIVOS"],
-        skap["COLABORADOR"]
-    )
-    skap.drop(columns=["COLABORADOR_ATIVOS"], inplace=True)
+# =========================
+# Tratamento dos campos vindos da base ativos
+# =========================
+for col in ["CARGO", "LIDERANCA", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
+    base = garantir_coluna(base, col, "")
+
+base["COLABORADOR"] = base["COLABORADOR"].astype(str).str.strip()
+
+for col in ["CARGO", "LIDERANCA", "OPERACAO", "ATIVIDADE"]:
+    base[col] = base[col].astype(str).str.strip()
+    base.loc[base[col].isin(["", "nan", "None", "NONE"]), col] = pd.NA
+
+base["CARGO"] = base["CARGO"].fillna("Sem cargo")
+base["LIDERANCA"] = base["LIDERANCA"].fillna("Sem liderança")
+base["OPERACAO"] = base["OPERACAO"].fillna("Sem operação")
+base["ATIVIDADE"] = base["ATIVIDADE"].fillna("Sem atividade")
 
 # =========================
 # Datas + métricas
 # =========================
-skap = tratar_data_adm(skap, "DATA ULT. ADM")
+base = tratar_data_adm(base, "DATA ULT. ADM")
 
 for col in ["HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO"]:
-    skap = garantir_coluna(skap, col, 0)
-    skap[col] = pd.to_numeric(skap[col], errors="coerce").fillna(0)
+    base = garantir_coluna(base, col, 0)
+    base[col] = pd.to_numeric(base[col], errors="coerce").fillna(0)
 
-skap["PRAZO_TECNICAS_DT"] = skap["DATA ULT. ADM"] + pd.Timedelta(days=30)
-skap["PRAZO_ESPECIFICAS_DT"] = skap["DATA ULT. ADM"] + pd.Timedelta(days=60)
+base["PRAZO_TECNICAS_DT"] = base["DATA ULT. ADM"] + pd.Timedelta(days=30)
+base["PRAZO_ESPECIFICAS_DT"] = base["DATA ULT. ADM"] + pd.Timedelta(days=60)
 
-skap["PRAZO TECNICAS"] = skap["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y").fillna("")
-skap["PRAZO ESPECIFICAS"] = skap["PRAZO_ESPECIFICAS_DT"].dt.strftime("%d/%m/%Y").fillna("")
+base["PRAZO TECNICAS"] = base["PRAZO_TECNICAS_DT"].dt.strftime("%d/%m/%Y").fillna("")
+base["PRAZO ESPECIFICAS"] = base["PRAZO_ESPECIFICAS_DT"].dt.strftime("%d/%m/%Y").fillna("")
 
 def status_tecnicas(row):
     if row["HABILIDADES TECNICAS"] > 0:
@@ -280,38 +290,15 @@ def status_especificas(row):
         return "No prazo"
     return "Não realizado"
 
-skap["STATUS TECNICAS"] = skap.apply(status_tecnicas, axis=1)
-skap["STATUS ESPECIFICAS"] = skap.apply(status_especificas, axis=1)
+base["STATUS TECNICAS"] = base.apply(status_tecnicas, axis=1)
+base["STATUS ESPECIFICAS"] = base.apply(status_especificas, axis=1)
 
 # =========================
-# Merge com comentários
+# Padronização extra
 # =========================
-base = skap.merge(
-    comentarios.drop(columns=["COLABORADOR"], errors="ignore"),
-    on="CHAVE_COLABORADOR",
-    how="left",
-    suffixes=("_X", "_Y")
-).fillna("")
-
-for c in ["CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "NIVEIS"]:
-    base = consolidar_xy(base, c)
-
-# Garante colaborador final
-base = garantir_coluna(base, "COLABORADOR", "")
-base["COLABORADOR"] = base["COLABORADOR"].astype(str).str.strip()
-
-# =========================
-# Padronização de campos-chave
-# =========================
-for col in ["OPERACAO", "LIDERANCA", "ATIVIDADE", "CARGO", "NIVEIS"]:
-    base = garantir_coluna(base, col, "")
-    base[col] = base[col].astype(str).str.strip()
-    base.loc[base[col].isin(["", "nan", "None", "NONE"]), col] = pd.NA
-
-base["OPERACAO"] = base["OPERACAO"].fillna("Sem operação")
-base["LIDERANCA"] = base["LIDERANCA"].fillna("Sem liderança")
-base["ATIVIDADE"] = base["ATIVIDADE"].fillna("Sem atividade")
-base["CARGO"] = base["CARGO"].fillna("Sem cargo")
+base = garantir_coluna(base, "NIVEIS", "")
+base["NIVEIS"] = base["NIVEIS"].astype(str).str.strip()
+base.loc[base["NIVEIS"].isin(["", "nan", "None", "NONE"]), "NIVEIS"] = pd.NA
 base["NIVEIS"] = base["NIVEIS"].fillna("Sem nível")
 
 # =========================
@@ -704,7 +691,11 @@ st.divider()
 # =========================
 st.subheader("📋 Detalhamento Individual")
 
-tabela_raw = base_f.drop(columns=["_ADM_DT", "CHAVE_COLABORADOR", "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT", "DATA ULT. ADM"], errors="ignore").copy()
+tabela_raw = base_f.drop(
+    columns=["_ADM_DT", "CHAVE_COLABORADOR", "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT", "DATA ULT. ADM"],
+    errors="ignore"
+).copy()
+
 tabela = tabela_raw.copy()
 
 if "DATA ADMISSAO" in tabela.columns:
