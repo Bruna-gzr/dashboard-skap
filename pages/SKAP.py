@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 from io import BytesIO
 from zoneinfo import ZoneInfo
+import unicodedata
 
 # =========================
 # Config
@@ -26,13 +27,14 @@ st.title("📊 Painel SKAP")
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 ARQ_SKAP = DATA_DIR / "Skap.xlsx"
 ARQ_COM = DATA_DIR / "Skap - comentarios.xlsx"
+ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 
 # =========================
 # Última atualização dos dados + cache que invalida quando arquivo muda
 # + botão para forçar atualização
 # =========================
 def get_last_mtime():
-    arquivos = [ARQ_SKAP, ARQ_COM]
+    arquivos = [ARQ_SKAP, ARQ_COM, ARQ_ATIVOS]
     return max(a.stat().st_mtime for a in arquivos if a.exists())
 
 @st.cache_data(show_spinner=True)
@@ -41,26 +43,34 @@ def carregar_dados(_cache_key: float):
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_SKAP}")
     if not ARQ_COM.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_COM}")
+    if not ARQ_ATIVOS.exists():
+        raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_ATIVOS}")
+
     skap_df = pd.read_excel(ARQ_SKAP)
     com_df = pd.read_excel(ARQ_COM)
-    return skap_df, com_df
+    ativos_df = pd.read_excel(ARQ_ATIVOS)
+
+    return skap_df, com_df, ativos_df
 
 try:
     last_mtime = get_last_mtime()
     dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
     st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
 
-    # Botão para "matar cache" e forçar rerun
     c_refresh, _ = st.columns([1, 5])
     with c_refresh:
         if st.button("🔄 Atualizar dados agora", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
-    skap, comentarios = carregar_dados(last_mtime)
+    skap, comentarios, ativos = carregar_dados(last_mtime)
+
 except Exception as e:
     st.error(f"❌ Erro ao carregar os arquivos da pasta /data: {e}")
-    st.info("✅ Verifique se existem exatamente estes arquivos no GitHub: data/Skap.xlsx e data/Skap - comentarios.xlsx")
+    st.info(
+        "✅ Verifique se existem exatamente estes arquivos no GitHub: "
+        "data/Skap.xlsx, data/Skap - comentarios.xlsx e data/Base colaboradores ativos.xlsx"
+    )
     st.stop()
 
 # =========================
@@ -76,6 +86,14 @@ def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
         .str.decode("utf-8")
     )
     return df
+
+def normalizar_texto(s):
+    if pd.isna(s):
+        return ""
+    s = str(s).strip().upper()
+    s = unicodedata.normalize("NFKD", s).encode("ascii", errors="ignore").decode("utf-8")
+    s = " ".join(s.split())
+    return s
 
 def centralizar_tabela(df: pd.DataFrame):
     return (
@@ -96,7 +114,6 @@ def garantir_coluna(df: pd.DataFrame, col: str, default="") -> pd.DataFrame:
     return df
 
 def consolidar_xy(df: pd.DataFrame, nome: str) -> pd.DataFrame:
-    """Consolida colunas duplicadas do merge: NOME_X/NOME_Y -> NOME."""
     if nome in df.columns:
         return df
     x = f"{nome}_X"
@@ -117,12 +134,6 @@ def consolidar_xy(df: pd.DataFrame, nome: str) -> pd.DataFrame:
     return df
 
 def tratar_data_adm(df: pd.DataFrame, col_data: str = "DATA ULT. ADM") -> pd.DataFrame:
-    """
-    Converte data em:
-    - aceita texto BR dd/mm/aaaa
-    - aceita serial excel (somente faixa plausível e finita)
-    Evita overflow no Streamlit Cloud.
-    """
     df = garantir_coluna(df, col_data, "")
     df[f"{col_data}_RAW"] = df[col_data]
 
@@ -174,20 +185,71 @@ def preparar_excel_para_download(df: pd.DataFrame, sheet_name: str = "Dados") ->
     return output.getvalue()
 
 # =========================
-# Normalização + colunas mínimas
+# Normalização
 # =========================
 skap = normalizar_colunas(skap)
 comentarios = normalizar_colunas(comentarios)
+ativos = normalizar_colunas(ativos)
 
+# =========================
+# Garantir colunas mínimas
+# =========================
 for col in [
-    "COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "DATA ULT. ADM",
-    "HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS", "HABILIDADES EMPODERAMENTO",
+    "COLABORADOR",
+    "HABILIDADES TECNICAS",
+    "HABILIDADES ESPECIFICAS",
+    "HABILIDADES EMPODERAMENTO",
     "NIVEIS"
 ]:
     skap = garantir_coluna(skap, col, "")
 
-skap = limpar_texto(skap, ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "NIVEIS"])
+for col in ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "DATA ULT. ADM"]:
+    ativos = garantir_coluna(ativos, col, "")
+
+for col in ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA"]:
+    comentarios = garantir_coluna(comentarios, col, "")
+
+skap = limpar_texto(skap, ["COLABORADOR", "NIVEIS"])
 comentarios = limpar_texto(comentarios, ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA"])
+ativos = limpar_texto(ativos, ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA"])
+
+# =========================
+# Chave normalizada para cruzar por nome
+# =========================
+skap["CHAVE_COLABORADOR"] = skap["COLABORADOR"].apply(normalizar_texto)
+comentarios["CHAVE_COLABORADOR"] = comentarios["COLABORADOR"].apply(normalizar_texto)
+ativos["CHAVE_COLABORADOR"] = ativos["COLABORADOR"].apply(normalizar_texto)
+
+# Mantém 1 linha por colaborador na base de ativos
+ativos = ativos.drop_duplicates(subset=["CHAVE_COLABORADOR"], keep="first").copy()
+
+# =========================
+# Trazer dados da Base colaboradores ativos para dentro do SKAP
+# =========================
+campos_ativos = [
+    "CHAVE_COLABORADOR",
+    "COLABORADOR",
+    "CARGO",
+    "OPERACAO",
+    "ATIVIDADE",
+    "LIDERANCA",
+    "DATA ULT. ADM"
+]
+
+skap = skap.merge(
+    ativos[campos_ativos].rename(columns={"COLABORADOR": "COLABORADOR_ATIVOS"}),
+    on="CHAVE_COLABORADOR",
+    how="left"
+)
+
+# Se vier nome melhor da base ativos, usa ele
+if "COLABORADOR_ATIVOS" in skap.columns:
+    skap["COLABORADOR"] = np.where(
+        skap["COLABORADOR_ATIVOS"].astype(str).str.strip().ne(""),
+        skap["COLABORADOR_ATIVOS"],
+        skap["COLABORADOR"]
+    )
+    skap.drop(columns=["COLABORADOR_ATIVOS"], inplace=True)
 
 # =========================
 # Datas + métricas
@@ -224,24 +286,36 @@ skap["STATUS ESPECIFICAS"] = skap.apply(status_especificas, axis=1)
 # =========================
 # Merge com comentários
 # =========================
-base = skap.merge(comentarios, on="COLABORADOR", how="left", suffixes=("_X", "_Y")).fillna("")
+base = skap.merge(
+    comentarios.drop(columns=["COLABORADOR"], errors="ignore"),
+    on="CHAVE_COLABORADOR",
+    how="left",
+    suffixes=("_X", "_Y")
+).fillna("")
 
 for c in ["CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "NIVEIS"]:
     base = consolidar_xy(base, c)
 
+# Garante colaborador final
+base = garantir_coluna(base, "COLABORADOR", "")
+base["COLABORADOR"] = base["COLABORADOR"].astype(str).str.strip()
+
 # =========================
 # Padronização de campos-chave
 # =========================
-for col in ["OPERACAO", "LIDERANCA", "ATIVIDADE"]:
+for col in ["OPERACAO", "LIDERANCA", "ATIVIDADE", "CARGO", "NIVEIS"]:
+    base = garantir_coluna(base, col, "")
     base[col] = base[col].astype(str).str.strip()
     base.loc[base[col].isin(["", "nan", "None", "NONE"]), col] = pd.NA
 
 base["OPERACAO"] = base["OPERACAO"].fillna("Sem operação")
 base["LIDERANCA"] = base["LIDERANCA"].fillna("Sem liderança")
 base["ATIVIDADE"] = base["ATIVIDADE"].fillna("Sem atividade")
+base["CARGO"] = base["CARGO"].fillna("Sem cargo")
+base["NIVEIS"] = base["NIVEIS"].fillna("Sem nível")
 
 # =========================
-# Ordem das colunas (EXATA)
+# Ordem das colunas
 # =========================
 ordem = [
     "COLABORADOR",
@@ -262,6 +336,10 @@ ordem = [
     "HABILIDADE TECNICA",
     "HABILIDADE ESPECIFICA",
     "HABILIDADE EMPODERAMENTO",
+    "CHAVE_COLABORADOR",
+    "PRAZO_TECNICAS_DT",
+    "PRAZO_ESPECIFICAS_DT",
+    "DATA ULT. ADM",
 ]
 ordem = [c for c in ordem if c in base.columns]
 base = base[ordem].copy()
@@ -271,7 +349,6 @@ base = base[ordem].copy()
 # =========================
 st.sidebar.header("Filtros")
 
-# Filtro por etapa (apenas para gráfico de %)
 etapas_map = {"Técnicas": "TECNICAS", "Específicas": "ESPECIFICAS", "Empoderamento": "EMPODERAMENTO"}
 f_etapas = st.sidebar.multiselect(
     "Etapa (para o gráfico de %)",
@@ -287,10 +364,9 @@ f_niveis = st.sidebar.multiselect("Níveis", opcoes(base, "NIVEIS"))
 f_status = st.sidebar.multiselect("Status (Téc/Espec)", ["Realizado", "Não realizado", "No prazo"])
 
 # =========================
-# >>> NOVO FILTRO DE DATA IGUAL AO PRINT (Início / Fim) em PT-BR
-# baseando em DATA ADMISSAO
+# Filtro de período por admissão
 # =========================
-base["_ADM_DT"] = pd.to_datetime(base["DATA ADMISSAO"], errors="coerce", dayfirst=True)
+base["_ADM_DT"] = pd.to_datetime(base["DATA ULT. ADM"], errors="coerce", dayfirst=True)
 
 min_adm = base["_ADM_DT"].min()
 max_adm = base["_ADM_DT"].max()
@@ -340,14 +416,17 @@ if f_atividade:
 if f_niveis:
     base_f = base_f[base_f["NIVEIS"].isin(f_niveis)]
 
-# Filtro de data (range) agora por Início/Fim
-base_f["_ADM_DT"] = pd.to_datetime(base_f["DATA ADMISSAO"], errors="coerce", dayfirst=True)
+base_f["_ADM_DT"] = pd.to_datetime(base_f["DATA ULT. ADM"], errors="coerce", dayfirst=True)
+
+data_ini_ts = pd.Timestamp(data_ini)
+data_fim_ts = pd.Timestamp(data_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+
 base_f = base_f[
-    (base_f["_ADM_DT"].dt.date >= data_ini) &
-    (base_f["_ADM_DT"].dt.date <= data_fim)
+    base_f["_ADM_DT"].notna() &
+    (base_f["_ADM_DT"] >= data_ini_ts) &
+    (base_f["_ADM_DT"] <= data_fim_ts)
 ]
 
-# Filtro de status (somente Técnicas/Específicas)
 if f_status:
     base_f = base_f[
         base_f["STATUS TECNICAS"].isin(f_status) |
@@ -355,7 +434,7 @@ if f_status:
     ]
 
 # =========================
-# Máscaras (somente Técnicas + Específicas)
+# Máscaras
 # =========================
 def mask_pendencia(df: pd.DataFrame) -> pd.Series:
     return (
@@ -447,27 +526,31 @@ else:
 st.divider()
 
 # =========================
-# Atenção: Vencimento próximo (até 7 dias) - Somente Téc/Espec
+# Base auxiliar para alertas
 # =========================
 hoje = pd.to_datetime(datetime.today().date())
 
-tmp = skap[[
+tmp_cols = [
     "COLABORADOR", "CARGO", "OPERACAO", "LIDERANCA",
     "HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS",
     "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT",
-    "STATUS TECNICAS", "STATUS ESPECIFICAS"
-]].copy()
-
-tmp = normalizar_colunas(tmp)
+    "STATUS TECNICAS", "STATUS ESPECIFICAS",
+    "CHAVE_COLABORADOR"
+]
+tmp_cols = [c for c in tmp_cols if c in base.columns]
+tmp = base[tmp_cols].copy()
 
 tmp = tmp.merge(
-    base_f[["COLABORADOR"]].drop_duplicates(),
-    on="COLABORADOR",
+    base_f[["CHAVE_COLABORADOR"]].drop_duplicates(),
+    on="CHAVE_COLABORADOR",
     how="inner"
 )
 
 tmp = tmp.drop_duplicates(subset=["COLABORADOR"], keep="first")
 
+# =========================
+# Atenção: Vencimento próximo
+# =========================
 alertas = []
 
 mask_tec = (tmp["STATUS TECNICAS"] != "Realizado") & tmp["PRAZO_TECNICAS_DT"].notna()
@@ -495,8 +578,10 @@ alerta_df = pd.concat(alertas, ignore_index=True) if alertas else pd.DataFrame(
 )
 
 if len(alerta_df) > 0:
-    alerta_df = alerta_df.sort_values(["DIAS PARA VENCER", "OPERACAO", "LIDERANCA", "COLABORADOR"],
-                                      ascending=[True, True, True, True])
+    alerta_df = alerta_df.sort_values(
+        ["DIAS PARA VENCER", "OPERACAO", "LIDERANCA", "COLABORADOR"],
+        ascending=[True, True, True, True]
+    )
 
 st.subheader("⚠️ Atenção: Vencimento próximo (Téc/Espec)")
 if len(alerta_df) == 0:
@@ -515,7 +600,7 @@ else:
 st.divider()
 
 # =========================
-# 🔴 Atenção: Skap Vencida (Téc/Espec)
+# 🔴 Atenção: Skap Vencida
 # =========================
 vencidas = []
 
@@ -544,8 +629,10 @@ vencida_df = pd.concat(vencidas, ignore_index=True) if vencidas else pd.DataFram
 )
 
 if len(vencida_df) > 0:
-    vencida_df = vencida_df.sort_values(["DIAS VENCIDO", "OPERACAO", "LIDERANCA", "COLABORADOR"],
-                                        ascending=[False, True, True, True])
+    vencida_df = vencida_df.sort_values(
+        ["DIAS VENCIDO", "OPERACAO", "LIDERANCA", "COLABORADOR"],
+        ascending=[False, True, True, True]
+    )
 
 st.subheader("🔴 Atenção: Skap Vencida (Téc/Espec)")
 if len(vencida_df) == 0:
@@ -553,8 +640,9 @@ if len(vencida_df) == 0:
 else:
     st.write(f"Total de etapas vencidas no filtro atual: **{len(vencida_df)}**")
     st.dataframe(
-        centralizar_tabela(vencida_df).applymap(
-            lambda v: "color: red; font-weight:700;", subset=["DIAS VENCIDO"]
+        centralizar_tabela(vencida_df).map(
+            lambda v: "color: red; font-weight:700;",
+            subset=["DIAS VENCIDO"]
         ),
         use_container_width=True
     )
@@ -616,7 +704,7 @@ st.divider()
 # =========================
 st.subheader("📋 Detalhamento Individual")
 
-tabela_raw = base_f.drop(columns=["_ADM_DT"], errors="ignore").copy()
+tabela_raw = base_f.drop(columns=["_ADM_DT", "CHAVE_COLABORADOR", "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT", "DATA ULT. ADM"], errors="ignore").copy()
 tabela = tabela_raw.copy()
 
 if "DATA ADMISSAO" in tabela.columns:
