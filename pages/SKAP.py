@@ -594,14 +594,14 @@ tmp_cols = [
     "HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS",
     "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT",
     "STATUS TECNICAS", "STATUS ESPECIFICAS",
-    "CHAVE_ATIVOS"
+    "CHAVE_COLABORADOR"
 ]
 tmp_cols = [c for c in tmp_cols if c in base.columns]
 tmp = base[tmp_cols].copy()
 
 tmp = tmp.merge(
-    base_f[["CHAVE_ATIVOS"]].drop_duplicates(),
-    on="CHAVE_ATIVOS",
+    base_f[["CHAVE_COLABORADOR"]].drop_duplicates(),
+    on="CHAVE_COLABORADOR",
     how="inner"
 )
 
@@ -764,7 +764,7 @@ st.divider()
 st.subheader("📋 Detalhamento Individual")
 
 tabela_raw = base_f.drop(
-    columns=["_ADM_DT", "CHAVE_COLABORADOR", "CHAVE_ATIVOS", "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT", "DATA ULT. ADM"],
+    columns=["_ADM_DT", "CHAVE_COLABORADOR", "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT", "DATA ULT. ADM"],
     errors="ignore"
 ).copy()
 
