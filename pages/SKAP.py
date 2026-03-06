@@ -773,7 +773,6 @@ with c_farol_1:
 
 # -------------------------
 # Gráfico de aderência por unidade
-# aderência = técnicas >= 100% / total com mais de 6 meses
 # -------------------------
 aderencia_unidade = (
     farol_6m.groupby("OPERACAO", dropna=False)
@@ -785,18 +784,26 @@ aderencia_unidade = (
 )
 
 if not aderencia_unidade.empty:
+
     aderencia_unidade["ADERENCIA"] = np.where(
         aderencia_unidade["TOTAL_6M"] > 0,
         aderencia_unidade["ADERENTES"] / aderencia_unidade["TOTAL_6M"],
         0
     )
+
     aderencia_unidade["ADERENCIA_TXT"] = aderencia_unidade["ADERENCIA"].map(lambda x: f"{x:.0%}")
 
-    # define cor do farol
-    aderencia_unidade["COR_FAROL"] = np.where(
-        aderencia_unidade["ADERENCIA"] >= 0.9,
-        "🟢 >= 90%",
-        "🔴 < 90%"
+    # definição das cores do farol
+    aderencia_unidade["COR_FAROL"] = np.select(
+        [
+            aderencia_unidade["ADERENCIA"] >= 0.9,
+            aderencia_unidade["ADERENCIA"] >= 0.8
+        ],
+        [
+            "🟢 Adequado",
+            "🟡 Atenção"
+        ],
+        default="🔴 Crítico"
     )
 
     st.markdown("**📈 Aderência de Habilidades Técnicas por Unidade (+6 meses de casa)**")
@@ -808,8 +815,9 @@ if not aderencia_unidade.empty:
         text="ADERENCIA_TXT",
         color="COR_FAROL",
         color_discrete_map={
-            "🟢 >= 90%": "#2ecc71",
-            "🔴 < 90%": "#e74c3c"
+            "🟢 Adequado": "#2ecc71",
+            "🟡 Atenção": "#f1c40f",
+            "🔴 Crítico": "#e74c3c"
         },
         hover_data={
             "TOTAL_6M": True,
@@ -821,13 +829,15 @@ if not aderencia_unidade.empty:
     fig_farol.update_layout(
         yaxis_tickformat=".0%",
         xaxis_title="Unidade",
-        yaxis_title="Aderência"
+        yaxis_title="Aderência",
+        showlegend=False
     )
 
+    # linha da meta
     fig_farol.add_hline(
         y=0.9,
         line_dash="dash",
-        line_color="black",
+        line_color="white",
         annotation_text="Meta 90%",
         annotation_position="top left"
     )
