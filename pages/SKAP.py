@@ -794,26 +794,49 @@ if not aderencia_unidade.empty:
 
     st.markdown("**📈 Aderência de Habilidades Técnicas por Unidade (+6 meses de casa)**")
 
-    fig_farol = px.bar(
-        aderencia_unidade.sort_values("ADERENCIA", ascending=False),
-        x="OPERACAO",
-        y="ADERENCIA",
-        text="ADERENCIA_TXT",
-        hover_data={
-            "TOTAL_6M": True,
-            "ADERENTES": True,
-            "ADERENCIA": ':.1%'
-        }
-    )
-    fig_farol.update_layout(
-        yaxis_tickformat=".0%",
-        xaxis_title="Unidade",
-        yaxis_title="Aderência"
-    )
-    st.plotly_chart(fig_farol, use_container_width=True)
+    # define cor do farol
+aderencia_unidade["COR_FAROL"] = np.where(
+    aderencia_unidade["ADERENCIA"] >= 0.9,
+    "🟢 >= 90%",
+    "🔴 < 90%"
+)
+
+fig_farol = px.bar(
+    aderencia_unidade.sort_values("ADERENCIA", ascending=False),
+    x="OPERACAO",
+    y="ADERENCIA",
+    text="ADERENCIA_TXT",
+    color="COR_FAROL",
+    color_discrete_map={
+        "🟢 >= 90%": "#2ecc71",
+        "🔴 < 90%": "#e74c3c"
+    },
+    hover_data={
+        "TOTAL_6M": True,
+        "ADERENTES": True,
+        "ADERENCIA": ':.1%'
+    }
+)
+
+fig_farol.update_layout(
+    yaxis_tickformat=".0%",
+    xaxis_title="Unidade",
+    yaxis_title="Aderência"
+)
+
+# linha da meta
+fig_farol.add_hline(
+    y=0.9,
+    line_dash="dash",
+    line_color="black",
+    annotation_text="Meta 90%",
+    annotation_position="top left"
+)
+
+st.plotly_chart(fig_farol, use_container_width=True)
+
 else:
     st.info("Não há colaboradores com mais de 6 meses de casa nos filtros atuais para calcular a aderência por unidade.")
-
 # -------------------------
 # Tabela de pendências
 # -------------------------
