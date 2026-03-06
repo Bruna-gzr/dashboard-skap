@@ -287,7 +287,7 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
     adm = admitidos.copy()
     atv = base_ativos.copy()
 
-    adm["Data_dt"] = parse_date_br(adm["Data"])
+    adm["Data_dt"] = pd.to_datetime(adm["Data"], errors="coerce", dayfirst=True)
     adm["cpf_clean"] = adm["CPF"].apply(clean_cpf)
     adm["nome_norm"] = adm["Colaborador"].apply(norm_text)
     adm["cargo_norm"] = adm["Cargo"].apply(norm_text)
@@ -329,23 +329,27 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
 
     merged["Tipo Cargo"] = merged["Tipo Cargo"].fillna("")
 
-    # Mantém apenas operacional logístico
+    # Mantém só operacional logístico
     oper = merged[merged["Tipo Cargo"].str.upper().eq("OPERACIONAL LOGÍSTICO")].copy()
 
     # Corte geral
     oper = oper[oper["Data_dt"] >= pd.Timestamp("2024-10-03")].copy()
 
-    # Cortes especiais por operação
-    op_petropolis = norm_text("CD Petrópolis")
-    op_vidros_pr = norm_text("CD VIDROS PR")
+    # Padroniza operação novamente por garantia
+    oper["Operação"] = oper["Operação"].astype(str).str.strip()
+    oper["op_norm"] = oper["Operação"].apply(norm_text)
 
-    mask_petropolis = oper["op_norm"].eq(op_petropolis)
-    mask_vidros_pr = oper["op_norm"].eq(op_vidros_pr)
+    # Cortes especiais
+    corte_petropolis = pd.Timestamp("2025-08-01")
+    corte_vidros_pr = pd.Timestamp("2026-02-01")
+
+    mask_petropolis = oper["op_norm"].eq("CD PETROPOLIS")
+    mask_vidros_pr = oper["op_norm"].eq("VIDROS PR")
 
     oper = oper[
-        (~mask_petropolis | (oper["Data_dt"] >= pd.Timestamp("2025-08-01")))
+        (~mask_petropolis | (oper["Data_dt"] >= corte_petropolis))
         &
-        (~mask_vidros_pr | (oper["Data_dt"] >= pd.Timestamp("2026-02-01")))
+        (~mask_vidros_pr | (oper["Data_dt"] >= corte_vidros_pr))
     ].copy()
 
     return oper
