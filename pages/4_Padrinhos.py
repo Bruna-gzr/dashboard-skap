@@ -758,6 +758,20 @@ except Exception as e:
 # =========================
 try:
     base_oper = preparar_base_operacional(admitidos, base_ativos)
+    # =========================
+# Cortes específicos por operação
+# =========================
+
+base_oper["op_norm"] = base_oper["Operação"].apply(norm_text)
+
+mask_petropolis = base_oper["op_norm"] == norm_text("CD PETRÓPOLIS")
+mask_vidros_pr = base_oper["op_norm"] == norm_text("VIDROS PR")
+
+base_oper = base_oper[
+    (~mask_petropolis | (base_oper["Data_dt"] >= pd.Timestamp("2025-08-01")))
+    &
+    (~mask_vidros_pr | (base_oper["Data_dt"] >= pd.Timestamp("2026-02-01")))
+].copy()
     base_oper = classificar_status_colaborador(base_oper, base_ativos)
 
     result = vincular_checks(base_oper, nps, batepapo)
