@@ -352,15 +352,19 @@ f_status = st.sidebar.multiselect("Status (Téc/Espec)", ["Realizado", "Não rea
 
 # =========================
 # Filtro de período por admissão
+# sempre do mais antigo ao mais atual da base
 # =========================
 base["_ADM_DT"] = pd.to_datetime(base["DATA ULT. ADM"], errors="coerce", dayfirst=True)
 
-min_adm = base["_ADM_DT"].min()
-max_adm = base["_ADM_DT"].max()
+# considera só datas válidas
+adm_validas = base.loc[base["_ADM_DT"].notna(), "_ADM_DT"].copy()
 
-if pd.isna(min_adm) or pd.isna(max_adm):
-    min_adm = pd.to_datetime("2024-01-01")
-    max_adm = pd.to_datetime(datetime.today().date())
+if adm_validas.empty:
+    min_adm = pd.Timestamp(datetime.today().date())
+    max_adm = pd.Timestamp(datetime.today().date())
+else:
+    min_adm = adm_validas.min().normalize()
+    max_adm = adm_validas.max().normalize()
 
 st.sidebar.subheader("Período de admissão")
 col_ini, col_fim = st.sidebar.columns(2)
@@ -403,10 +407,11 @@ if f_atividade:
 if f_niveis:
     base_f = base_f[base_f["NIVEIS"].isin(f_niveis)]
 
+# filtro de data por admissão
 base_f["_ADM_DT"] = pd.to_datetime(base_f["DATA ULT. ADM"], errors="coerce", dayfirst=True)
 
-data_ini_ts = pd.Timestamp(data_ini)
-data_fim_ts = pd.Timestamp(data_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+data_ini_ts = pd.Timestamp(data_ini).normalize()
+data_fim_ts = pd.Timestamp(data_fim).normalize() + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
 
 base_f = base_f[
     base_f["_ADM_DT"].notna() &
