@@ -15,6 +15,7 @@ import numpy as np
 from io import BytesIO
 from zoneinfo import ZoneInfo
 import unicodedata
+from difflib import SequenceMatcher
 
 # =========================
 # Config
@@ -30,8 +31,7 @@ ARQ_COM = DATA_DIR / "Skap - comentarios.xlsx"
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 
 # =========================
-# Última atualização dos dados + cache que invalida quando arquivo muda
-# + botão para forçar atualização
+# Última atualização dos dados + cache
 # =========================
 def get_last_mtime():
     arquivos = [ARQ_SKAP, ARQ_COM, ARQ_ATIVOS]
@@ -114,12 +114,6 @@ def garantir_coluna(df: pd.DataFrame, col: str, default="") -> pd.DataFrame:
     return df
 
 def tratar_data_adm(df: pd.DataFrame, col_data: str = "DATA ULT. ADM") -> pd.DataFrame:
-    """
-    Converte data em:
-    - aceita texto BR dd/mm/aaaa
-    - aceita serial excel (somente faixa plausível e finita)
-    Evita overflow no Streamlit Cloud.
-    """
     df = garantir_coluna(df, col_data, "")
     df[f"{col_data}_RAW"] = df[col_data]
 
@@ -170,6 +164,41 @@ def preparar_excel_para_download(df: pd.DataFrame, sheet_name: str = "Dados") ->
         export_df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
     return output.getvalue()
 
+def similaridade(a: str, b: str) -> float:
+    return SequenceMatcher(None, a, b).ratio()
+
+def mapear_chaves_por_aproximacao(chaves_origem, chaves_destino, cutoff=0.92):
+    """
+    Retorna dict {chave_origem: chave_destino}
+    1) tenta match exato
+    2) se não achar, tenta o mais parecido acima do cutoff
+    """
+    chaves_destino = [c for c in chaves_destino if c]
+    destino_set = set(chaves_destino)
+    mapa = {}
+
+    for chave in chaves_origem:
+        if not chave:
+            mapa[chave] = ""
+            continue
+
+        if chave in destino_set:
+            mapa[chave] = chave
+            continue
+
+        melhor = ""
+        melhor_score = 0.0
+
+        for cand in chaves_destino:
+            score = similaridade(chave, cand)
+            if score > melhor_score:
+                melhor_score = score
+                melhor = cand
+
+        mapa[chave] = melhor if melhor_score >= cutoff else ""
+
+    return mapa
+
 # =========================
 # Normalização
 # =========================
@@ -192,39 +221,67 @@ for col in [
 for col in ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA", "DATA ULT. ADM"]:
     ativos = garantir_coluna(ativos, col, "")
 
-for col in ["COLABORADOR"]:
-    comentarios = garantir_coluna(comentarios, col, "")
+comentarios = garantir_coluna(comentarios, "COLABORADOR", "")
 
 skap = limpar_texto(skap, ["COLABORADOR", "NIVEIS"])
 comentarios = limpar_texto(comentarios, ["COLABORADOR"])
 ativos = limpar_texto(ativos, ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "LIDERANCA"])
 
-# garante colunas de comentário se existirem
 for col in ["HABILIDADE TECNICA", "HABILIDADE ESPECIFICA", "HABILIDADE EMPODERAMENTO"]:
     comentarios = garantir_coluna(comentarios, col, "")
 
 # =========================
-# Chave normalizada para cruzar por nome
+# Chaves normalizadas
 # =========================
 skap["CHAVE_COLABORADOR"] = skap["COLABORADOR"].apply(normalizar_texto)
 comentarios["CHAVE_COLABORADOR"] = comentarios["COLABORADOR"].apply(normalizar_texto)
 ativos["CHAVE_COLABORADOR"] = ativos["COLABORADOR"].apply(normalizar_texto)
 
-# Mantém 1 linha por colaborador na base de ativos
 ativos = ativos.drop_duplicates(subset=["CHAVE_COLABORADOR"], keep="first").copy()
+
+# =========================
+# Match aproximado com a base de ativos
+# =========================
+mapa_skap_para_ativos = mapear_chaves_por_aproximacao(
+    skap["CHAVE_COLABORADOR"].dropna().unique().tolist(),
+    ativos["CHAVE_COLABORADOR"].dropna().unique().tolist(),
+    cutoff=0.92
+)
+
+mapa_com_para_ativos = mapear_chaves_por_aproximacao(
+    comentarios["CHAVE_COLABORADOR"].dropna().unique().tolist(),
+    ativos["CHAVE_COLABORADOR"].dropna().unique().tolist(),
+    cutoff=0.92
+)
+
+skap["CHAVE_ATIVOS"] = skap["CHAVE_COLABORADOR"].map(mapa_skap_para_ativos).fillna("")
+comentarios["CHAVE_ATIVOS"] = comentarios["CHAVE_COLABORADOR"].map(mapa_com_para_ativos).fillna("")
+
+# se por algum motivo não mapear, mantém a própria chave
+skap["CHAVE_ATIVOS"] = np.where(
+    skap["CHAVE_ATIVOS"].astype(str).str.strip().eq(""),
+    skap["CHAVE_COLABORADOR"],
+    skap["CHAVE_ATIVOS"]
+)
+
+comentarios["CHAVE_ATIVOS"] = np.where(
+    comentarios["CHAVE_ATIVOS"].astype(str).str.strip().eq(""),
+    comentarios["CHAVE_COLABORADOR"],
+    comentarios["CHAVE_ATIVOS"]
+)
 
 # =========================
 # Merge SKAP + comentários
 # =========================
 base = skap.merge(
-    comentarios.drop(columns=["COLABORADOR"], errors="ignore"),
-    on="CHAVE_COLABORADOR",
+    comentarios.drop(columns=["COLABORADOR", "CHAVE_COLABORADOR"], errors="ignore"),
+    on="CHAVE_ATIVOS",
     how="left",
     suffixes=("", "_COM")
 ).fillna("")
 
 # =========================
-# Trazer dados OFICIAIS da base de ativos
+# Trazer dados oficiais da base de ativos
 # =========================
 ativos_ref = ativos[
     [
@@ -237,15 +294,16 @@ ativos_ref = ativos[
     ]
 ].copy()
 
+ativos_ref = ativos_ref.rename(columns={"CHAVE_COLABORADOR": "CHAVE_ATIVOS"})
+
 base = base.merge(
     ativos_ref,
-    on="CHAVE_COLABORADOR",
-    how="left",
-    suffixes=("", "_ATIVOS")
+    on="CHAVE_ATIVOS",
+    how="left"
 )
 
 # =========================
-# Tratamento dos campos vindos da base ativos
+# Tratamento dos campos da base de ativos
 # =========================
 for col in ["CARGO", "LIDERANCA", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
     base = garantir_coluna(base, col, "")
@@ -324,6 +382,7 @@ ordem = [
     "HABILIDADE ESPECIFICA",
     "HABILIDADE EMPODERAMENTO",
     "CHAVE_COLABORADOR",
+    "CHAVE_ATIVOS",
     "PRAZO_TECNICAS_DT",
     "PRAZO_ESPECIFICAS_DT",
     "DATA ULT. ADM",
@@ -352,11 +411,9 @@ f_status = st.sidebar.multiselect("Status (Téc/Espec)", ["Realizado", "Não rea
 
 # =========================
 # Filtro de período por admissão
-# sempre do mais antigo ao mais atual da base
 # =========================
 base["_ADM_DT"] = pd.to_datetime(base["DATA ULT. ADM"], errors="coerce", dayfirst=True)
 
-# considera só datas válidas
 adm_validas = base.loc[base["_ADM_DT"].notna(), "_ADM_DT"].copy()
 
 if adm_validas.empty:
@@ -407,7 +464,6 @@ if f_atividade:
 if f_niveis:
     base_f = base_f[base_f["NIVEIS"].isin(f_niveis)]
 
-# filtro de data por admissão
 base_f["_ADM_DT"] = pd.to_datetime(base_f["DATA ULT. ADM"], errors="coerce", dayfirst=True)
 
 data_ini_ts = pd.Timestamp(data_ini).normalize()
@@ -527,14 +583,14 @@ tmp_cols = [
     "HABILIDADES TECNICAS", "HABILIDADES ESPECIFICAS",
     "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT",
     "STATUS TECNICAS", "STATUS ESPECIFICAS",
-    "CHAVE_COLABORADOR"
+    "CHAVE_ATIVOS"
 ]
 tmp_cols = [c for c in tmp_cols if c in base.columns]
 tmp = base[tmp_cols].copy()
 
 tmp = tmp.merge(
-    base_f[["CHAVE_COLABORADOR"]].drop_duplicates(),
-    on="CHAVE_COLABORADOR",
+    base_f[["CHAVE_ATIVOS"]].drop_duplicates(),
+    on="CHAVE_ATIVOS",
     how="inner"
 )
 
@@ -697,7 +753,7 @@ st.divider()
 st.subheader("📋 Detalhamento Individual")
 
 tabela_raw = base_f.drop(
-    columns=["_ADM_DT", "CHAVE_COLABORADOR", "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT", "DATA ULT. ADM"],
+    columns=["_ADM_DT", "CHAVE_COLABORADOR", "CHAVE_ATIVOS", "PRAZO_TECNICAS_DT", "PRAZO_ESPECIFICAS_DT", "DATA ULT. ADM"],
     errors="ignore"
 ).copy()
 
@@ -742,26 +798,17 @@ st.divider()
 # =========================
 st.subheader("🌡️Farol da Skap > Termômetro de Gente")
 
-# base do farol respeitando os filtros já aplicados na página
 farol_base = base_f.copy()
 
-# garante numérico
 farol_base["HABILIDADES TECNICAS"] = pd.to_numeric(
     farol_base["HABILIDADES TECNICAS"], errors="coerce"
 ).fillna(0)
 
-# mais de 6 meses de casa
 farol_6m = farol_base[farol_base["TEMPO DE CASA"] > 180].copy()
-
-# aderentes = técnicas >= 100%
 farol_6m["ADERENTE_TEC"] = farol_6m["HABILIDADES TECNICAS"] >= 1
 
-# pendentes = técnicas < 100%
 pendentes_6m = farol_6m[farol_6m["HABILIDADES TECNICAS"] < 1].copy()
 
-# -------------------------
-# Card
-# -------------------------
 card_total_pend_6m = len(pendentes_6m)
 
 c_farol_1, c_farol_2 = st.columns([1, 3])
@@ -793,7 +840,6 @@ if not aderencia_unidade.empty:
 
     aderencia_unidade["ADERENCIA_TXT"] = aderencia_unidade["ADERENCIA"].map(lambda x: f"{x:.0%}")
 
-    # definição das cores do farol
     aderencia_unidade["COR_FAROL"] = np.select(
         [
             aderencia_unidade["ADERENCIA"] >= 0.9,
@@ -833,7 +879,6 @@ if not aderencia_unidade.empty:
         showlegend=False
     )
 
-    # linha da meta
     fig_farol.add_hline(
         y=0.9,
         line_dash="dash",
@@ -848,6 +893,7 @@ if not aderencia_unidade.empty:
 
 else:
     st.info("Não há colaboradores com mais de 6 meses de casa nos filtros atuais para calcular a aderência por unidade.")
+
 # -------------------------
 # Tabela de pendências
 # -------------------------
@@ -901,4 +947,3 @@ else:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
-    
