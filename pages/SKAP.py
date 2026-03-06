@@ -263,8 +263,17 @@ ativos_ref = ativos[
 base = base.merge(
     ativos_ref,
     on="CHAVE_COLABORADOR",
-    how="left"
+    how="left",
+    suffixes=("", "_ATIVOS")
 )
+
+# garante que as colunas existam mesmo se houver conflito de nome
+for col in ["CARGO", "LIDERANCA", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
+    if col not in base.columns and f"{col}_ATIVOS" in base.columns:
+        base[col] = base[f"{col}_ATIVOS"]
+
+    if col not in base.columns:
+        base[col] = ""
 
 # =========================
 # Fallback por aproximação SOMENTE para quem não encontrou cargo
@@ -304,16 +313,12 @@ if mask_sem_cargo.any():
 
     for col in ["CARGO", "LIDERANCA", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
         if col in base_sem_match.columns:
-            base.loc[mask_sem_cargo, col] = base.loc[mask_sem_cargo, col].replace("", pd.NA).fillna(
-                base_sem_match[col].values
-            )
+            valores_atuais = base.loc[mask_sem_cargo, col].replace("", pd.NA)
+            base.loc[mask_sem_cargo, col] = valores_atuais.fillna(base_sem_match[col].values)
 
 # =========================
 # Tratamento dos campos vindos da base ativos
 # =========================
-for col in ["CARGO", "LIDERANCA", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
-    base = garantir_coluna(base, col, "")
-
 base["COLABORADOR"] = base["COLABORADOR"].astype(str).str.strip()
 
 for col in ["CARGO", "LIDERANCA", "OPERACAO", "ATIVIDADE"]:
