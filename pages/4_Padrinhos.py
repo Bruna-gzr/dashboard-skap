@@ -92,29 +92,50 @@ div[data-baseweb="input"] > div {
     border-radius: 14px;
 }
 
-.bloco-texto {
-    background: #111111;
-    border: 1px solid #222;
-    border-radius: 12px;
-    padding: 12px;
-    min-height: 130px;
-    margin-bottom: 10px;
-}
-
-.subtitulo-secao {
-    color: #f0d36b;
-    font-weight: 700;
-    font-size: 1.08rem;
-    margin: 10px 0 8px 0;
-}
-
 .info-box {
     background: #111111;
     border: 1px solid #2a2a2a;
     border-radius: 12px;
     padding: 10px 12px;
-    font-size: 0.9rem;
+    font-size: 0.92rem;
     color: #d9d9d9;
+    margin-bottom: 10px;
+}
+
+.lista-box {
+    background: #1e1e1e;
+    border: 1px solid #343434;
+    border-radius: 10px;
+    padding: 0;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.lista-titulo {
+    background: #2b2b2b;
+    color: #ffd966;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-bottom: 1px solid #3a3a3a;
+}
+
+.lista-linha {
+    padding: 7px 10px;
+    border-bottom: 1px solid #303030;
+    color: #f3f3f3;
+    font-size: 0.92rem;
+}
+
+.lista-linha:nth-child(even) {
+    background: #262626;
+}
+
+.titulo-branco {
+    color: #ffffff !important;
+    font-weight: 700;
+    font-size: 1.15rem;
+    margin-top: 8px;
+    margin-bottom: 10px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -242,7 +263,7 @@ def formatar_datas_para_tabela(df: pd.DataFrame) -> pd.DataFrame:
             out[c] = pd.to_datetime(out[c], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
     return out
 
-def truncar_titulo(txt: str, n: int = 58) -> str:
+def truncar_titulo(txt: str, n: int = 82) -> str:
     txt = str(txt).strip()
     return txt if len(txt) <= n else txt[:n-3] + "..."
 
@@ -384,7 +405,7 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
     return oper
 
 # =========================
-# Status colaborador (Ativo/Inativo)
+# Status colaborador
 # =========================
 def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.DataFrame) -> pd.DataFrame:
     base = base_oper.copy()
@@ -445,7 +466,7 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
     return base
 
 # =========================
-# Vincular respostas NPS/BP à base admitidos
+# Vincular respostas
 # =========================
 def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.DataFrame) -> dict:
     base = base_oper.copy()
@@ -516,7 +537,7 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
 
         idx_ok = nps_m.loc[falt].index[nps_m.loc[falt, "match_score"].fillna(0) >= 84]
         for idx in idx_ok:
-            base_row, _score = fuzzy_match_row(nps_m.loc[idx])
+            base_row, _ = fuzzy_match_row(nps_m.loc[idx])
             if base_row is not None:
                 for col in ["Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
                     nps_m.at[idx, col] = base_row[col]
@@ -529,7 +550,7 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
 
         idx_ok = bp_m.loc[falt].index[bp_m.loc[falt, "match_score"].fillna(0) >= 84]
         for idx in idx_ok:
-            base_row, _score = fuzzy_match_row(bp_m.loc[idx])
+            base_row, _ = fuzzy_match_row(bp_m.loc[idx])
             if base_row is not None:
                 for col in ["Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
                     bp_m.at[idx, col] = base_row[col]
@@ -542,7 +563,7 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     }
 
 # =========================
-# FAROL — Etapas
+# Etapas
 # =========================
 ETAPAS = [
     {
@@ -672,9 +693,7 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     df_farol.loc[df_farol["Operação"].eq(""), "Operação"] = "SEM OPERAÇÃO"
 
     st.markdown(
-        f'<div class="card">'
-        f'<h3 style="margin:0; text-align:center;">{titulo}</h3>'
-        f'</div>',
+        f'<div class="card"><h3 style="margin:0; text-align:center;">{titulo}</h3></div>',
         unsafe_allow_html=True
     )
 
@@ -763,7 +782,7 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     )
 
 # =========================
-# Gráficos respostas
+# Respostas
 # =========================
 def filtrar_respostas_por_sidebar(df_resp: pd.DataFrame) -> pd.DataFrame:
     df = df_resp.copy()
@@ -825,18 +844,19 @@ def render_grafico_resposta(df: pd.DataFrame, coluna: str, key_prefix: str):
         textposition="outside",
         cliponaxis=False,
         marker_line_color="#d9d9d9",
-        marker_line_width=0.6
+        marker_line_width=0.5
     )
     fig.update_layout(
-        height=290,
+        height=295,
         template="plotly_dark",
-        margin=dict(l=10, r=10, t=75, b=10),
+        margin=dict(l=10, r=10, t=80, b=10),
         showlegend=False,
         title=dict(
-            text=f"<b>{truncar_titulo(coluna, 75)}</b>",
+            text=truncar_titulo(coluna, 90),
             x=0.5,
             xanchor="center",
-            y=0.95
+            y=0.96,
+            font=dict(size=13, color="#ffffff")
         ),
         yaxis=dict(range=[0, 100], title=""),
         xaxis_title="",
@@ -846,29 +866,27 @@ def render_grafico_resposta(df: pd.DataFrame, coluna: str, key_prefix: str):
     )
     st.plotly_chart(fig, use_container_width=True, key=key_prefix)
 
-def render_textos_abertos(df: pd.DataFrame, colunas_texto: list, titulo_secao: str):
-    st.markdown(f"### {titulo_secao}")
+def render_lista_respostas(df: pd.DataFrame, coluna: str):
+    textos = (
+        df[coluna]
+        .astype(str)
+        .str.strip()
+        .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA, "-": pd.NA})
+        .dropna()
+        .tolist()
+    )
 
-    for coluna in colunas_texto:
-        st.markdown(f"**{coluna}**")
-        textos = (
-            df[coluna]
-            .astype(str)
-            .str.strip()
-            .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
-            .dropna()
-            .tolist()
-        )
+    st.markdown(f'<div class="lista-box"><div class="lista-titulo">{coluna}</div>', unsafe_allow_html=True)
 
-        if not textos:
-            st.info("Sem respostas nesta pergunta.")
-            continue
+    if not textos:
+        st.markdown('<div class="lista-linha">Sem respostas.</div></div>', unsafe_allow_html=True)
+        return
 
-        for i, txt in enumerate(textos[:100], start=1):
-            st.markdown(
-                f'<div class="bloco-texto"><b>{i}.</b> {txt}</div>',
-                unsafe_allow_html=True
-            )
+    for txt in textos[:200]:
+        safe_txt = str(txt).replace("<", "&lt;").replace(">", "&gt;")
+        st.markdown(f'<div class="lista-linha">{safe_txt}</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def render_card_data_resposta(df: pd.DataFrame, titulo="Última resposta registrada"):
     if "Data Cadastro" not in df.columns or df.empty:
@@ -887,6 +905,31 @@ def render_card_data_resposta(df: pd.DataFrame, titulo="Última resposta registr
         unsafe_allow_html=True
     )
 
+def render_info_colaborador(df: pd.DataFrame, coluna_padrinho: str):
+    if not filtro_colaborador or len(filtro_colaborador) != 1:
+        return
+
+    if df.empty:
+        return
+
+    base = df.copy()
+    nome_sel = filtro_colaborador[0]
+    base = base[base["Colaborador"].astype(str).eq(nome_sel)].copy()
+
+    if base.empty:
+        return
+
+    colab = base["Colaborador"].dropna().astype(str).iloc[0] if "Colaborador" in base.columns and not base["Colaborador"].dropna().empty else "-"
+    cargo = base["Cargo"].dropna().astype(str).iloc[0] if "Cargo" in base.columns and not base["Cargo"].dropna().empty else "-"
+    padrinho = base[coluna_padrinho].dropna().astype(str).iloc[0] if coluna_padrinho in base.columns and not base[coluna_padrinho].dropna().empty else "-"
+
+    st.markdown(
+        f'<div class="info-box"><b>Colaborador:</b> {colab} &nbsp;&nbsp;&nbsp; '
+        f'<b>Cargo:</b> {cargo} &nbsp;&nbsp;&nbsp; '
+        f'<b>Padrinho:</b> {padrinho}</div>',
+        unsafe_allow_html=True
+    )
+
 # =========================
 # Paths
 # =========================
@@ -897,7 +940,7 @@ ARQ_NPS = DATA_DIR / "NPS Mentor.xlsx"
 ARQ_BATEPAPO = DATA_DIR / "Bate papo mentor.xlsx"
 
 # =========================
-# Carregamento dos arquivos
+# Carregamento
 # =========================
 try:
     admitidos = carregar_excel_primeira_aba(ARQ_ADMITIDOS)
@@ -930,24 +973,6 @@ c1.metric("Admitidos (arquivo)", f"{len(admitidos):,}".replace(",", "."))
 c2.metric("Operacional Logístico (base do farol)", f"{len(base_oper):,}".replace(",", "."))
 c3.metric("NPS (linhas)", f"{len(df_nps):,}".replace(",", "."))
 c4.metric("Bate-papo (linhas)", f"{len(df_bp):,}".replace(",", "."))
-
-with st.expander("🔧 Diagnóstico de matching"):
-    st.write(f"rapidfuzz instalado? **{RAPIDFUZZ_OK}**")
-    st.caption("Para melhorar o reconhecimento de nomes parecidos, vale instalar: pip install rapidfuzz")
-
-    if "match_tipo" in df_nps.columns:
-        st.write("**NPS — match por tipo**")
-        st.dataframe(
-            df_nps["match_tipo"].value_counts(dropna=False).rename_axis("Tipo").reset_index(name="Qtd"),
-            use_container_width=True
-        )
-
-    if "match_tipo" in df_bp.columns:
-        st.write("**Bate-papo — match por tipo**")
-        st.dataframe(
-            df_bp["match_tipo"].value_counts(dropna=False).rename_axis("Tipo").reset_index(name="Qtd"),
-            use_container_width=True
-        )
 
 # =========================
 # Sidebar — filtros
@@ -1119,6 +1144,7 @@ resp_tabs = st.tabs(["NPS Mentor", "Bate papo mentor"])
 
 with resp_tabs[0]:
     nps_f = filtrar_respostas_por_sidebar(df_nps)
+    render_info_colaborador(nps_f, "Informe o nome do seu Padrinho.")
 
     coluna_semana_nps = "Selecione a semana da avaliação:"
 
@@ -1148,7 +1174,7 @@ with resp_tabs[0]:
         nps_primeira = pd.DataFrame()
         nps_ultima = pd.DataFrame()
 
-    st.subheader("Primeira semana junto ao padrinho.")
+    st.markdown('<div class="titulo-branco">Primeira semana junto ao padrinho.</div>', unsafe_allow_html=True)
 
     if nps_primeira.empty:
         st.info("Sem respostas para os filtros selecionados.")
@@ -1159,23 +1185,12 @@ with resp_tabs[0]:
                 with cols[i % 4]:
                     render_grafico_resposta(nps_primeira, coluna, key_prefix=f"nps_p1_{i}")
 
-        cinfo1, cinfo2, cinfo3 = st.columns([1.2, 1, 1])
-        with cinfo1:
+        col_card = st.columns([1, 3])[0]
+        with col_card:
             render_card_data_resposta(nps_primeira, titulo="Última resposta registrada")
-        with cinfo2:
-            st.markdown(
-                f'<div class="info-box"><b>Respostas consideradas</b><br>{len(nps_primeira):,}</div>'.replace(",", "."),
-                unsafe_allow_html=True
-            )
-        with cinfo3:
-            colab_dist = nps_primeira["Colaborador"].dropna().nunique() if "Colaborador" in nps_primeira.columns else 0
-            st.markdown(
-                f'<div class="info-box"><b>Colaboradores</b><br>{colab_dist:,}</div>'.replace(",", "."),
-                unsafe_allow_html=True
-            )
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.subheader("Última semana junto ao padrinho.")
+    st.markdown('<div class="titulo-branco">Última semana junto ao padrinho.</div>', unsafe_allow_html=True)
 
     if nps_ultima.empty:
         st.info("Sem respostas para os filtros selecionados.")
@@ -1186,80 +1201,140 @@ with resp_tabs[0]:
                 with cols2[i % 3]:
                     render_grafico_resposta(nps_ultima, coluna, key_prefix=f"nps_p2_{i}")
 
-        cinfo4, cinfo5, cinfo6 = st.columns([1.2, 1, 1])
-        with cinfo4:
+        col_card2 = st.columns([1, 3])[0]
+        with col_card2:
             render_card_data_resposta(nps_ultima, titulo="Última resposta registrada")
-        with cinfo5:
-            st.markdown(
-                f'<div class="info-box"><b>Respostas consideradas</b><br>{len(nps_ultima):,}</div>'.replace(",", "."),
-                unsafe_allow_html=True
-            )
-        with cinfo6:
-            colab_dist2 = nps_ultima["Colaborador"].dropna().nunique() if "Colaborador" in nps_ultima.columns else 0
-            st.markdown(
-                f'<div class="info-box"><b>Colaboradores</b><br>{colab_dist2:,}</div>'.replace(",", "."),
-                unsafe_allow_html=True
-            )
 
         textos_existentes = [c for c in colunas_texto_ultima if c in nps_ultima.columns]
         if textos_existentes:
             st.markdown("<br>", unsafe_allow_html=True)
-            render_textos_abertos(nps_ultima, textos_existentes, "Respostas abertas")
+            cols_texto = st.columns(len(textos_existentes))
+            for i, coltxt in enumerate(textos_existentes):
+                with cols_texto[i]:
+                    render_lista_respostas(nps_ultima, coltxt)
 
 with resp_tabs[1]:
     bp_f = filtrar_respostas_por_sidebar(df_bp)
+    render_info_colaborador(bp_f, "Informe o nome do padrinho:")
 
-    st.subheader("Bate papo mentor")
+    coluna_semana_bp = "Selecione a semana do bate papo:"
 
-    colunas_bp_excluir = {
-        "Insira o nome do colaborador:",
-        "Inserir o CPF do colaborador:",
-        "Selecione a semana do bate papo:",
-        "Data Cadastro",
-        "cpf_clean",
-        "nome_norm",
-        "op_norm",
-        "Colaborador",
-        "CPF",
-        "Cargo",
-        "Tipo Cargo",
-        "Operação",
-        "Data",
-        "Data_dt",
-        "Status Colaborador",
-        "match_tipo",
-        "match_score",
-    }
+    if coluna_semana_bp in bp_f.columns:
+        bp_segunda = bp_f[bp_f[coluna_semana_bp].astype(str).str.strip().eq("Segunda Semana")].copy()
+        bp_terceira = bp_f[bp_f[coluna_semana_bp].astype(str).str.strip().eq("Terceira Semana")].copy()
+        bp_ultima = bp_f[bp_f[coluna_semana_bp].astype(str).str.strip().eq("Última Semana")].copy()
+    else:
+        bp_segunda = pd.DataFrame()
+        bp_terceira = pd.DataFrame()
+        bp_ultima = pd.DataFrame()
 
-    colunas_bp_graf = []
-    for c in bp_f.columns:
-        if c in colunas_bp_excluir:
-            continue
-        serie = bp_f[c].astype(str).str.strip().replace({"": pd.NA, "nan": pd.NA, "None": pd.NA}).dropna()
-        if serie.empty:
-            continue
-        if serie.nunique() <= 10:
-            colunas_bp_graf.append(c)
+    # Segunda Semana
+    st.markdown('<div class="titulo-branco">Segunda Semana</div>', unsafe_allow_html=True)
 
-    if bp_f.empty or not colunas_bp_graf:
+    graficos_segunda = [
+        "Você conhece quais são os EPIs obrigatórios da sua função?",
+        "Você já se sentiu confortável em interagir com sua equipe de trabalho?",
+        "De forma prática, você conseguiu executar suas atividades nessa primeira semana?",
+        "Você sabe como utilizar as ferramentas de trabalho que fazem parte de sua rotina?",
+    ]
+
+    listas_segunda = [
+        "Você tem alguma dúvida ou algo que eu possa te ajudar?",
+        "Como foi sua rotina nesta semana?",
+    ]
+
+    if bp_segunda.empty:
         st.info("Sem respostas para os filtros selecionados.")
     else:
-        cols_bp = st.columns(4)
-        for i, coluna in enumerate(colunas_bp_graf):
-            with cols_bp[i % 4]:
-                render_grafico_resposta(bp_f, coluna, key_prefix=f"bp_{i}")
+        cols_seg = st.columns(4)
+        for i, coluna in enumerate(graficos_segunda):
+            if coluna in bp_segunda.columns:
+                with cols_seg[i % 4]:
+                    render_grafico_resposta(bp_segunda, coluna, key_prefix=f"bp_s2_{i}")
 
-        cinfo_bp1, cinfo_bp2, cinfo_bp3 = st.columns([1.2, 1, 1])
-        with cinfo_bp1:
-            render_card_data_resposta(bp_f, titulo="Última resposta registrada")
-        with cinfo_bp2:
-            st.markdown(
-                f'<div class="info-box"><b>Respostas consideradas</b><br>{len(bp_f):,}</div>'.replace(",", "."),
-                unsafe_allow_html=True
-            )
-        with cinfo_bp3:
-            colab_bp = bp_f["Colaborador"].dropna().nunique() if "Colaborador" in bp_f.columns else 0
-            st.markdown(
-                f'<div class="info-box"><b>Colaboradores</b><br>{colab_bp:,}</div>'.replace(",", "."),
-                unsafe_allow_html=True
-            )
+        col_card_bp2 = st.columns([1, 3])[0]
+        with col_card_bp2:
+            render_card_data_resposta(bp_segunda, titulo="Última resposta registrada")
+
+        cols_lista_seg = st.columns(len([c for c in listas_segunda if c in bp_segunda.columns]) or 1)
+        idx = 0
+        for coluna in listas_segunda:
+            if coluna in bp_segunda.columns:
+                with cols_lista_seg[idx]:
+                    render_lista_respostas(bp_segunda, coluna)
+                idx += 1
+
+    # Terceira Semana
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div class="titulo-branco">Terceira Semana</div>', unsafe_allow_html=True)
+
+    graficos_terceira = [
+        "Você conhece a rotina de reuniões semanais que você deve participar?",
+        "Você sabe fazer relatos de segurança e abordagens positivas?",
+        "Você entende o que é DPO / VPO?",
+    ]
+
+    listas_terceira = [
+        "Como foi sua rotina nesta semana?",
+        "Você tem alguma dúvida ou algo que eu possa te ajudar?",
+    ]
+
+    if bp_terceira.empty:
+        st.info("Sem respostas para os filtros selecionados.")
+    else:
+        cols_ter = st.columns(3)
+        for i, coluna in enumerate(graficos_terceira):
+            if coluna in bp_terceira.columns:
+                with cols_ter[i % 3]:
+                    render_grafico_resposta(bp_terceira, coluna, key_prefix=f"bp_s3_{i}")
+
+        col_card_bp3 = st.columns([1, 3])[0]
+        with col_card_bp3:
+            render_card_data_resposta(bp_terceira, titulo="Última resposta registrada")
+
+        cols_lista_ter = st.columns(len([c for c in listas_terceira if c in bp_terceira.columns]) or 1)
+        idx = 0
+        for coluna in listas_terceira:
+            if coluna in bp_terceira.columns:
+                with cols_lista_ter[idx]:
+                    render_lista_respostas(bp_terceira, coluna)
+                idx += 1
+
+    # Última Semana
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div class="titulo-branco">Última Semana</div>', unsafe_allow_html=True)
+
+    graficos_ultima = [
+        "Você se sente integrado a empresa?",
+        "Você conhece o código de conduta da empresa?",
+        "O novo(a) colaborador(a) se demonstrou comprometido com as atividades e disposto a aprender?",
+        "O novo(a) colaborador(a) demonstrou progresso satisfatório desde o início da integração?",
+    ]
+
+    listas_ultima = [
+        "Quais são as principais dúvidas ou dificuldades que você ainda enfrenta em sua função?",
+        "Comente sobre sua adaptação à unidade, função e empresa",
+        "O que você mais gosta hoje na empresa, após toda a integração? E o que você acha que pode melhorar?",
+        "Descreva no que você acha que o novo colaborador mandou bem.",
+        "Descreva os pontos que o novo colaborador ainda necessita de acompanhamento e que podem contribuir na avaliação de desempenho.",
+    ]
+
+    if bp_ultima.empty:
+        st.info("Sem respostas para os filtros selecionados.")
+    else:
+        cols_ult = st.columns(4)
+        for i, coluna in enumerate(graficos_ultima):
+            if coluna in bp_ultima.columns:
+                with cols_ult[i % 4]:
+                    render_grafico_resposta(bp_ultima, coluna, key_prefix=f"bp_su_{i}")
+
+        col_card_bpu = st.columns([1, 3])[0]
+        with col_card_bpu:
+            render_card_data_resposta(bp_ultima, titulo="Última resposta registrada")
+
+        listas_exist = [c for c in listas_ultima if c in bp_ultima.columns]
+        if listas_exist:
+            cols_lista_ult = st.columns(min(3, len(listas_exist)))
+            for i, coluna in enumerate(listas_exist):
+                with cols_lista_ult[i % min(3, len(listas_exist))]:
+                    render_lista_respostas(bp_ultima, coluna)
