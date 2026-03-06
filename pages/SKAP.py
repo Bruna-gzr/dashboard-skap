@@ -734,3 +734,137 @@ st.download_button(
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     use_container_width=True
 )
+
+st.divider()
+
+# =========================
+# 🌡️Farol da Skap > Termômetro de Gente
+# =========================
+st.subheader("🌡️Farol da Skap > Termômetro de Gente")
+
+# base do farol respeitando os filtros já aplicados na página
+farol_base = base_f.copy()
+
+# garante numérico
+farol_base["HABILIDADES TECNICAS"] = pd.to_numeric(
+    farol_base["HABILIDADES TECNICAS"], errors="coerce"
+).fillna(0)
+
+# mais de 6 meses de casa
+farol_6m = farol_base[farol_base["TEMPO DE CASA"] > 180].copy()
+
+# aderentes = técnicas >= 100%
+farol_6m["ADERENTE_TEC"] = farol_6m["HABILIDADES TECNICAS"] >= 1
+
+# pendentes = técnicas < 100%
+pendentes_6m = farol_6m[farol_6m["HABILIDADES TECNICAS"] < 1].copy()
+
+# -------------------------
+# Card
+# -------------------------
+card_total_pend_6m = len(pendentes_6m)
+
+c_farol_1, c_farol_2 = st.columns([1, 3])
+with c_farol_1:
+    st.metric(
+        "👥 +6 meses com Técnicas < 100%",
+        card_total_pend_6m
+    )
+
+# -------------------------
+# Gráfico de aderência por unidade
+# aderência = técnicas >= 100% / total com mais de 6 meses
+# -------------------------
+aderencia_unidade = (
+    farol_6m.groupby("OPERACAO", dropna=False)
+    .agg(
+        TOTAL_6M=("COLABORADOR", "count"),
+        ADERENTES=("ADERENTE_TEC", "sum")
+    )
+    .reset_index()
+)
+
+if not aderencia_unidade.empty:
+    aderencia_unidade["ADERENCIA"] = np.where(
+        aderencia_unidade["TOTAL_6M"] > 0,
+        aderencia_unidade["ADERENTES"] / aderencia_unidade["TOTAL_6M"],
+        0
+    )
+    aderencia_unidade["ADERENCIA_TXT"] = aderencia_unidade["ADERENCIA"].map(lambda x: f"{x:.0%}")
+
+    st.markdown("**📈 Aderência de Habilidades Técnicas por Unidade (+6 meses de casa)**")
+
+    fig_farol = px.bar(
+        aderencia_unidade.sort_values("ADERENCIA", ascending=False),
+        x="OPERACAO",
+        y="ADERENCIA",
+        text="ADERENCIA_TXT",
+        hover_data={
+            "TOTAL_6M": True,
+            "ADERENTES": True,
+            "ADERENCIA": ':.1%'
+        }
+    )
+    fig_farol.update_layout(
+        yaxis_tickformat=".0%",
+        xaxis_title="Unidade",
+        yaxis_title="Aderência"
+    )
+    st.plotly_chart(fig_farol, use_container_width=True)
+else:
+    st.info("Não há colaboradores com mais de 6 meses de casa nos filtros atuais para calcular a aderência por unidade.")
+
+# -------------------------
+# Tabela de pendências
+# -------------------------
+st.markdown("**📋 Pessoas com mais de 6 meses de casa e Habilidades Técnicas < 100%**")
+
+cols_pend_6m = [
+    "COLABORADOR",
+    "CARGO",
+    "OPERACAO",
+    "ATIVIDADE",
+    "LIDERANCA",
+    "DATA ADMISSAO",
+    "TEMPO DE CASA",
+    "HABILIDADES TECNICAS",
+    "PRAZO TECNICAS",
+    "STATUS TECNICAS",
+]
+
+cols_pend_6m = [c for c in cols_pend_6m if c in pendentes_6m.columns]
+
+tabela_pend_6m_raw = pendentes_6m[cols_pend_6m].copy()
+
+tabela_pend_6m = tabela_pend_6m_raw.copy()
+if "HABILIDADES TECNICAS" in tabela_pend_6m.columns:
+    tabela_pend_6m["HABILIDADES TECNICAS"] = pd.to_numeric(
+        tabela_pend_6m["HABILIDADES TECNICAS"], errors="coerce"
+    ).fillna(0).map(lambda x: f"{x:.0%}")
+
+if "STATUS TECNICAS" in tabela_pend_6m.columns:
+    tabela_pend_6m["STATUS TECNICAS"] = tabela_pend_6m["STATUS TECNICAS"].astype(str).map(
+        lambda s: "🔴 Não realizado" if s == "Não realizado"
+        else "🟢 Realizado" if s == "Realizado"
+        else "🟡 No prazo" if s == "No prazo"
+        else s
+    )
+
+if tabela_pend_6m.empty:
+    st.success("Nenhuma pendência encontrada para colaboradores com mais de 6 meses de casa.")
+else:
+    st.dataframe(centralizar_tabela(tabela_pend_6m), use_container_width=True)
+
+    excel_pend_6m = preparar_excel_para_download(
+        tabela_pend_6m_raw,
+        sheet_name="Farol_Termometro_Gente"
+    )
+
+    st.download_button(
+        label="⬇️ Baixar Excel (Farol da Skap - Termômetro de Gente)",
+        data=excel_pend_6m,
+        file_name="farol_skap_termometro_gente.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
+    
