@@ -240,49 +240,15 @@ ativos["CHAVE_COLABORADOR"] = ativos["COLABORADOR"].apply(normalizar_texto)
 ativos = ativos.drop_duplicates(subset=["CHAVE_COLABORADOR"], keep="first").copy()
 
 # =========================
-# Match aproximado com a base de ativos
-# =========================
-mapa_skap_para_ativos = mapear_chaves_por_aproximacao(
-    skap["CHAVE_COLABORADOR"].dropna().unique().tolist(),
-    ativos["CHAVE_COLABORADOR"].dropna().unique().tolist(),
-    cutoff=0.92
-)
-
-mapa_com_para_ativos = mapear_chaves_por_aproximacao(
-    comentarios["CHAVE_COLABORADOR"].dropna().unique().tolist(),
-    ativos["CHAVE_COLABORADOR"].dropna().unique().tolist(),
-    cutoff=0.92
-)
-
-skap["CHAVE_ATIVOS"] = skap["CHAVE_COLABORADOR"].map(mapa_skap_para_ativos).fillna("")
-comentarios["CHAVE_ATIVOS"] = comentarios["CHAVE_COLABORADOR"].map(mapa_com_para_ativos).fillna("")
-
-# se por algum motivo não mapear, mantém a própria chave
-skap["CHAVE_ATIVOS"] = np.where(
-    skap["CHAVE_ATIVOS"].astype(str).str.strip().eq(""),
-    skap["CHAVE_COLABORADOR"],
-    skap["CHAVE_ATIVOS"]
-)
-
-comentarios["CHAVE_ATIVOS"] = np.where(
-    comentarios["CHAVE_ATIVOS"].astype(str).str.strip().eq(""),
-    comentarios["CHAVE_COLABORADOR"],
-    comentarios["CHAVE_ATIVOS"]
-)
-
-# =========================
-# Merge SKAP + comentários
+# Merge principal (EXATO normalizado)
 # =========================
 base = skap.merge(
-    comentarios.drop(columns=["COLABORADOR", "CHAVE_COLABORADOR"], errors="ignore"),
-    on="CHAVE_ATIVOS",
+    comentarios.drop(columns=["COLABORADOR"], errors="ignore"),
+    on="CHAVE_COLABORADOR",
     how="left",
     suffixes=("", "_COM")
 ).fillna("")
 
-# =========================
-# Trazer dados oficiais da base de ativos
-# =========================
 ativos_ref = ativos[
     [
         "CHAVE_COLABORADOR",
@@ -294,16 +260,56 @@ ativos_ref = ativos[
     ]
 ].copy()
 
-ativos_ref = ativos_ref.rename(columns={"CHAVE_COLABORADOR": "CHAVE_ATIVOS"})
-
 base = base.merge(
     ativos_ref,
-    on="CHAVE_ATIVOS",
+    on="CHAVE_COLABORADOR",
     how="left"
 )
 
 # =========================
-# Tratamento dos campos da base de ativos
+# Fallback por aproximação SOMENTE para quem não encontrou cargo
+# =========================
+def similaridade(a: str, b: str) -> float:
+    return SequenceMatcher(None, a, b).ratio()
+
+def melhor_chave_aproximada(chave, candidatos, cutoff=0.92):
+    if not chave:
+        return ""
+    melhor = ""
+    melhor_score = 0.0
+    for cand in candidatos:
+        score = similaridade(chave, cand)
+        if score > melhor_score:
+            melhor_score = score
+            melhor = cand
+    return melhor if melhor_score >= cutoff else ""
+
+candidatos_ativos = ativos["CHAVE_COLABORADOR"].dropna().astype(str).unique().tolist()
+
+mask_sem_cargo = base["CARGO"].isna() | (base["CARGO"].astype(str).str.strip() == "")
+
+if mask_sem_cargo.any():
+    base_sem_match = base.loc[mask_sem_cargo, ["CHAVE_COLABORADOR"]].copy()
+    base_sem_match["CHAVE_APROX"] = base_sem_match["CHAVE_COLABORADOR"].apply(
+        lambda x: melhor_chave_aproximada(x, candidatos_ativos, cutoff=0.92)
+    )
+
+    aprox_ref = ativos_ref.rename(columns={"CHAVE_COLABORADOR": "CHAVE_APROX"}).copy()
+
+    base_sem_match = base_sem_match.merge(
+        aprox_ref,
+        on="CHAVE_APROX",
+        how="left"
+    )
+
+    for col in ["CARGO", "LIDERANCA", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
+        if col in base_sem_match.columns:
+            base.loc[mask_sem_cargo, col] = base.loc[mask_sem_cargo, col].replace("", pd.NA).fillna(
+                base_sem_match[col].values
+            )
+
+# =========================
+# Tratamento dos campos vindos da base ativos
 # =========================
 for col in ["CARGO", "LIDERANCA", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
     base = garantir_coluna(base, col, "")
