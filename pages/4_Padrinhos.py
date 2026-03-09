@@ -1,5 +1,6 @@
 import re
 import unicodedata
+import textwrap
 from pathlib import Path
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -119,11 +120,32 @@ div[data-baseweb="input"] > div {
     border-bottom: 1px solid #3a3a3a;
 }
 
+.lista-scroll {
+    max-height: 980px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.lista-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.lista-scroll::-webkit-scrollbar-track {
+    background: #202020;
+}
+
+.lista-scroll::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 8px;
+}
+
 .lista-linha {
     padding: 7px 10px;
     border-bottom: 1px solid #303030;
-    color: #f3f3f3;
+    color: #ffffff;
     font-size: 0.92rem;
+    line-height: 1.35;
+    word-break: break-word;
 }
 
 .lista-linha:nth-child(even) {
@@ -132,6 +154,14 @@ div[data-baseweb="input"] > div {
 
 .titulo-branco {
     color: #ffffff !important;
+    font-weight: 700;
+    font-size: 1.15rem;
+    margin-top: 8px;
+    margin-bottom: 10px;
+}
+
+.titulo-amarelo {
+    color: #f0d36b !important;
     font-weight: 700;
     font-size: 1.15rem;
     margin-top: 8px;
@@ -162,6 +192,13 @@ def norm_text(x) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
+def norm_text_nome_flex(x) -> str:
+    s = norm_text(x)
+    if not s:
+        return ""
+    tokens = [t for t in s.split() if len(t) > 1]
+    return " ".join(tokens)
+
 def parse_date_br(x):
     return pd.to_datetime(x, errors="coerce", dayfirst=True)
 
@@ -181,7 +218,59 @@ def ult_nome(a: str) -> str:
     toks = a.split()
     return toks[-1] if toks else ""
 
+def wrap_title(txt: str, width: int = 42) -> str:
+    txt = str(txt).strip()
+    if not txt:
+        return ""
+    return "<br>".join(textwrap.wrap(txt, width=width))
+
+def parse_horario_texto(x):
+    if pd.isna(x):
+        return None
+
+    s = str(x).strip()
+    if not s or s.lower() in {"nan", "none"}:
+        return None
+
+    m = re.search(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", s)
+    if not m:
+        return None
+
+    hh = int(m.group(1))
+    mm = int(m.group(2))
+    ss = int(m.group(3)) if m.group(3) else 0
+
+    if hh > 23 or mm > 59 or ss > 59:
+        return None
+
+    return hh, mm, ss
+
+def combinar_data_hora(df: pd.DataFrame, col_data: str = "Data Cadastro", col_hora: str = "Horário da resposta") -> pd.Series:
+    data = pd.to_datetime(df[col_data], errors="coerce", dayfirst=True) if col_data in df.columns else pd.Series(pd.NaT, index=df.index)
+    hora = df[col_hora] if col_hora in df.columns else pd.Series(index=df.index, dtype="object")
+
+    valores = []
+    for d, h in zip(data, hora):
+        if pd.isna(d):
+            valores.append(pd.NaT)
+            continue
+
+        parsed = parse_horario_texto(h)
+        if parsed is None:
+            valores.append(pd.Timestamp(d).normalize())
+        else:
+            hh, mm, ss = parsed
+            valores.append(pd.Timestamp(d).normalize() + pd.Timedelta(hours=hh, minutes=mm, seconds=ss))
+
+    return pd.to_datetime(pd.Series(valores, index=df.index), errors="coerce")
+
 def similaridade_nome(resp_nome: str, cand_nome: str) -> float:
+    if not resp_nome or not cand_nome:
+        return 0
+
+    resp_nome = norm_text_nome_flex(resp_nome)
+    cand_nome = norm_text_nome_flex(cand_nome)
+
     if not resp_nome or not cand_nome:
         return 0
 
@@ -191,28 +280,40 @@ def similaridade_nome(resp_nome: str, cand_nome: str) -> float:
         s3 = fuzz.WRatio(resp_nome, cand_nome)
         s4 = fuzz.partial_ratio(resp_nome, cand_nome)
 
+        seq = sequence_ratio(resp_nome, cand_nome)
+
         score = max(
             s1,
-            s2 * 0.98,
-            s3 * 0.97,
-            s4 * 0.95,
+            s2 * 0.99,
+            s3 * 0.98,
+            s4 * 0.97,
+            seq * 0.96,
         )
 
         inter = token_overlap(resp_nome, cand_nome)
         if inter >= 2:
-            score += 2
-        if primeiro_nome(resp_nome) and primeiro_nome(resp_nome) == primeiro_nome(cand_nome):
-            score += 2
-        if ult_nome(resp_nome) and ult_nome(resp_nome) == ult_nome(cand_nome):
+            score += 2.5
+        if inter >= 3:
             score += 1.5
+        if primeiro_nome(resp_nome) and primeiro_nome(resp_nome) == primeiro_nome(cand_nome):
+            score += 2.5
+        if ult_nome(resp_nome) and ult_nome(resp_nome) == ult_nome(cand_nome):
+            score += 2.0
 
         return min(score, 100)
 
-    base = sequence_ratio(resp_nome, cand_nome)
+    base = max(
+        sequence_ratio(resp_nome, cand_nome),
+        sequence_ratio(" ".join(sorted(resp_nome.split())), " ".join(sorted(cand_nome.split())))
+    )
     inter = token_overlap(resp_nome, cand_nome)
     if inter >= 2:
         base += 3
+    if inter >= 3:
+        base += 2
     if primeiro_nome(resp_nome) == primeiro_nome(cand_nome):
+        base += 2
+    if ult_nome(resp_nome) == ult_nome(cand_nome):
         base += 2
     return min(base, 100)
 
@@ -240,7 +341,7 @@ def cor_status(s):
 
 def style_table(df):
     if "Status" in df.columns:
-        return df.style.applymap(cor_status, subset=["Status"]).set_properties(**{"text-align": "center"})
+        return df.style.map(cor_status, subset=["Status"]).set_properties(**{"text-align": "center"})
     return df
 
 @st.cache_data(show_spinner=True)
@@ -263,20 +364,18 @@ def formatar_datas_para_tabela(df: pd.DataFrame) -> pd.DataFrame:
             out[c] = pd.to_datetime(out[c], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
     return out
 
-def truncar_titulo(txt: str, n: int = 82) -> str:
-    txt = str(txt).strip()
-    return txt if len(txt) <= n else txt[:n-3] + "..."
-
 # =========================
 # Match de nomes
 # =========================
-def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_min=85):
+def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_min=82):
     if base_lookup.empty or not nome_resp:
         return None, 0
 
     pool = base_lookup.copy()
 
+    nome_resp_norm = norm_text_nome_flex(nome_resp)
     op_resp_norm = norm_text(op_resp)
+
     if op_resp_norm and "op_norm" in pool.columns:
         pool_op = pool[pool["op_norm"] == op_resp_norm].copy()
         if not pool_op.empty:
@@ -288,24 +387,27 @@ def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_m
     if pool.empty:
         return None, 0
 
+    pool["nome_norm_flex"] = pool["nome_norm"].apply(norm_text_nome_flex)
+
     if RAPIDFUZZ_OK:
         candidatos = process.extract(
-            nome_resp,
-            pool["nome_norm"].tolist(),
+            nome_resp_norm,
+            pool["nome_norm_flex"].tolist(),
             scorer=fuzz.token_set_ratio,
-            limit=10,
+            limit=15,
         )
         nomes_top = [c[0] for c in candidatos] if candidatos else []
         if nomes_top:
-            pool = pool[pool["nome_norm"].isin(nomes_top)].copy()
+            pool = pool[pool["nome_norm_flex"].isin(nomes_top)].copy()
 
-    pool["score_nome"] = pool["nome_norm"].apply(lambda x: similaridade_nome(nome_resp, x))
-    pool["token_overlap"] = pool["nome_norm"].apply(lambda x: token_overlap(nome_resp, x))
-    pool["primeiro_nome_ok"] = pool["nome_norm"].apply(lambda x: primeiro_nome(nome_resp) == primeiro_nome(x))
+    pool["score_nome"] = pool["nome_norm_flex"].apply(lambda x: similaridade_nome(nome_resp_norm, x))
+    pool["token_overlap"] = pool["nome_norm_flex"].apply(lambda x: token_overlap(nome_resp_norm, x))
+    pool["primeiro_nome_ok"] = pool["nome_norm_flex"].apply(lambda x: primeiro_nome(nome_resp_norm) == primeiro_nome(x))
+    pool["ultimo_nome_ok"] = pool["nome_norm_flex"].apply(lambda x: ult_nome(nome_resp_norm) == ult_nome(x))
 
     pool = pool.sort_values(
-        ["score_nome", "token_overlap", "primeiro_nome_ok"],
-        ascending=[False, False, False]
+        ["score_nome", "token_overlap", "primeiro_nome_ok", "ultimo_nome_ok"],
+        ascending=[False, False, False, False]
     )
 
     best = pool.head(1)
@@ -318,7 +420,7 @@ def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_m
     if score < score_min:
         return None, score
 
-    if row["token_overlap"] == 0 and score < 92:
+    if row["token_overlap"] == 0 and score < 90:
         return None, score
 
     return row, score
@@ -453,13 +555,13 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
                 nome_resp=nome,
                 base_lookup=atv_lookup,
                 op_resp=op,
-                score_min=91
+                score_min=88
             )
             return score
 
         if not atv_lookup.empty:
             base.loc[falt, "match_ativo_score"] = base.loc[falt].apply(match_ativo, axis=1)
-            idx_ok = base.loc[falt].index[base.loc[falt, "match_ativo_score"].fillna(0) >= 91]
+            idx_ok = base.loc[falt].index[base.loc[falt, "match_ativo_score"].fillna(0) >= 88]
             base.loc[idx_ok, "Status Colaborador"] = "Ativo"
             base.loc[idx_ok, "match_ativo_tipo"] = "NOME_FUZZY"
 
@@ -487,6 +589,7 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     nps_df["nome_norm"] = nps_df[nps_nome_col].apply(norm_text)
     nps_df["op_norm"] = nps_df[nps_op_col].apply(norm_text) if nps_op_col in nps_df.columns else ""
     nps_df["Data Cadastro"] = pd.to_datetime(nps_df["Data Cadastro"], errors="coerce", dayfirst=True)
+    nps_df["DataHora Resposta"] = combinar_data_hora(nps_df, "Data Cadastro", "Horário da resposta")
 
     bp = batepapo.copy()
     bp_nome_col = "Insira o nome do colaborador:"
@@ -500,6 +603,7 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     bp["nome_norm"] = bp[bp_nome_col].apply(norm_text)
     bp["op_norm"] = ""
     bp["Data Cadastro"] = pd.to_datetime(bp["Data Cadastro"], errors="coerce", dayfirst=True)
+    bp["DataHora Resposta"] = combinar_data_hora(bp, "Data Cadastro", "Horário da resposta")
 
     base_cols = [
         "cpf_clean", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação",
@@ -526,35 +630,37 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
             nome_resp=nome,
             base_lookup=base_lookup,
             op_resp=op,
-            score_min=84
+            score_min=82
         )
         return cand, score
 
     falt = nps_m["Colaborador"].isna()
     if falt.any():
         resultados = nps_m.loc[falt].apply(lambda r: fuzzy_match_row(r), axis=1)
-        nps_m.loc[falt, "match_score"] = resultados.apply(lambda t: t[1])
+        resultados_dict = resultados.to_dict()
 
-        idx_ok = nps_m.loc[falt].index[nps_m.loc[falt, "match_score"].fillna(0) >= 84]
+        nps_m.loc[falt, "match_score"] = pd.Series({idx: val[1] for idx, val in resultados_dict.items()})
+        idx_ok = [idx for idx, val in resultados_dict.items() if val[0] is not None and val[1] >= 82]
+
         for idx in idx_ok:
-            base_row, _ = fuzzy_match_row(nps_m.loc[idx])
-            if base_row is not None:
-                for col in ["Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
-                    nps_m.at[idx, col] = base_row[col]
-                nps_m.at[idx, "match_tipo"] = "NOME_FUZZY"
+            base_row, _ = resultados_dict[idx]
+            for col in ["Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                nps_m.at[idx, col] = base_row[col]
+            nps_m.at[idx, "match_tipo"] = "NOME_FUZZY"
 
     falt = bp_m["Colaborador"].isna()
     if falt.any():
         resultados = bp_m.loc[falt].apply(lambda r: fuzzy_match_row(r), axis=1)
-        bp_m.loc[falt, "match_score"] = resultados.apply(lambda t: t[1])
+        resultados_dict = resultados.to_dict()
 
-        idx_ok = bp_m.loc[falt].index[bp_m.loc[falt, "match_score"].fillna(0) >= 84]
+        bp_m.loc[falt, "match_score"] = pd.Series({idx: val[1] for idx, val in resultados_dict.items()})
+        idx_ok = [idx for idx, val in resultados_dict.items() if val[0] is not None and val[1] >= 82]
+
         for idx in idx_ok:
-            base_row, _ = fuzzy_match_row(bp_m.loc[idx])
-            if base_row is not None:
-                for col in ["Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
-                    bp_m.at[idx, col] = base_row[col]
-                bp_m.at[idx, "match_tipo"] = "NOME_FUZZY"
+            base_row, _ = resultados_dict[idx]
+            for col in ["Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                bp_m.at[idx, col] = base_row[col]
+            bp_m.at[idx, "match_tipo"] = "NOME_FUZZY"
 
     return {
         "base_operacional": base,
@@ -650,12 +756,14 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
         else:
             form_et = form[form[campo].astype(str).str.strip().eq(valor)].copy()
 
+            col_realizacao = "DataHora Resposta" if "DataHora Resposta" in form_et.columns else "Data Cadastro"
+
             real = (
-                form_et.dropna(subset=["Data Cadastro"])
+                form_et.dropna(subset=[col_realizacao])
                 .dropna(subset=["Colaborador"])
-                .groupby("Colaborador", as_index=False)["Data Cadastro"]
+                .groupby("Colaborador", as_index=False)[col_realizacao]
                 .min()
-                .rename(columns={"Data Cadastro": "Data Realização"})
+                .rename(columns={col_realizacao: "Data Realização"})
             )
 
             tmp = tmp.merge(real, on="Colaborador", how="left")
@@ -740,19 +848,33 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
         },
         category_orders={"Faixa": [">= 90%", "80% a 89%", "< 80%"]},
     )
+    fig.update_traces(
+        textposition="outside",
+        cliponaxis=False,
+        width=0.48
+    )
     fig.update_layout(
-        height=360,
+        height=380,
         template="plotly_dark",
-        margin=dict(l=10, r=10, t=20, b=10),
-        yaxis=dict(range=[0, 100]),
-        xaxis_title="",
-        yaxis_title="",
+        margin=dict(l=10, r=10, t=25, b=10),
+        yaxis=dict(
+            range=[0, 100],
+            title="",
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+            visible=False
+        ),
+        xaxis=dict(
+            title="",
+            showgrid=False
+        ),
         legend_title="Faixa",
         paper_bgcolor="#0b0b0b",
         plot_bgcolor="#1a1a1a",
+        bargap=0.45,
     )
-    fig.update_traces(textposition="outside", cliponaxis=False)
-    st.plotly_chart(fig, use_container_width=True, key=f"chart_{key_prefix}")
+    st.plotly_chart(fig, width="stretch", key=f"chart_{key_prefix}")
 
     tabela = df_farol.copy()
     cols_show = [
@@ -766,7 +888,7 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
 
     st.dataframe(
         style_table(tabela),
-        use_container_width=True,
+        width="stretch",
         height=430,
         key=f"df_{key_prefix}"
     )
@@ -778,7 +900,7 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
         file_name=f"farol_padrinhos_{key_prefix.lower()}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key=f"download_{key_prefix}",
-        use_container_width=True
+        width="stretch"
     )
 
 # =========================
@@ -844,29 +966,41 @@ def render_grafico_resposta(df: pd.DataFrame, coluna: str, key_prefix: str):
         textposition="outside",
         cliponaxis=False,
         marker_line_color="#d9d9d9",
-        marker_line_width=0.5
+        marker_line_width=0.5,
+        width=0.42
     )
     fig.update_layout(
-        height=295,
+        height=330,
         template="plotly_dark",
-        margin=dict(l=10, r=10, t=80, b=10),
+        margin=dict(l=8, r=8, t=105, b=10),
         showlegend=False,
         title=dict(
-            text=truncar_titulo(coluna, 90),
+            text=wrap_title(coluna, 40),
             x=0.5,
             xanchor="center",
-            y=0.96,
+            y=0.97,
             font=dict(size=13, color="#ffffff")
         ),
-        yaxis=dict(range=[0, 100], title=""),
-        xaxis_title="",
+        yaxis=dict(
+            range=[0, 100],
+            title="",
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+            visible=False
+        ),
+        xaxis=dict(
+            title="",
+            showgrid=False
+        ),
         plot_bgcolor="#3e3e3e",
         paper_bgcolor="#2b2b2b",
         font=dict(color="#f5f5f5"),
+        bargap=0.55,
     )
-    st.plotly_chart(fig, use_container_width=True, key=key_prefix)
+    st.plotly_chart(fig, width="stretch", key=key_prefix)
 
-def render_lista_respostas(df: pd.DataFrame, coluna: str):
+def render_lista_respostas(df: pd.DataFrame, coluna: str, limite_visual=30):
     textos = (
         df[coluna]
         .astype(str)
@@ -876,24 +1010,29 @@ def render_lista_respostas(df: pd.DataFrame, coluna: str):
         .tolist()
     )
 
-    st.markdown(f'<div class="lista-box"><div class="lista-titulo">{coluna}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="lista-box"><div class="lista-titulo">{coluna}</div><div class="lista-scroll">', unsafe_allow_html=True)
 
     if not textos:
-        st.markdown('<div class="lista-linha">Sem respostas.</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="lista-linha">Sem respostas.</div></div></div>', unsafe_allow_html=True)
         return
 
-    for txt in textos[:200]:
+    for txt in textos:
         safe_txt = str(txt).replace("<", "&lt;").replace(">", "&gt;")
         st.markdown(f'<div class="lista-linha">{safe_txt}</div>', unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div></div>', unsafe_allow_html=True)
 
-def render_card_data_resposta(df: pd.DataFrame, titulo="Última resposta registrada"):
-    if "Data Cadastro" not in df.columns or df.empty:
+def render_card_data_resposta(df: pd.DataFrame, titulo="Registro da resposta"):
+    if df.empty:
         st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
         return
 
-    dt = pd.to_datetime(df["Data Cadastro"], errors="coerce", dayfirst=True).max()
+    col_dt = "DataHora Resposta" if "DataHora Resposta" in df.columns else "Data Cadastro"
+    if col_dt not in df.columns:
+        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
+        return
+
+    dt = pd.to_datetime(df[col_dt], errors="coerce", dayfirst=True).max()
     if pd.isna(dt):
         st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
         return
@@ -1187,7 +1326,7 @@ with resp_tabs[0]:
 
         col_card = st.columns([1, 3])[0]
         with col_card:
-            render_card_data_resposta(nps_primeira, titulo="Última resposta registrada")
+            render_card_data_resposta(nps_primeira, titulo="Registro da resposta")
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="titulo-branco">Última semana junto ao padrinho.</div>', unsafe_allow_html=True)
@@ -1203,7 +1342,7 @@ with resp_tabs[0]:
 
         col_card2 = st.columns([1, 3])[0]
         with col_card2:
-            render_card_data_resposta(nps_ultima, titulo="Última resposta registrada")
+            render_card_data_resposta(nps_ultima, titulo="Registro da resposta")
 
         textos_existentes = [c for c in colunas_texto_ultima if c in nps_ultima.columns]
         if textos_existentes:
@@ -1229,7 +1368,7 @@ with resp_tabs[1]:
         bp_ultima = pd.DataFrame()
 
     # Segunda Semana
-    st.markdown('<div class="titulo-branco">Segunda Semana</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">Segunda Semana</div>', unsafe_allow_html=True)
 
     graficos_segunda = [
         "Você conhece quais são os EPIs obrigatórios da sua função?",
@@ -1254,7 +1393,7 @@ with resp_tabs[1]:
 
         col_card_bp2 = st.columns([1, 3])[0]
         with col_card_bp2:
-            render_card_data_resposta(bp_segunda, titulo="Última resposta registrada")
+            render_card_data_resposta(bp_segunda, titulo="Registro da resposta")
 
         cols_lista_seg = st.columns(len([c for c in listas_segunda if c in bp_segunda.columns]) or 1)
         idx = 0
@@ -1266,7 +1405,7 @@ with resp_tabs[1]:
 
     # Terceira Semana
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="titulo-branco">Terceira Semana</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">Terceira Semana</div>', unsafe_allow_html=True)
 
     graficos_terceira = [
         "Você conhece a rotina de reuniões semanais que você deve participar?",
@@ -1290,7 +1429,7 @@ with resp_tabs[1]:
 
         col_card_bp3 = st.columns([1, 3])[0]
         with col_card_bp3:
-            render_card_data_resposta(bp_terceira, titulo="Última resposta registrada")
+            render_card_data_resposta(bp_terceira, titulo="Registro da resposta")
 
         cols_lista_ter = st.columns(len([c for c in listas_terceira if c in bp_terceira.columns]) or 1)
         idx = 0
@@ -1302,7 +1441,7 @@ with resp_tabs[1]:
 
     # Última Semana
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="titulo-branco">Última Semana</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">Última Semana</div>', unsafe_allow_html=True)
 
     graficos_ultima = [
         "Você se sente integrado a empresa?",
@@ -1330,7 +1469,7 @@ with resp_tabs[1]:
 
         col_card_bpu = st.columns([1, 3])[0]
         with col_card_bpu:
-            render_card_data_resposta(bp_ultima, titulo="Última resposta registrada")
+            render_card_data_resposta(bp_ultima, titulo="Registro da resposta")
 
         listas_exist = [c for c in listas_ultima if c in bp_ultima.columns]
         if listas_exist:
