@@ -731,14 +731,14 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     bp["Data Cadastro"] = pd.to_datetime(bp["Data Cadastro"], errors="coerce", dayfirst=True)
     bp["DataHora Resposta"] = combinar_data_hora(bp, "Data Cadastro", "Horário da resposta")
 
-    # =========================
-    # Helper: vincular por CPF primeiro
-    # =========================
     def vincular_por_cpf_e_data(df_resp: pd.DataFrame) -> pd.DataFrame:
         df = df_resp.copy()
         df["_orig_idx"] = df.index
 
-        for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+        for col in [
+            "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo",
+            "Operação", "Data", "Data_dt", "Status Colaborador"
+        ]:
             if col not in df.columns:
                 df[col] = pd.NA
 
@@ -748,29 +748,65 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         col_data_resp = "DataHora Resposta" if "DataHora Resposta" in df.columns else "Data Cadastro"
         df[col_data_resp] = pd.to_datetime(df[col_data_resp], errors="coerce", dayfirst=True)
 
-         base_cpf = base[base_cols].copy()
+        base_cpf = base[base_cols].copy()
+        base_cpf = base_cpf[base_cpf["cpf_clean"].astype(str).str.len() == 11].copy()
+        base_cpf["Data_dt"] = pd.to_datetime(base_cpf["Data_dt"], errors="coerce", dayfirst=True)
+        base_cpf = base_cpf.dropna(subset=["cpf_clean", "Data_dt"]).copy()
 
-                        if not merged.empty:
+        df_cpf = df.copy()
+        df_cpf = df_cpf[df_cpf["cpf_clean"].astype(str).str.len() == 11].copy()
+        df_cpf[col_data_resp] = pd.to_datetime(df_cpf[col_data_resp], errors="coerce", dayfirst=True)
+        df_cpf = df_cpf.dropna(subset=["cpf_clean", col_data_resp]).copy()
+
+        if not df_cpf.empty and not base_cpf.empty:
+            partes = []
+
+            for cpf, grp_resp in df_cpf.groupby("cpf_clean", sort=False):
+                grp_base = base_cpf[base_cpf["cpf_clean"] == cpf].copy()
+                if grp_base.empty:
+                    continue
+
+                grp_resp = grp_resp.sort_values(col_data_resp).reset_index(drop=True)
+                grp_base = grp_base.sort_values("Data_dt").reset_index(drop=True)
+
+                merged_part = pd.merge_asof(
+                    grp_resp,
+                    grp_base,
+                    left_on=col_data_resp,
+                    right_on="Data_dt",
+                    direction="backward",
+                    suffixes=("", "_base")
+                )
+                partes.append(merged_part)
+
+            merged = pd.concat(partes, ignore_index=True) if partes else pd.DataFrame()
+
+            if not merged.empty:
                 for _, row in merged[merged["contrato_id"].notna()].iterrows():
                     idx = row["_orig_idx"]
-                    for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                    for col in [
+                        "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo",
+                        "Operação", "Data", "Data_dt", "Status Colaborador"
+                    ]:
                         df.at[idx, col] = row[col]
                     df.at[idx, "match_tipo"] = "CPF_CONTRATO"
                     df.at[idx, "match_score"] = 100.0
 
-        # =========================
-        # Fallback: fuzzy para o que sobrou sem contrato_id
-        # =========================
         falt = df["contrato_id"].isna()
         if falt.any():
-            resultados = df.loc[falt].apply(lambda r: escolher_contrato_da_resposta(r, base[base_cols]), axis=1)
+            resultados = df.loc[falt].apply(
+                lambda r: escolher_contrato_da_resposta(r, base[base_cols]),
+                axis=1
+            )
 
             for idx, resultado in resultados.items():
                 base_row, score, tipo = resultado
 
-                # só sobrescreve se encontrou algo melhor
                 if base_row is not None:
-                    for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                    for col in [
+                        "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo",
+                        "Operação", "Data", "Data_dt", "Status Colaborador"
+                    ]:
                         df.at[idx, col] = base_row[col]
                     df.at[idx, "match_tipo"] = tipo
                     df.at[idx, "match_score"] = score
