@@ -426,6 +426,56 @@ def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_m
 
     return row, score
 
+def status_ativo_por_nome(nome_base: str, op_base: str, ativos_lookup: pd.DataFrame):
+    if ativos_lookup.empty or not nome_base:
+        return "Inativo", "NAO_ENCONTRADO", pd.NA
+
+    nome_norm = norm_text_nome_flex(nome_base)
+    op_norm = norm_text(op_base)
+
+    # 1) exato por nome normalizado
+    exato = ativos_lookup[ativos_lookup["nome_norm_flex"] == nome_norm].copy()
+    if op_norm and "op_norm" in exato.columns:
+        exato_op = exato[exato["op_norm"] == op_norm].copy()
+        if not exato_op.empty:
+            exato = exato_op
+
+    if not exato.empty:
+        return "Ativo", "NOME_EXATO", 100.0
+
+    # 2) fuzzy mais restritivo para não marcar falso positivo
+    pool = ativos_lookup.copy()
+    if op_norm and "op_norm" in pool.columns:
+        pool_op = pool[pool["op_norm"] == op_norm].copy()
+        if not pool_op.empty:
+            pool = pool_op
+
+    if pool.empty:
+        pool = ativos_lookup.copy()
+
+    cand, score = buscar_melhor_candidato_por_nome(
+        nome_resp=nome_norm,
+        base_lookup=pool,
+        op_resp=op_norm,
+        score_min=93
+    )
+
+    if cand is None:
+        return "Inativo", "NAO_ENCONTRADO", score if score else pd.NA
+
+    cand_nome = norm_text_nome_flex(cand["nome_norm"])
+    inter = token_overlap(nome_norm, cand_nome)
+    primeiro_ok = primeiro_nome(nome_norm) == primeiro_nome(cand_nome)
+    ultimo_ok = ult_nome(nome_norm) == ult_nome(cand_nome)
+
+    if score >= 96 and inter >= 2 and primeiro_ok and ultimo_ok:
+        return "Ativo", "NOME_FUZZY", score
+
+    if score >= 98 and inter >= 3:
+        return "Ativo", "NOME_FUZZY", score
+
+    return "Inativo", "NAO_ENCONTRADO", score
+
 # =========================
 # Base operacional
 # =========================
@@ -446,6 +496,7 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
     adm["Data_dt"] = pd.to_datetime(adm["Data"], errors="coerce", dayfirst=True)
     adm["cpf_clean"] = adm["CPF"].apply(clean_cpf)
     adm["nome_norm"] = adm["Colaborador"].apply(norm_text)
+    adm["nome_norm_flex"] = adm["Colaborador"].apply(norm_text_nome_flex)
     adm["cargo_norm"] = adm["Cargo"].apply(norm_text)
     adm["op_norm"] = adm["Operação"].apply(norm_text)
 
@@ -505,6 +556,9 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
         (~mask_ponta_grossa | (oper["Data_dt"] >= corte_ponta_grossa))
     ].copy()
 
+    oper = oper.sort_values(["nome_norm_flex", "cpf_clean", "Data_dt"]).reset_index(drop=True)
+    oper["contrato_id"] = oper.index.astype(str)
+
     return oper
 
 # =========================
@@ -514,69 +568,116 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
     base = base_oper.copy()
     atv = base_ativos.copy()
 
-    if "CPF" in atv.columns:
-        atv["cpf_clean"] = atv["CPF"].apply(clean_cpf)
-    else:
-        atv["cpf_clean"] = ""
+    if "Colaborador" not in atv.columns:
+        raise KeyError("Na Base colaboradores ativos não encontrei a coluna 'Colaborador'")
 
-    if "Colaborador" in atv.columns:
-        atv["nome_norm"] = atv["Colaborador"].apply(norm_text)
-    else:
-        atv["nome_norm"] = ""
+    atv["nome_norm"] = atv["Colaborador"].apply(norm_text)
+    atv["nome_norm_flex"] = atv["Colaborador"].apply(norm_text_nome_flex)
+    atv["op_norm"] = atv["Operação"].apply(norm_text) if "Operação" in atv.columns else ""
 
-    if "Operação" in atv.columns:
-        atv["op_norm"] = atv["Operação"].apply(norm_text)
-    else:
-        atv["op_norm"] = ""
+    ativos_lookup = (
+        atv[["nome_norm", "nome_norm_flex", "op_norm"]]
+        .dropna(subset=["nome_norm_flex"])
+        .drop_duplicates()
+        .copy()
+    )
 
-    base["Status Colaborador"] = "Inativo"
-    base["match_ativo_tipo"] = "NAO_ENCONTRADO"
-    base["match_ativo_score"] = pd.NA
+    status_lista = []
+    tipo_lista = []
+    score_lista = []
 
-    ativos_cpf = set(atv.loc[atv["cpf_clean"].astype(str).str.len() == 11, "cpf_clean"].unique().tolist())
-    mask_cpf = base["cpf_clean"].isin(ativos_cpf)
-    base.loc[mask_cpf, "Status Colaborador"] = "Ativo"
-    base.loc[mask_cpf, "match_ativo_tipo"] = "CPF"
+    for _, row in base.iterrows():
+        status, tipo, score = status_ativo_por_nome(
+            nome_base=row.get("Colaborador", ""),
+            op_base=row.get("Operação", ""),
+            ativos_lookup=ativos_lookup
+        )
+        status_lista.append(status)
+        tipo_lista.append(tipo)
+        score_lista.append(score)
 
-    falt = base["Status Colaborador"].eq("Inativo")
-    ativos_nome_exato = set(atv.loc[atv["nome_norm"].astype(str).str.strip() != "", "nome_norm"].unique().tolist())
-    mask_nome = falt & base["nome_norm"].isin(ativos_nome_exato)
-    base.loc[mask_nome, "Status Colaborador"] = "Ativo"
-    base.loc[mask_nome, "match_ativo_tipo"] = "NOME_EXATO"
-
-    falt = base["Status Colaborador"].eq("Inativo")
-    if falt.any():
-        atv_lookup = atv[["nome_norm", "op_norm"]].drop_duplicates().copy()
-        atv_lookup = atv_lookup[atv_lookup["nome_norm"].astype(str).str.strip() != ""].copy()
-
-        def match_ativo(row):
-            nome = row.get("nome_norm", "")
-            op = row.get("op_norm", "")
-            _, score = buscar_melhor_candidato_por_nome(
-                nome_resp=nome,
-                base_lookup=atv_lookup,
-                op_resp=op,
-                score_min=88
-            )
-            return score
-
-        if not atv_lookup.empty:
-            base.loc[falt, "match_ativo_score"] = base.loc[falt].apply(match_ativo, axis=1)
-            idx_ok = base.loc[falt].index[base.loc[falt, "match_ativo_score"].fillna(0) >= 88]
-            base.loc[idx_ok, "Status Colaborador"] = "Ativo"
-            base.loc[idx_ok, "match_ativo_tipo"] = "NOME_FUZZY"
+    base["Status Colaborador"] = status_lista
+    base["match_ativo_tipo"] = tipo_lista
+    base["match_ativo_score"] = score_lista
 
     return base
 
 # =========================
 # Vincular respostas
 # =========================
+def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
+    if base_lookup.empty:
+        return None, 0, "NAO_ENCONTRADO"
+
+    data_resp = row_resp.get("DataHora Resposta")
+    if pd.isna(data_resp):
+        data_resp = row_resp.get("Data Cadastro")
+
+    if pd.isna(data_resp):
+        return None, 0, "SEM_DATA_RESPOSTA"
+
+    cpf_resp = row_resp.get("cpf_clean", "")
+    nome_resp = row_resp.get("nome_norm", "")
+    op_resp = row_resp.get("op_norm", "")
+
+    pool = base_lookup.copy()
+
+    # Primeiro tenta CPF, mas sempre respeitando data da admissão <= data da resposta
+    if cpf_resp:
+        pool_cpf = pool[pool["cpf_clean"] == cpf_resp].copy()
+        pool_cpf = pool_cpf[pool_cpf["Data_dt"] <= data_resp].copy()
+        if not pool_cpf.empty:
+            pool_cpf = pool_cpf.sort_values("Data_dt", ascending=False)
+            return pool_cpf.iloc[0], 100.0, "CPF_CONTRATO"
+
+    # Depois nome aproximado, respeitando data da admissão <= data da resposta
+    pool = pool[pool["Data_dt"] <= data_resp].copy()
+    if pool.empty:
+        return None, 0, "SEM_CONTRATO_ANTERIOR"
+
+    cand, score = buscar_melhor_candidato_por_nome(
+        nome_resp=nome_resp,
+        base_lookup=pool,
+        op_resp=op_resp,
+        score_min=88
+    )
+
+    if cand is None:
+        return None, score, "NAO_ENCONTRADO"
+
+    cand_nome = norm_text_nome_flex(cand["nome_norm"])
+    nome_resp_flex = norm_text_nome_flex(nome_resp)
+    inter = token_overlap(nome_resp_flex, cand_nome)
+    primeiro_ok = primeiro_nome(nome_resp_flex) == primeiro_nome(cand_nome)
+    ultimo_ok = ult_nome(nome_resp_flex) == ult_nome(cand_nome)
+
+    if not ((score >= 96 and inter >= 2 and primeiro_ok and ultimo_ok) or (score >= 98 and inter >= 3)):
+        return None, score, "NOME_REJEITADO"
+
+    # Se houver mais de um contrato desse mesmo colaborador antes da resposta, pega o mais recente
+    pool_nome = pool.copy()
+    pool_nome["score_nome"] = pool_nome["nome_norm"].apply(lambda x: similaridade_nome(nome_resp_flex, norm_text_nome_flex(x)))
+    pool_nome = pool_nome[pool_nome["score_nome"] >= max(90, score - 1.5)].copy()
+
+    if not pool_nome.empty:
+        pool_nome = pool_nome.sort_values(["score_nome", "Data_dt"], ascending=[False, False])
+        return pool_nome.iloc[0], float(pool_nome.iloc[0]["score_nome"]), "NOME_FUZZY_CONTRATO"
+
+    return cand, score, "NOME_FUZZY_CONTRATO"
+
 def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.DataFrame) -> dict:
     base = base_oper.copy()
     base["cpf_clean"] = base["cpf_clean"].fillna("")
     base["nome_norm"] = base["nome_norm"].fillna("")
+    base["nome_norm_flex"] = base["nome_norm"].apply(norm_text_nome_flex)
     base["op_norm"] = base["Operação"].apply(norm_text)
 
+    base_cols = [
+        "contrato_id", "cpf_clean", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação",
+        "Data", "Data_dt", "nome_norm", "nome_norm_flex", "op_norm", "Status Colaborador"
+    ]
+
+    # ---------- NPS ----------
     nps_df = nps.copy()
     nps_nome_col = "Informe seu nome completo:"
     nps_cpf_col = "Informe seu CPF:"
@@ -588,10 +689,12 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
 
     nps_df["cpf_clean"] = nps_df[nps_cpf_col].apply(clean_cpf)
     nps_df["nome_norm"] = nps_df[nps_nome_col].apply(norm_text)
+    nps_df["nome_norm_flex"] = nps_df[nps_nome_col].apply(norm_text_nome_flex)
     nps_df["op_norm"] = nps_df[nps_op_col].apply(norm_text) if nps_op_col in nps_df.columns else ""
     nps_df["Data Cadastro"] = pd.to_datetime(nps_df["Data Cadastro"], errors="coerce", dayfirst=True)
     nps_df["DataHora Resposta"] = combinar_data_hora(nps_df, "Data Cadastro", "Horário da resposta")
 
+    # ---------- BATE PAPO ----------
     bp = batepapo.copy()
     bp_nome_col = "Insira o nome do colaborador:"
     bp_cpf_col = "Inserir o CPF do colaborador:"
@@ -602,66 +705,36 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
 
     bp["cpf_clean"] = bp[bp_cpf_col].apply(clean_cpf)
     bp["nome_norm"] = bp[bp_nome_col].apply(norm_text)
+    bp["nome_norm_flex"] = bp[bp_nome_col].apply(norm_text_nome_flex)
     bp["op_norm"] = ""
     bp["Data Cadastro"] = pd.to_datetime(bp["Data Cadastro"], errors="coerce", dayfirst=True)
     bp["DataHora Resposta"] = combinar_data_hora(bp, "Data Cadastro", "Horário da resposta")
 
-    base_cols = [
-        "cpf_clean", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação",
-        "Data", "Data_dt", "nome_norm", "op_norm", "Status Colaborador"
-    ]
+    def aplicar_match_contrato(df_resp: pd.DataFrame) -> pd.DataFrame:
+        df = df_resp.copy()
 
-    nps_m = nps_df.merge(base[base_cols], on="cpf_clean", how="left", suffixes=("", "_base"))
-    bp_m = bp.merge(base[base_cols], on="cpf_clean", how="left", suffixes=("", "_base"))
+        for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+            if col not in df.columns:
+                df[col] = pd.NA
 
-    nps_m["match_tipo"] = nps_m["Colaborador"].apply(lambda x: "CPF" if pd.notna(x) else "NAO_ENCONTRADO")
-    bp_m["match_tipo"] = bp_m["Colaborador"].apply(lambda x: "CPF" if pd.notna(x) else "NAO_ENCONTRADO")
-    nps_m["match_score"] = pd.NA
-    bp_m["match_score"] = pd.NA
+        df["match_tipo"] = "NAO_ENCONTRADO"
+        df["match_score"] = pd.NA
 
-    base_lookup = base.copy()
+        resultados = df.apply(lambda r: escolher_contrato_da_resposta(r, base[base_cols]), axis=1)
 
-    def fuzzy_match_row(row):
-        nome = row.get("nome_norm", "")
-        op = row.get("op_norm", "")
-        if not nome:
-            return None, 0
+        for idx, resultado in resultados.items():
+            base_row, score, tipo = resultado
+            df.at[idx, "match_tipo"] = tipo
+            df.at[idx, "match_score"] = score
 
-        cand, score = buscar_melhor_candidato_por_nome(
-            nome_resp=nome,
-            base_lookup=base_lookup,
-            op_resp=op,
-            score_min=82
-        )
-        return cand, score
+            if base_row is not None:
+                for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                    df.at[idx, col] = base_row[col]
 
-    falt = nps_m["Colaborador"].isna()
-    if falt.any():
-        resultados = nps_m.loc[falt].apply(lambda r: fuzzy_match_row(r), axis=1)
-        resultados_dict = resultados.to_dict()
+        return df
 
-        nps_m.loc[falt, "match_score"] = pd.Series({idx: val[1] for idx, val in resultados_dict.items()})
-        idx_ok = [idx for idx, val in resultados_dict.items() if val[0] is not None and val[1] >= 82]
-
-        for idx in idx_ok:
-            base_row, _ = resultados_dict[idx]
-            for col in ["Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
-                nps_m.at[idx, col] = base_row[col]
-            nps_m.at[idx, "match_tipo"] = "NOME_FUZZY"
-
-    falt = bp_m["Colaborador"].isna()
-    if falt.any():
-        resultados = bp_m.loc[falt].apply(lambda r: fuzzy_match_row(r), axis=1)
-        resultados_dict = resultados.to_dict()
-
-        bp_m.loc[falt, "match_score"] = pd.Series({idx: val[1] for idx, val in resultados_dict.items()})
-        idx_ok = [idx for idx, val in resultados_dict.items() if val[0] is not None and val[1] >= 82]
-
-        for idx in idx_ok:
-            base_row, _ = resultados_dict[idx]
-            for col in ["Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
-                bp_m.at[idx, col] = base_row[col]
-            bp_m.at[idx, "match_tipo"] = "NOME_FUZZY"
+    nps_m = aplicar_match_contrato(nps_df)
+    bp_m = aplicar_match_contrato(bp)
 
     return {
         "base_operacional": base,
@@ -742,9 +815,10 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
     farois = {}
     for etapa in ETAPAS:
         tmp = base[
-            ["Colaborador", "CPF", "cpf_clean", "Operação", "Cargo", "Data_dt", "Status Colaborador"]
+            ["contrato_id", "Colaborador", "CPF", "cpf_clean", "Operação", "Cargo", "Data_dt", "Status Colaborador"]
         ].copy()
 
+        tmp["Etapa"] = etapa["titulo"]
         tmp["Prazo Mín"] = tmp["Data_dt"] + pd.to_timedelta(etapa["prazo_min_dias"], unit="D")
         tmp["Prazo Máx"] = tmp["Data_dt"] + pd.to_timedelta(etapa["prazo_max_dias"], unit="D")
 
@@ -756,17 +830,23 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
             tmp["Data Realização"] = pd.NaT
         else:
             form_et = form[form[campo].astype(str).str.strip().eq(valor)].copy()
+
             col_realizacao = "DataHora Resposta" if "DataHora Resposta" in form_et.columns else "Data Cadastro"
+            form_et[col_realizacao] = pd.to_datetime(form_et[col_realizacao], errors="coerce", dayfirst=True)
+
+            # Garante somente resposta posterior à admissão do contrato vinculado
+            if "Data_dt" in form_et.columns:
+                form_et = form_et[form_et[col_realizacao] >= form_et["Data_dt"]].copy()
 
             real = (
                 form_et.dropna(subset=[col_realizacao])
-                .dropna(subset=["Colaborador"])
-                .groupby("Colaborador", as_index=False)[col_realizacao]
+                .dropna(subset=["contrato_id"])
+                .groupby("contrato_id", as_index=False)[col_realizacao]
                 .min()
                 .rename(columns={col_realizacao: "Data Realização"})
             )
 
-            tmp = tmp.merge(real, on="Colaborador", how="left")
+            tmp = tmp.merge(real, on="contrato_id", how="left")
 
         tmp["Status"] = tmp.apply(
             lambda r: status_prazo(r["Data Realização"], r["Prazo Mín"], r["Prazo Máx"], hoje),
@@ -865,12 +945,20 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     tabela = df_farol.copy()
     cols_show = [
         "Status Colaborador", "Operação", "Colaborador", "CPF", "Cargo",
-        "Data_dt", "Prazo Mín", "Prazo Máx", "Data Realização",
+        "Data_dt", "Etapa", "Prazo Mín", "Prazo Máx", "Data Realização",
         "Dias p/ Prazo Máx", "Status"
     ]
     cols_show = [c for c in cols_show if c in tabela.columns]
     tabela = tabela[cols_show].rename(columns={"Data_dt": "Data Admissão"})
     tabela = formatar_datas_para_tabela(tabela)
+
+    # garante Etapa logo após Data Admissão
+    ordem_final = [
+        "Status Colaborador", "Operação", "Colaborador", "CPF", "Cargo",
+        "Data Admissão", "Etapa", "Prazo Mín", "Prazo Máx", "Data Realização",
+        "Dias p/ Prazo Máx", "Status"
+    ]
+    tabela = tabela[[c for c in ordem_final if c in tabela.columns]]
 
     st.dataframe(
         style_table(tabela),
