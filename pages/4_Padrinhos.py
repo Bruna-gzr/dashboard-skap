@@ -395,7 +395,7 @@ def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_m
             nome_resp_norm,
             pool["nome_norm_flex"].tolist(),
             scorer=fuzz.token_set_ratio,
-            limit=15,
+            limit=20,
         )
         nomes_top = [c[0] for c in candidatos] if candidatos else []
         if nomes_top:
@@ -421,7 +421,8 @@ def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_m
     if score < score_min:
         return None, score
 
-    if row["token_overlap"] == 0 and score < 90:
+    # regra menos agressiva
+    if row["token_overlap"] < 2 and score < 92:
         return None, score
 
     return row, score
@@ -562,47 +563,6 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
 # =========================
 # Status colaborador
 # =========================
-def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.DataFrame) -> pd.DataFrame:
-    base = base_oper.copy()
-    atv = base_ativos.copy()
-
-    if "Colaborador" not in atv.columns:
-        raise KeyError("Na Base colaboradores ativos não encontrei a coluna 'Colaborador'")
-
-    atv["nome_norm"] = atv["Colaborador"].apply(norm_text)
-    atv["nome_norm_flex"] = atv["Colaborador"].apply(norm_text_nome_flex)
-    atv["op_norm"] = atv["Operação"].apply(norm_text) if "Operação" in atv.columns else ""
-
-    ativos_lookup = (
-        atv[["nome_norm", "nome_norm_flex", "op_norm"]]
-        .dropna(subset=["nome_norm_flex"])
-        .drop_duplicates()
-        .copy()
-    )
-
-    status_lista = []
-    tipo_lista = []
-    score_lista = []
-
-    for _, row in base.iterrows():
-        status, tipo, score = status_ativo_por_nome(
-            nome_base=row.get("Colaborador", ""),
-            op_base=row.get("Operação", ""),
-            ativos_lookup=ativos_lookup
-        )
-        status_lista.append(status)
-        tipo_lista.append(tipo)
-        score_lista.append(score)
-
-    base["Status Colaborador"] = status_lista
-    base["match_ativo_tipo"] = tipo_lista
-    base["match_ativo_score"] = score_lista
-
-    return base
-
-# =========================
-# Vincular respostas
-# =========================
 def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
     if base_lookup.empty:
         return None, 0, "NAO_ENCONTRADO"
@@ -620,6 +580,7 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
 
     pool = base_lookup.copy()
 
+    # 1) Primeiro tenta por CPF, sempre respeitando a admissão <= resposta
     if cpf_resp:
         pool_cpf = pool[pool["cpf_clean"] == cpf_resp].copy()
         pool_cpf = pool_cpf[pool_cpf["Data_dt"] <= data_resp].copy()
@@ -627,6 +588,7 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
             pool_cpf = pool_cpf.sort_values("Data_dt", ascending=False)
             return pool_cpf.iloc[0], 100.0, "CPF_CONTRATO"
 
+    # 2) Depois tenta por nome, também respeitando a data
     pool = pool[pool["Data_dt"] <= data_resp].copy()
     if pool.empty:
         return None, 0, "SEM_CONTRATO_ANTERIOR"
@@ -635,7 +597,7 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
         nome_resp=nome_resp,
         base_lookup=pool,
         op_resp=op_resp,
-        score_min=88
+        score_min=84
     )
 
     if cand is None:
@@ -643,98 +605,48 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
 
     cand_nome = norm_text_nome_flex(cand["nome_norm"])
     nome_resp_flex = norm_text_nome_flex(nome_resp)
+
     inter = token_overlap(nome_resp_flex, cand_nome)
     primeiro_ok = primeiro_nome(nome_resp_flex) == primeiro_nome(cand_nome)
     ultimo_ok = ult_nome(nome_resp_flex) == ult_nome(cand_nome)
 
-    if not ((score >= 96 and inter >= 2 and primeiro_ok and ultimo_ok) or (score >= 98 and inter >= 3)):
+    # Regra mais flexível para casos reais de RH
+    aceite = False
+
+    if score >= 92 and inter >= 2 and primeiro_ok:
+        aceite = True
+    elif score >= 90 and inter >= 3:
+        aceite = True
+    elif score >= 95 and primeiro_ok and ultimo_ok:
+        aceite = True
+
+    if not aceite:
         return None, score, "NOME_REJEITADO"
 
+    # Se houver mais de um contrato com nome parecido antes da resposta,
+    # pega o mais recente entre os melhores matches
     pool_nome = pool.copy()
-    pool_nome["score_nome"] = pool_nome["nome_norm"].apply(lambda x: similaridade_nome(nome_resp_flex, norm_text_nome_flex(x)))
-    pool_nome = pool_nome[pool_nome["score_nome"] >= max(90, score - 1.5)].copy()
+    pool_nome["score_nome"] = pool_nome["nome_norm"].apply(
+        lambda x: similaridade_nome(nome_resp_flex, norm_text_nome_flex(x))
+    )
+
+    pool_nome["token_overlap"] = pool_nome["nome_norm"].apply(
+        lambda x: token_overlap(nome_resp_flex, norm_text_nome_flex(x))
+    )
+
+    pool_nome = pool_nome[
+        (pool_nome["score_nome"] >= max(88, score - 3)) &
+        (pool_nome["token_overlap"] >= max(2, inter))
+    ].copy()
 
     if not pool_nome.empty:
-        pool_nome = pool_nome.sort_values(["score_nome", "Data_dt"], ascending=[False, False])
+        pool_nome = pool_nome.sort_values(
+            ["score_nome", "token_overlap", "Data_dt"],
+            ascending=[False, False, False]
+        )
         return pool_nome.iloc[0], float(pool_nome.iloc[0]["score_nome"]), "NOME_FUZZY_CONTRATO"
 
     return cand, score, "NOME_FUZZY_CONTRATO"
-
-def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.DataFrame) -> dict:
-    base = base_oper.copy()
-    base["cpf_clean"] = base["cpf_clean"].fillna("")
-    base["nome_norm"] = base["nome_norm"].fillna("")
-    base["nome_norm_flex"] = base["nome_norm"].apply(norm_text_nome_flex)
-    base["op_norm"] = base["Operação"].apply(norm_text)
-
-    base_cols = [
-        "contrato_id", "cpf_clean", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação",
-        "Data", "Data_dt", "nome_norm", "nome_norm_flex", "op_norm", "Status Colaborador"
-    ]
-
-    nps_df = nps.copy()
-    nps_nome_col = "Informe seu nome completo:"
-    nps_cpf_col = "Informe seu CPF:"
-    nps_op_col = "Informe a operação que você trabalha:"
-
-    for c in [nps_nome_col, nps_cpf_col, "Data Cadastro"]:
-        if c not in nps_df.columns:
-            raise KeyError(f"No NPS Mentor não encontrei a coluna '{c}'")
-
-    nps_df["cpf_clean"] = nps_df[nps_cpf_col].apply(clean_cpf)
-    nps_df["nome_norm"] = nps_df[nps_nome_col].apply(norm_text)
-    nps_df["nome_norm_flex"] = nps_df[nps_nome_col].apply(norm_text_nome_flex)
-    nps_df["op_norm"] = nps_df[nps_op_col].apply(norm_text) if nps_op_col in nps_df.columns else ""
-    nps_df["Data Cadastro"] = pd.to_datetime(nps_df["Data Cadastro"], errors="coerce", dayfirst=True)
-    nps_df["DataHora Resposta"] = combinar_data_hora(nps_df, "Data Cadastro", "Horário da resposta")
-
-    bp = batepapo.copy()
-    bp_nome_col = "Insira o nome do colaborador:"
-    bp_cpf_col = "Inserir o CPF do colaborador:"
-
-    for c in [bp_nome_col, bp_cpf_col, "Data Cadastro"]:
-        if c not in bp.columns:
-            raise KeyError(f"No Bate papo mentor não encontrei a coluna '{c}'")
-
-    bp["cpf_clean"] = bp[bp_cpf_col].apply(clean_cpf)
-    bp["nome_norm"] = bp[bp_nome_col].apply(norm_text)
-    bp["nome_norm_flex"] = bp[bp_nome_col].apply(norm_text_nome_flex)
-    bp["op_norm"] = ""
-    bp["Data Cadastro"] = pd.to_datetime(bp["Data Cadastro"], errors="coerce", dayfirst=True)
-    bp["DataHora Resposta"] = combinar_data_hora(bp, "Data Cadastro", "Horário da resposta")
-
-    def aplicar_match_contrato(df_resp: pd.DataFrame) -> pd.DataFrame:
-        df = df_resp.copy()
-
-        for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
-            if col not in df.columns:
-                df[col] = pd.NA
-
-        df["match_tipo"] = "NAO_ENCONTRADO"
-        df["match_score"] = pd.NA
-
-        resultados = df.apply(lambda r: escolher_contrato_da_resposta(r, base[base_cols]), axis=1)
-
-        for idx, resultado in resultados.items():
-            base_row, score, tipo = resultado
-            df.at[idx, "match_tipo"] = tipo
-            df.at[idx, "match_score"] = score
-
-            if base_row is not None:
-                for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
-                    df.at[idx, col] = base_row[col]
-
-        return df
-
-    nps_m = aplicar_match_contrato(nps_df)
-    bp_m = aplicar_match_contrato(bp)
-
-    return {
-        "base_operacional": base,
-        "nps_vinculado": nps_m,
-        "batepapo_vinculado": bp_m,
-    }
-
 # =========================
 # Etapas
 # =========================
