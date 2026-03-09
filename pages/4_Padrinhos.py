@@ -433,7 +433,6 @@ def status_ativo_por_nome(nome_base: str, op_base: str, ativos_lookup: pd.DataFr
     nome_norm = norm_text_nome_flex(nome_base)
     op_norm = norm_text(op_base)
 
-    # 1) exato por nome normalizado
     exato = ativos_lookup[ativos_lookup["nome_norm_flex"] == nome_norm].copy()
     if op_norm and "op_norm" in exato.columns:
         exato_op = exato[exato["op_norm"] == op_norm].copy()
@@ -443,7 +442,6 @@ def status_ativo_por_nome(nome_base: str, op_base: str, ativos_lookup: pd.DataFr
     if not exato.empty:
         return "Ativo", "NOME_EXATO", 100.0
 
-    # 2) fuzzy mais restritivo para não marcar falso positivo
     pool = ativos_lookup.copy()
     if op_norm and "op_norm" in pool.columns:
         pool_op = pool[pool["op_norm"] == op_norm].copy()
@@ -622,7 +620,6 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
 
     pool = base_lookup.copy()
 
-    # Primeiro tenta CPF, mas sempre respeitando data da admissão <= data da resposta
     if cpf_resp:
         pool_cpf = pool[pool["cpf_clean"] == cpf_resp].copy()
         pool_cpf = pool_cpf[pool_cpf["Data_dt"] <= data_resp].copy()
@@ -630,7 +627,6 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
             pool_cpf = pool_cpf.sort_values("Data_dt", ascending=False)
             return pool_cpf.iloc[0], 100.0, "CPF_CONTRATO"
 
-    # Depois nome aproximado, respeitando data da admissão <= data da resposta
     pool = pool[pool["Data_dt"] <= data_resp].copy()
     if pool.empty:
         return None, 0, "SEM_CONTRATO_ANTERIOR"
@@ -654,7 +650,6 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
     if not ((score >= 96 and inter >= 2 and primeiro_ok and ultimo_ok) or (score >= 98 and inter >= 3)):
         return None, score, "NOME_REJEITADO"
 
-    # Se houver mais de um contrato desse mesmo colaborador antes da resposta, pega o mais recente
     pool_nome = pool.copy()
     pool_nome["score_nome"] = pool_nome["nome_norm"].apply(lambda x: similaridade_nome(nome_resp_flex, norm_text_nome_flex(x)))
     pool_nome = pool_nome[pool_nome["score_nome"] >= max(90, score - 1.5)].copy()
@@ -677,7 +672,6 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         "Data", "Data_dt", "nome_norm", "nome_norm_flex", "op_norm", "Status Colaborador"
     ]
 
-    # ---------- NPS ----------
     nps_df = nps.copy()
     nps_nome_col = "Informe seu nome completo:"
     nps_cpf_col = "Informe seu CPF:"
@@ -694,7 +688,6 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     nps_df["Data Cadastro"] = pd.to_datetime(nps_df["Data Cadastro"], errors="coerce", dayfirst=True)
     nps_df["DataHora Resposta"] = combinar_data_hora(nps_df, "Data Cadastro", "Horário da resposta")
 
-    # ---------- BATE PAPO ----------
     bp = batepapo.copy()
     bp_nome_col = "Insira o nome do colaborador:"
     bp_cpf_col = "Inserir o CPF do colaborador:"
@@ -802,9 +795,24 @@ def status_prazo(data_realizacao, prazo_min, prazo_max, hoje):
         return "Realizado no prazo"
     return "Realizado fora do prazo"
 
-def dias_para_prazo_max(prazo_max, hoje):
+def calcular_dias(status, data_realizacao, prazo_min, prazo_max, hoje):
     if pd.isna(prazo_max):
         return pd.NA
+
+    if pd.isna(data_realizacao):
+        return (prazo_max.normalize() - hoje.normalize()).days
+
+    if status == "Realizado fora do prazo":
+        return (prazo_max.normalize() - pd.Timestamp(data_realizacao).normalize()).days
+
+    if status == "Realizado antes do prazo":
+        if pd.isna(prazo_min):
+            return pd.NA
+        return (prazo_min.normalize() - pd.Timestamp(data_realizacao).normalize()).days
+
+    if status == "Realizado no prazo":
+        return (prazo_max.normalize() - pd.Timestamp(data_realizacao).normalize()).days
+
     return (prazo_max.normalize() - hoje.normalize()).days
 
 def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
@@ -834,7 +842,6 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
             col_realizacao = "DataHora Resposta" if "DataHora Resposta" in form_et.columns else "Data Cadastro"
             form_et[col_realizacao] = pd.to_datetime(form_et[col_realizacao], errors="coerce", dayfirst=True)
 
-            # Garante somente resposta posterior à admissão do contrato vinculado
             if "Data_dt" in form_et.columns:
                 form_et = form_et[form_et[col_realizacao] >= form_et["Data_dt"]].copy()
 
@@ -852,7 +859,17 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
             lambda r: status_prazo(r["Data Realização"], r["Prazo Mín"], r["Prazo Máx"], hoje),
             axis=1,
         )
-        tmp["Dias p/ Prazo Máx"] = tmp["Prazo Máx"].apply(lambda d: dias_para_prazo_max(d, hoje))
+
+        tmp["Dias"] = tmp.apply(
+            lambda r: calcular_dias(
+                r["Status"],
+                r["Data Realização"],
+                r["Prazo Mín"],
+                r["Prazo Máx"],
+                hoje
+            ),
+            axis=1,
+        )
 
         ordem = pd.CategoricalDtype(
             categories=[
@@ -865,7 +882,7 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
             ordered=True,
         )
         tmp["Status"] = tmp["Status"].astype(ordem)
-        tmp = tmp.sort_values(["Status", "Dias p/ Prazo Máx"], ascending=[True, True])
+        tmp = tmp.sort_values(["Status", "Dias"], ascending=[True, True])
 
         farois[etapa["chave"]] = tmp
 
@@ -890,7 +907,7 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
 
     mask_atenc_7 = (
         (df_farol["Status"] == "Não realizado - Atenção") &
-        (pd.to_numeric(df_farol["Dias p/ Prazo Máx"], errors="coerce") <= 7)
+        (pd.to_numeric(df_farol["Dias"], errors="coerce") <= 7)
     )
     pend_atenc_7 = int(mask_atenc_7.sum())
 
@@ -946,17 +963,16 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     cols_show = [
         "Status Colaborador", "Operação", "Colaborador", "CPF", "Cargo",
         "Data_dt", "Etapa", "Prazo Mín", "Prazo Máx", "Data Realização",
-        "Dias p/ Prazo Máx", "Status"
+        "Dias", "Status"
     ]
     cols_show = [c for c in cols_show if c in tabela.columns]
     tabela = tabela[cols_show].rename(columns={"Data_dt": "Data Admissão"})
     tabela = formatar_datas_para_tabela(tabela)
 
-    # garante Etapa logo após Data Admissão
     ordem_final = [
         "Status Colaborador", "Operação", "Colaborador", "CPF", "Cargo",
         "Data Admissão", "Etapa", "Prazo Mín", "Prazo Máx", "Data Realização",
-        "Dias p/ Prazo Máx", "Status"
+        "Dias", "Status"
     ]
     tabela = tabela[[c for c in ordem_final if c in tabela.columns]]
 
@@ -1528,9 +1544,6 @@ with resp_tabs[1]:
         bp_terceira = pd.DataFrame()
         bp_ultima = pd.DataFrame()
 
-    # =========================
-    # Segunda Semana
-    # =========================
     st.markdown('<div class="titulo-amarelo">➡️Segunda Semana</div>', unsafe_allow_html=True)
 
     graficos_segunda = [
@@ -1565,9 +1578,6 @@ with resp_tabs[1]:
                 with cols_lista_seg[idx]:
                     render_lista_respostas(bp_segunda, coluna)
 
-    # =========================
-    # Terceira Semana
-    # =========================
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="titulo-amarelo">➡️Terceira Semana</div>', unsafe_allow_html=True)
 
@@ -1628,9 +1638,6 @@ with resp_tabs[1]:
         else:
             st.info("Sem respostas abertas para a Terceira Semana.")
 
-    # =========================
-    # Última Semana
-    # =========================
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="titulo-amarelo">➡️Última Semana</div>', unsafe_allow_html=True)
 
