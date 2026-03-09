@@ -694,6 +694,9 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         "Data", "Data_dt", "nome_norm", "nome_norm_flex", "op_norm", "Status Colaborador"
     ]
 
+    # =========================
+    # NPS
+    # =========================
     nps_df = nps.copy()
     nps_nome_col = "Informe seu nome completo:"
     nps_cpf_col = "Informe seu CPF:"
@@ -710,6 +713,9 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     nps_df["Data Cadastro"] = pd.to_datetime(nps_df["Data Cadastro"], errors="coerce", dayfirst=True)
     nps_df["DataHora Resposta"] = combinar_data_hora(nps_df, "Data Cadastro", "Horário da resposta")
 
+    # =========================
+    # Bate-papo
+    # =========================
     bp = batepapo.copy()
     bp_nome_col = "Insira o nome do colaborador:"
     bp_cpf_col = "Inserir o CPF do colaborador:"
@@ -725,8 +731,12 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     bp["Data Cadastro"] = pd.to_datetime(bp["Data Cadastro"], errors="coerce", dayfirst=True)
     bp["DataHora Resposta"] = combinar_data_hora(bp, "Data Cadastro", "Horário da resposta")
 
-    def aplicar_match_contrato(df_resp: pd.DataFrame) -> pd.DataFrame:
+    # =========================
+    # Helper: vincular por CPF primeiro
+    # =========================
+    def vincular_por_cpf_e_data(df_resp: pd.DataFrame) -> pd.DataFrame:
         df = df_resp.copy()
+        df["_orig_idx"] = df.index
 
         for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
             if col not in df.columns:
@@ -735,21 +745,62 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         df["match_tipo"] = "NAO_ENCONTRADO"
         df["match_score"] = pd.NA
 
-        resultados = df.apply(lambda r: escolher_contrato_da_resposta(r, base[base_cols]), axis=1)
+        col_data_resp = "DataHora Resposta" if "DataHora Resposta" in df.columns else "Data Cadastro"
+        df[col_data_resp] = pd.to_datetime(df[col_data_resp], errors="coerce", dayfirst=True)
 
-        for idx, resultado in resultados.items():
-            base_row, score, tipo = resultado
-            df.at[idx, "match_tipo"] = tipo
-            df.at[idx, "match_score"] = score
+        base_cpf = base[base_cols].copy()
+        base_cpf = base_cpf[base_cpf["cpf_clean"].astype(str).str.len() == 11].copy()
+        base_cpf = base_cpf.sort_values(["cpf_clean", "Data_dt"]).reset_index(drop=True)
 
-            if base_row is not None:
+        df_cpf = df.copy()
+        df_cpf = df_cpf[df_cpf["cpf_clean"].astype(str).str.len() == 11].copy()
+        df_cpf = df_cpf.sort_values(["cpf_clean", col_data_resp]).reset_index(drop=True)
+
+        if not df_cpf.empty and not base_cpf.empty:
+            merged = pd.merge_asof(
+                df_cpf,
+                base_cpf,
+                left_on=col_data_resp,
+                right_on="Data_dt",
+                by="cpf_clean",
+                direction="backward",
+                suffixes=("", "_base")
+            )
+
+            idx_ok = merged["_orig_idx"][merged["contrato_id"].notna()].tolist()
+
+            for _, row in merged[merged["contrato_id"].notna()].iterrows():
+                idx = row["_orig_idx"]
                 for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
-                    df.at[idx, col] = base_row[col]
+                    df.at[idx, col] = row[col]
+                df.at[idx, "match_tipo"] = "CPF_CONTRATO"
+                df.at[idx, "match_score"] = 100.0
 
+        # =========================
+        # Fallback: fuzzy para o que sobrou sem contrato_id
+        # =========================
+        falt = df["contrato_id"].isna()
+        if falt.any():
+            resultados = df.loc[falt].apply(lambda r: escolher_contrato_da_resposta(r, base[base_cols]), axis=1)
+
+            for idx, resultado in resultados.items():
+                base_row, score, tipo = resultado
+
+                # só sobrescreve se encontrou algo melhor
+                if base_row is not None:
+                    for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                        df.at[idx, col] = base_row[col]
+                    df.at[idx, "match_tipo"] = tipo
+                    df.at[idx, "match_score"] = score
+                else:
+                    df.at[idx, "match_tipo"] = tipo
+                    df.at[idx, "match_score"] = score
+
+        df = df.sort_values("_orig_idx").drop(columns=["_orig_idx"])
         return df
 
-    nps_m = aplicar_match_contrato(nps_df)
-    bp_m = aplicar_match_contrato(bp)
+    nps_m = vincular_por_cpf_e_data(nps_df)
+    bp_m = vincular_por_cpf_e_data(bp)
 
     return {
         "base_operacional": base,
