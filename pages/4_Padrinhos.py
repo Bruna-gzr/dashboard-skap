@@ -335,6 +335,15 @@ def carregar_excel_primeira_aba(path: Path) -> pd.DataFrame:
     xls = pd.ExcelFile(path)
     return pd.read_excel(xls, sheet_name=xls.sheet_names[0])
 
+def obter_ultima_atualizacao_arquivos(paths: list[Path]) -> pd.Timestamp | None:
+    datas = []
+    for p in paths:
+        if p.exists():
+            datas.append(pd.to_datetime(datetime.fromtimestamp(p.stat().st_mtime)))
+    if not datas:
+        return None
+    return max(datas)
+
 def to_excel_bytes(df: pd.DataFrame, sheet_name: str = "dados") -> bytes:
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -694,9 +703,7 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         "Data", "Data_dt", "nome_norm", "nome_norm_flex", "op_norm", "Status Colaborador"
     ]
 
-    # =========================
-    # NPS
-    # =========================
+    # ---------- NPS ----------
     nps_df = nps.copy()
     nps_nome_col = "Informe seu nome completo:"
     nps_cpf_col = "Informe seu CPF:"
@@ -713,9 +720,7 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     nps_df["Data Cadastro"] = pd.to_datetime(nps_df["Data Cadastro"], errors="coerce", dayfirst=True)
     nps_df["DataHora Resposta"] = combinar_data_hora(nps_df, "Data Cadastro", "Horário da resposta")
 
-    # =========================
-    # Bate-papo
-    # =========================
+    # ---------- BP ----------
     bp = batepapo.copy()
     bp_nome_col = "Insira o nome do colaborador:"
     bp_cpf_col = "Inserir o CPF do colaborador:"
@@ -1373,15 +1378,6 @@ try:
 except Exception as e:
     st.error(f"Erro ao carregar arquivos: {e}")
     st.stop()
-
-def obter_ultima_atualizacao_arquivos(paths: list[Path]) -> pd.Timestamp | None:
-    datas = []
-    for p in paths:
-        if p.exists():
-            datas.append(pd.to_datetime(datetime.fromtimestamp(p.stat().st_mtime)))
-    if not datas:
-        return None
-    return max(datas)
 
 # =========================
 # Pipeline principal
