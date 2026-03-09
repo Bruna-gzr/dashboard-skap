@@ -120,7 +120,7 @@ div[data-baseweb="input"] > div {
 }
 
 .lista-scroll {
-    height: 960px; /* ~30 linhas visíveis */
+    height: 520px;
     overflow-y: auto;
     overflow-x: hidden;
     background: #1f1f1f;
@@ -1090,6 +1090,7 @@ def render_grafico_resposta(df: pd.DataFrame, coluna: str, key_prefix: str):
         )
 
 def render_lista_respostas(df: pd.DataFrame, coluna: str):
+
     textos = (
         df[coluna]
         .astype(str)
@@ -1099,20 +1100,26 @@ def render_lista_respostas(df: pd.DataFrame, coluna: str):
         .tolist()
     )
 
-    st.markdown(
-        f'<div class="lista-box"><div class="lista-titulo">{coluna}</div><div class="lista-scroll">',
-        unsafe_allow_html=True
-    )
+    linhas_html = ""
 
     if not textos:
-        st.markdown('<div class="lista-linha">Sem respostas.</div></div></div>', unsafe_allow_html=True)
-        return
+        linhas_html = '<div class="lista-linha">Sem respostas.</div>'
+    else:
+        for txt in textos:
+            safe_txt = str(txt).replace("<", "&lt;").replace(">", "&gt;")
+            linhas_html += f'<div class="lista-linha">{safe_txt}</div>'
 
-    for txt in textos:
-        safe_txt = str(txt).replace("<", "&lt;").replace(">", "&gt;")
-        st.markdown(f'<div class="lista-linha">{safe_txt}</div>', unsafe_allow_html=True)
+    html = f"""
+    <div class="lista-box">
+        <div class="lista-titulo">{coluna}</div>
 
-    st.markdown('</div></div>', unsafe_allow_html=True)
+        <div class="lista-scroll">
+            {linhas_html}
+        </div>
+    </div>
+    """
+
+    st.markdown(html, unsafe_allow_html=True)
 
 def render_card_data_resposta(df: pd.DataFrame, titulo="Registro da resposta"):
     if df.empty:
