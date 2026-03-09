@@ -787,15 +787,27 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
             merged = pd.concat(partes, ignore_index=True) if partes else pd.DataFrame()
 
             if not merged.empty:
-                for _, row in merged[merged["contrato_id"].notna()].iterrows():
-                    idx = row["_orig_idx"]
-                    for col in [
-                        "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo",
-                        "Operação", "Data", "Data_dt", "Status Colaborador"
-                    ]:
-                        df.at[idx, col] = row[col]
-                    df.at[idx, "match_tipo"] = "CPF_CONTRATO"
-                    df.at[idx, "match_score"] = 100.0
+    for _, row in merged[merged["contrato_id_base"].notna()]
+        idx = row["_orig_idx"]
+
+        mapa_cols = {
+            "contrato_id": "contrato_id_base",
+            "Colaborador": "Colaborador_base",
+            "CPF": "CPF_base",
+            "Cargo": "Cargo_base",
+            "Tipo Cargo": "Tipo Cargo_base",
+            "Operação": "Operação_base",
+            "Data": "Data_base",
+            "Data_dt": "Data_dt_base",
+            "Status Colaborador": "Status Colaborador_base",
+        }
+
+        for col_destino, col_origem in mapa_cols.items():
+            if col_origem in row.index:
+                df.at[idx, col_destino] = row[col_origem]
+
+        df.at[idx, "match_tipo"] = "CPF_CONTRATO"
+        df.at[idx, "match_score"] = 100.0
 
         falt = df["contrato_id"].isna()
         if falt.any():
