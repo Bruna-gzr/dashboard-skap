@@ -945,6 +945,11 @@ def render_grafico_resposta(df: pd.DataFrame, coluna: str, key_prefix: str):
     total = base["Qtd"].sum()
     base["%"] = (base["Qtd"] / total) * 100
 
+    # ordena respostas mais relevantes
+    ordem = {"Sim": 0, "Não": 1, "Nao": 1}
+    base["ordem"] = base["Resposta"].map(ordem).fillna(99)
+    base = base.sort_values(["ordem", "%"], ascending=[True, False]).drop(columns="ordem")
+
     cores = []
     for r in base["Resposta"]:
         rr = norm_text(r)
@@ -955,49 +960,66 @@ def render_grafico_resposta(df: pd.DataFrame, coluna: str, key_prefix: str):
         else:
             cores.append("#f0d36b")
 
+    # título fora do gráfico
+    st.markdown(
+        f"""
+        <div style="
+            background:#151515;
+            border:1px solid #2a2a2a;
+            border-radius:14px 14px 0 0;
+            padding:10px 12px 6px 12px;
+            min-height:70px;
+            color:#ffffff;
+            font-weight:700;
+            font-size:0.95rem;
+            line-height:1.3;
+        ">
+            {coluna}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     fig = px.bar(
         base,
-        x="Resposta",
-        y="%",
-        text=base["%"].round(2).astype(str) + "%",
+        x="%",
+        y="Resposta",
+        orientation="h",
+        text=base["%"].round(1).astype(str) + "%",
     )
+
     fig.update_traces(
         marker_color=cores,
         textposition="outside",
         cliponaxis=False,
-        marker_line_color="#d9d9d9",
-        marker_line_width=0.5,
-        width=0.42
+        marker_line_width=0,
+        hovertemplate="<b>%{y}</b><br>%{x:.1f}%<extra></extra>"
     )
+
     fig.update_layout(
-        height=330,
+        height=max(170, 70 + (len(base) * 42)),
+        margin=dict(l=10, r=20, t=10, b=10),
         template="plotly_dark",
-        margin=dict(l=8, r=8, t=105, b=10),
         showlegend=False,
-        title=dict(
-            text=wrap_title(coluna, 40),
-            x=0.5,
-            xanchor="center",
-            y=0.97,
-            font=dict(size=13, color="#ffffff")
-        ),
-        yaxis=dict(
+        paper_bgcolor="#1f1f1f",
+        plot_bgcolor="#1f1f1f",
+        xaxis=dict(
             range=[0, 100],
-            title="",
             showgrid=False,
             zeroline=False,
             showticklabels=False,
-            visible=False
+            visible=False,
+            title=""
         ),
-        xaxis=dict(
+        yaxis=dict(
+            showgrid=False,
+            zeroline=False,
             title="",
-            showgrid=False
+            tickfont=dict(size=12, color="#ffffff")
         ),
-        plot_bgcolor="#3e3e3e",
-        paper_bgcolor="#2b2b2b",
-        font=dict(color="#f5f5f5"),
-        bargap=0.55,
+        bargap=0.35,
     )
+
     st.plotly_chart(fig, width="stretch", key=key_prefix)
 
 def render_lista_respostas(df: pd.DataFrame, coluna: str, limite_visual=30):
@@ -1318,11 +1340,11 @@ with resp_tabs[0]:
     if nps_primeira.empty:
         st.info("Sem respostas para os filtros selecionados.")
     else:
-        cols = st.columns(4)
-        for i, coluna in enumerate(colunas_primeira_semana):
-            if coluna in nps_primeira.columns:
-                with cols[i % 4]:
-                    render_grafico_resposta(nps_primeira, coluna, key_prefix=f"nps_p1_{i}")
+        cols = st.columns(2, gap="large")
+for i, coluna in enumerate(colunas_primeira_semana):
+    if coluna in nps_primeira.columns:
+        with cols[i % 2]:
+            render_grafico_resposta(nps_primeira, coluna, key_prefix=f"nps_p1_{i}")
 
         col_card = st.columns([1, 3])[0]
         with col_card:
@@ -1334,11 +1356,12 @@ with resp_tabs[0]:
     if nps_ultima.empty:
         st.info("Sem respostas para os filtros selecionados.")
     else:
-        cols2 = st.columns(3)
-        for i, coluna in enumerate(colunas_ultima_semana):
-            if coluna in nps_ultima.columns:
-                with cols2[i % 3]:
-                    render_grafico_resposta(nps_ultima, coluna, key_prefix=f"nps_p2_{i}")
+        cols = st.columns(2, gap="large")
+
+for i, coluna in enumerate(colunas_ultima_semana):
+    if coluna in nps_ultima.columns:
+        with cols[i % 2]:
+            render_grafico_resposta(nps_ultima, coluna, key_prefix=f"nps_p2_{i}")
 
         col_card2 = st.columns([1, 3])[0]
         with col_card2:
@@ -1385,11 +1408,12 @@ with resp_tabs[1]:
     if bp_segunda.empty:
         st.info("Sem respostas para os filtros selecionados.")
     else:
-        cols_seg = st.columns(4)
-        for i, coluna in enumerate(graficos_segunda):
-            if coluna in bp_segunda.columns:
-                with cols_seg[i % 4]:
-                    render_grafico_resposta(bp_segunda, coluna, key_prefix=f"bp_s2_{i}")
+        cols = st.columns(2, gap="large")
+
+for i, coluna in enumerate(graficos_segunda):
+    if coluna in bp_segunda.columns:
+        with cols[i % 2]:
+            render_grafico_resposta(bp_segunda, coluna, key_prefix=f"bp_s2_{i}")
 
         col_card_bp2 = st.columns([1, 3])[0]
         with col_card_bp2:
@@ -1421,11 +1445,12 @@ with resp_tabs[1]:
     if bp_terceira.empty:
         st.info("Sem respostas para os filtros selecionados.")
     else:
-        cols_ter = st.columns(3)
-        for i, coluna in enumerate(graficos_terceira):
-            if coluna in bp_terceira.columns:
-                with cols_ter[i % 3]:
-                    render_grafico_resposta(bp_terceira, coluna, key_prefix=f"bp_s3_{i}")
+        cols = st.columns(2, gap="large")
+
+for i, coluna in enumerate(graficos_terceira):
+    if coluna in bp_terceira.columns:
+        with cols[i % 2]:
+            render_grafico_resposta(bp_terceira, coluna, key_prefix=f"bp_s3_{i}")
 
         col_card_bp3 = st.columns([1, 3])[0]
         with col_card_bp3:
@@ -1461,11 +1486,12 @@ with resp_tabs[1]:
     if bp_ultima.empty:
         st.info("Sem respostas para os filtros selecionados.")
     else:
-        cols_ult = st.columns(4)
-        for i, coluna in enumerate(graficos_ultima):
-            if coluna in bp_ultima.columns:
-                with cols_ult[i % 4]:
-                    render_grafico_resposta(bp_ultima, coluna, key_prefix=f"bp_su_{i}")
+        cols = st.columns(2, gap="large")
+
+for i, coluna in enumerate(graficos_ultima):
+    if coluna in bp_ultima.columns:
+        with cols[i % 2]:
+            render_grafico_resposta(bp_ultima, coluna, key_prefix=f"bp_su_{i}")
 
         col_card_bpu = st.columns([1, 3])[0]
         with col_card_bpu:
