@@ -1537,10 +1537,19 @@ with resp_tabs[1]:
     ]
 
     listas_terceira = []
-    for c in bp_terceira.columns:
-        if "Como foi sua rotina nesta semana?" in c:
-            listas_terceira.append(c)
-        if "Você tem alguma dúvida ou algo que eu possa te ajudar?" in c:
+
+for c in bp_terceira.columns:
+    if "Como foi sua rotina nesta semana?" in c or "Você tem alguma dúvida ou algo que eu possa te ajudar?" in c:
+        qtd_validas = (
+            bp_terceira[c]
+            .astype(str)
+            .str.strip()
+            .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA, "-": pd.NA})
+            .dropna()
+            .shape[0]
+        )
+
+        if qtd_validas > 0:
             listas_terceira.append(c)
 
     if bp_terceira.empty:
