@@ -1412,7 +1412,7 @@ with resp_tabs[0]:
         nps_primeira = pd.DataFrame()
         nps_ultima = pd.DataFrame()
 
-    st.markdown('<div class="titulo-branco">Primeira semana junto ao padrinho.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">➡️Primeira semana junto ao padrinho.</div>', unsafe_allow_html=True)
 
     if nps_primeira.empty:
         st.info("Sem respostas para os filtros selecionados.")
@@ -1428,7 +1428,7 @@ with resp_tabs[0]:
             render_card_data_resposta(nps_primeira, titulo="Registro da resposta")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="titulo-branco">Última semana junto ao padrinho.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">➡️Última semana junto ao padrinho.</div>', unsafe_allow_html=True)
 
     if nps_ultima.empty:
         st.info("Sem respostas para os filtros selecionados.")
@@ -1466,7 +1466,7 @@ with resp_tabs[1]:
         bp_terceira = pd.DataFrame()
         bp_ultima = pd.DataFrame()
 
-    st.markdown('<div class="titulo-amarelo">Segunda Semana</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">➡️Segunda Semana</div>', unsafe_allow_html=True)
 
     graficos_segunda = [
         "Você conhece quais são os EPIs obrigatórios da sua função?",
@@ -1502,7 +1502,7 @@ with resp_tabs[1]:
                 idx += 1
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="titulo-amarelo">Terceira Semana</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">➡️Terceira Semana</div>', unsafe_allow_html=True)
 
     graficos_terceira = [
         "Você conhece a rotina de reuniões semanais que você deve participar?",
@@ -1528,16 +1528,18 @@ with resp_tabs[1]:
         with col_card_bp3:
             render_card_data_resposta(bp_terceira, titulo="Registro da resposta")
 
-        cols_lista_ter = st.columns(len([c for c in listas_terceira if c in bp_terceira.columns]) or 1)
-        idx = 0
-        for coluna in listas_terceira:
-            if coluna in bp_terceira.columns:
-                with cols_lista_ter[idx]:
-                    render_lista_respostas(bp_terceira, coluna)
-                idx += 1
+        listas_terceira_exist = [c for c in listas_terceira if c in bp_terceira.columns]
+
+if listas_terceira_exist:
+    cols_lista_ter = st.columns(len(listas_terceira_exist))
+    for idx, coluna in enumerate(listas_terceira_exist):
+        with cols_lista_ter[idx]:
+            render_lista_respostas(bp_terceira, coluna)
+else:
+    st.info("Sem respostas abertas para a Terceira Semana.")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="titulo-amarelo">Última Semana</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">➡️Última Semana</div>', unsafe_allow_html=True)
 
     graficos_ultima = [
         "Você se sente integrado a empresa?",
