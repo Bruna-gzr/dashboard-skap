@@ -1539,18 +1539,35 @@ with resp_tabs[1]:
     listas_terceira = []
 
 for c in bp_terceira.columns:
-    if "Como foi sua rotina nesta semana?" in c or "Você tem alguma dúvida ou algo que eu possa te ajudar?" in c:
-        qtd_validas = (
-            bp_terceira[c]
+    listas_terceira = []
+
+perguntas_base = [
+    "Como foi sua rotina nesta semana?",
+    "Você tem alguma dúvida ou algo que eu possa te ajudar?"
+]
+
+for pergunta in perguntas_base:
+
+    colunas_equivalentes = [c for c in bp_terceira.columns if pergunta in c]
+
+    if not colunas_equivalentes:
+        continue
+
+    respostas = []
+
+    for col in colunas_equivalentes:
+        respostas.extend(
+            bp_terceira[col]
             .astype(str)
             .str.strip()
             .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA, "-": pd.NA})
             .dropna()
-            .shape[0]
+            .tolist()
         )
 
-        if qtd_validas > 0:
-            listas_terceira.append(c)
+    if respostas:
+        bp_terceira[pergunta] = respostas
+        listas_terceira.append(pergunta)
 
     if bp_terceira.empty:
         st.info("Sem respostas para os filtros selecionados.")
