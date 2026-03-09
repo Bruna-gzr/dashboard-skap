@@ -168,91 +168,6 @@ div[data-baseweb="input"] > div {
     margin-top: 8px;
     margin-bottom: 10px;
 }
-
-/* Cards KPI das respostas */
-.kpi-card {
-    background: #171717;
-    border: 1px solid #2d2d2d;
-    border-radius: 16px;
-    padding: 14px 14px 12px 14px;
-    margin-bottom: 12px;
-    min-height: 220px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.25);
-}
-
-.kpi-title {
-    color: #ffffff;
-    font-weight: 700;
-    font-size: 0.96rem;
-    line-height: 1.3;
-    min-height: 62px;
-    margin-bottom: 14px;
-}
-
-.kpi-main {
-    color: #ffffff;
-    font-weight: 800;
-    font-size: 2rem;
-    line-height: 1;
-    margin-bottom: 12px;
-}
-
-.kpi-sub {
-    color: #cfcfcf;
-    font-size: 0.88rem;
-    margin-bottom: 10px;
-}
-
-.kpi-progress-wrap {
-    width: 100%;
-    height: 14px;
-    background: #2b2b2b;
-    border-radius: 999px;
-    overflow: hidden;
-    margin-bottom: 12px;
-    border: 1px solid #3a3a3a;
-}
-
-.kpi-progress-bar {
-    height: 100%;
-    border-radius: 999px;
-}
-
-.kpi-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 8px;
-    margin-top: 8px;
-}
-
-.kpi-mini {
-    background: #202020;
-    border: 1px solid #303030;
-    border-radius: 10px;
-    padding: 8px 8px;
-    text-align: center;
-}
-
-.kpi-mini-label {
-    color: #bfbfbf;
-    font-size: 0.78rem;
-    margin-bottom: 4px;
-}
-
-.kpi-mini-value {
-    color: #ffffff;
-    font-size: 1rem;
-    font-weight: 700;
-}
-
-.kpi-badge {
-    display: inline-block;
-    margin-top: 8px;
-    padding: 5px 9px;
-    border-radius: 999px;
-    font-size: 0.78rem;
-    font-weight: 700;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1166,6 +1081,29 @@ def render_lista_respostas_lista(titulo: str, textos: list):
 """,
                 unsafe_allow_html=True
             )
+
+def render_card_data_resposta(df: pd.DataFrame, titulo="Registro da resposta"):
+    if df.empty:
+        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
+        return
+
+    col_dt = "DataHora Resposta" if "DataHora Resposta" in df.columns else "Data Cadastro"
+    if col_dt not in df.columns:
+        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
+        return
+
+    dt = pd.to_datetime(df[col_dt], errors="coerce", dayfirst=True).max()
+    if pd.isna(dt):
+        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
+        return
+
+    data_fmt = dt.strftime("%d/%m/%Y")
+    hora_fmt = dt.strftime("%H:%M")
+    st.markdown(
+        f'<div class="info-box"><b>{titulo}</b><br>{data_fmt} às {hora_fmt}</div>',
+        unsafe_allow_html=True
+    )
+
 def render_info_colaborador(df: pd.DataFrame, coluna_padrinho: str):
     if not filtro_colaborador or len(filtro_colaborador) != 1:
         return
@@ -1191,52 +1129,6 @@ def render_info_colaborador(df: pd.DataFrame, coluna_padrinho: str):
         unsafe_allow_html=True
     )
 
-def render_card_data_resposta(df: pd.DataFrame, titulo="Registro da resposta"):
-    if df.empty:
-        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
-        return
-
-    col_dt = "DataHora Resposta" if "DataHora Resposta" in df.columns else "Data Cadastro"
-    if col_dt not in df.columns:
-        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
-        return
-
-    dt = pd.to_datetime(df[col_dt], errors="coerce", dayfirst=True).max()
-    if pd.isna(dt):
-        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
-        return
-
-    data_fmt = dt.strftime("%d/%m/%Y")
-    hora_fmt = dt.strftime("%H:%M")
-    st.markdown(
-        f'<div class="info-box"><b>{titulo}</b><br>{data_fmt} às {hora_fmt}</div>',
-        unsafe_allow_html=True
-    )
-
-def render_lista_respostas_lista(titulo: str, textos: list):
-    st.markdown(
-        f"""
-        <div class="lista-box">
-            <div class="lista-titulo">{titulo}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    with st.container(height=520, border=False):
-        if not textos:
-            st.write("Sem respostas.")
-            return
-
-        for txt in textos:
-            st.markdown(
-                f"""
-<div style="padding:6px 4px;border-bottom:1px solid #2a2a2a;">
-{txt}
-</div>
-""",
-                unsafe_allow_html=True
-            )    
 # =========================
 # Paths
 # =========================
@@ -1519,7 +1411,76 @@ with resp_tabs[0]:
 
         textos_existentes = [c for c in colunas_texto_ultima if c in nps_ultima.columns]
         if textos_existentes:
-                st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            cols_texto = st.columns(len(textos_existentes))
+            for i, coltxt in enumerate(textos_existentes):
+                with cols_texto[i]:
+                    render_lista_respostas(nps_ultima, coltxt)
+
+with resp_tabs[1]:
+    bp_f = filtrar_respostas_por_sidebar(df_bp)
+    render_info_colaborador(bp_f, "Informe o nome do padrinho:")
+
+    coluna_semana_bp = "Selecione a semana do bate papo:"
+
+    if coluna_semana_bp in bp_f.columns:
+        bp_segunda = bp_f[
+            bp_f[coluna_semana_bp].astype(str).str.strip().eq("Segunda Semana")
+        ].copy()
+
+        bp_terceira = bp_f[
+            bp_f[coluna_semana_bp].astype(str).str.strip().eq("Terceira Semana")
+        ].copy()
+
+        bp_ultima = bp_f[
+            bp_f[coluna_semana_bp].astype(str).str.strip().eq("Última Semana")
+        ].copy()
+    else:
+        bp_segunda = pd.DataFrame()
+        bp_terceira = pd.DataFrame()
+        bp_ultima = pd.DataFrame()
+
+    # =========================
+    # Segunda Semana
+    # =========================
+    st.markdown('<div class="titulo-amarelo">➡️Segunda Semana</div>', unsafe_allow_html=True)
+
+    graficos_segunda = [
+        "Você conhece quais são os EPIs obrigatórios da sua função?",
+        "Você já se sentiu confortável em interagir com sua equipe de trabalho?",
+        "De forma prática, você conseguiu executar suas atividades nessa primeira semana?",
+        "Você sabe como utilizar as ferramentas de trabalho que fazem parte de sua rotina?",
+    ]
+
+    listas_segunda = [
+        "Você tem alguma dúvida ou algo que eu possa te ajudar?",
+        "Como foi sua rotina nesta semana?",
+    ]
+
+    if bp_segunda.empty:
+        st.info("Sem respostas para os filtros selecionados.")
+    else:
+        cols = st.columns(2, gap="large")
+        for i, coluna in enumerate(graficos_segunda):
+            if coluna in bp_segunda.columns:
+                with cols[i % 2]:
+                    render_grafico_resposta(bp_segunda, coluna, key_prefix=f"bp_s2_{i}")
+
+        col_card_bp2 = st.columns([1, 3])[0]
+        with col_card_bp2:
+            render_card_data_resposta(bp_segunda, titulo="Registro da resposta")
+
+        listas_segunda_exist = [c for c in listas_segunda if c in bp_segunda.columns]
+        if listas_segunda_exist:
+            cols_lista_seg = st.columns(len(listas_segunda_exist))
+            for idx, coluna in enumerate(listas_segunda_exist):
+                with cols_lista_seg[idx]:
+                    render_lista_respostas(bp_segunda, coluna)
+
+    # =========================
+    # Terceira Semana
+    # =========================
+    st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="titulo-amarelo">➡️Terceira Semana</div>', unsafe_allow_html=True)
 
     graficos_terceira = [
@@ -1530,7 +1491,7 @@ with resp_tabs[0]:
 
     perguntas_base_terceira = [
         "Como foi sua rotina nesta semana?",
-        "Você tem alguma dúvida ou algo que eu possa te ajudar?"
+        "Você tem alguma dúvida ou algo que eu possa te ajudar?",
     ]
 
     if bp_terceira.empty:
@@ -1578,102 +1539,10 @@ with resp_tabs[0]:
                     render_lista_respostas_lista(pergunta, mapa_listas_terceira[pergunta])
         else:
             st.info("Sem respostas abertas para a Terceira Semana.")
-    st.markdown('<div class="titulo-amarelo">➡️Segunda Semana</div>', unsafe_allow_html=True)
 
-    graficos_segunda = [
-        "Você conhece quais são os EPIs obrigatórios da sua função?",
-        "Você já se sentiu confortável em interagir com sua equipe de trabalho?",
-        "De forma prática, você conseguiu executar suas atividades nessa primeira semana?",
-        "Você sabe como utilizar as ferramentas de trabalho que fazem parte de sua rotina?",
-    ]
-
-    listas_segunda = [
-        "Você tem alguma dúvida ou algo que eu possa te ajudar?",
-        "Como foi sua rotina nesta semana?",
-    ]
-
-    if bp_segunda.empty:
-        st.info("Sem respostas para os filtros selecionados.")
-    else:
-        cols = st.columns(2, gap="large")
-        for i, coluna in enumerate(graficos_segunda):
-            if coluna in bp_segunda.columns:
-                with cols[i % 2]:
-                    render_grafico_resposta(bp_segunda, coluna, key_prefix=f"bp_s2_{i}")
-
-        col_card_bp2 = st.columns([1, 3])[0]
-        with col_card_bp2:
-            render_card_data_resposta(bp_segunda, titulo="Registro da resposta")
-
-        cols_lista_seg = st.columns(len([c for c in listas_segunda if c in bp_segunda.columns]) or 1)
-        idx = 0
-        for coluna in listas_segunda:
-            if coluna in bp_segunda.columns:
-                with cols_lista_seg[idx]:
-                    render_lista_respostas(bp_segunda, coluna)
-                idx += 1
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="titulo-amarelo">➡️Terceira Semana</div>', unsafe_allow_html=True)
-
-    graficos_terceira = [
-        "Você conhece a rotina de reuniões semanais que você deve participar?",
-        "Você sabe fazer relatos de segurança e abordagens positivas?",
-        "Você entende o que é DPO / VPO?",
-    ]
-
-    listas_terceira = []
-
-perguntas_base = [
-    "Como foi sua rotina nesta semana?",
-    "Você tem alguma dúvida ou algo que eu possa te ajudar?"
-]
-
-mapa_listas_terceira = {}
-
-for pergunta in perguntas_base:
-    colunas_equivalentes = [c for c in bp_terceira.columns if pergunta in c]
-
-    if not colunas_equivalentes:
-        continue
-
-    respostas = []
-
-    for col in colunas_equivalentes:
-        respostas.extend(
-            bp_terceira[col]
-            .astype(str)
-            .str.strip()
-            .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA, "-": pd.NA})
-            .dropna()
-            .tolist()
-        )
-
-    if respostas:
-        listas_terceira.append(pergunta)
-        mapa_listas_terceira[pergunta] = respostas
-
-    if bp_terceira.empty:
-        st.info("Sem respostas para os filtros selecionados.")
-    else:
-        cols = st.columns(2, gap="large")
-        for i, coluna in enumerate(graficos_terceira):
-            if coluna in bp_terceira.columns:
-                with cols[i % 2]:
-                    render_grafico_resposta(bp_terceira, coluna, key_prefix=f"bp_s3_{i}")
-
-        col_card_bp3 = st.columns([1, 3])[0]
-        with col_card_bp3:
-            render_card_data_resposta(bp_terceira, titulo="Registro da resposta")
-
-        if listas_terceira:
-    cols_lista_ter = st.columns(len(listas_terceira))
-    for idx, pergunta in enumerate(listas_terceira):
-        with cols_lista_ter[idx]:
-            render_lista_respostas_lista(pergunta, mapa_listas_terceira[pergunta])
-else:
-    st.info("Sem respostas abertas para a Terceira Semana.")
-
+    # =========================
+    # Última Semana
+    # =========================
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="titulo-amarelo">➡️Última Semana</div>', unsafe_allow_html=True)
 
