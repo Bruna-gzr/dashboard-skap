@@ -1,6 +1,5 @@
 import re
 import unicodedata
-import textwrap
 from pathlib import Path
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -121,9 +120,10 @@ div[data-baseweb="input"] > div {
 }
 
 .lista-scroll {
-    max-height: 980px;
+    height: 960px; /* ~30 linhas visíveis */
     overflow-y: auto;
     overflow-x: hidden;
+    background: #1f1f1f;
 }
 
 .lista-scroll::-webkit-scrollbar {
@@ -146,6 +146,7 @@ div[data-baseweb="input"] > div {
     font-size: 0.92rem;
     line-height: 1.35;
     word-break: break-word;
+    min-height: 30px;
 }
 
 .lista-linha:nth-child(even) {
@@ -166,6 +167,91 @@ div[data-baseweb="input"] > div {
     font-size: 1.15rem;
     margin-top: 8px;
     margin-bottom: 10px;
+}
+
+/* Cards KPI das respostas */
+.kpi-card {
+    background: #171717;
+    border: 1px solid #2d2d2d;
+    border-radius: 16px;
+    padding: 14px 14px 12px 14px;
+    margin-bottom: 12px;
+    min-height: 220px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+}
+
+.kpi-title {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 0.96rem;
+    line-height: 1.3;
+    min-height: 62px;
+    margin-bottom: 14px;
+}
+
+.kpi-main {
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 2rem;
+    line-height: 1;
+    margin-bottom: 12px;
+}
+
+.kpi-sub {
+    color: #cfcfcf;
+    font-size: 0.88rem;
+    margin-bottom: 10px;
+}
+
+.kpi-progress-wrap {
+    width: 100%;
+    height: 14px;
+    background: #2b2b2b;
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    border: 1px solid #3a3a3a;
+}
+
+.kpi-progress-bar {
+    height: 100%;
+    border-radius: 999px;
+}
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.kpi-mini {
+    background: #202020;
+    border: 1px solid #303030;
+    border-radius: 10px;
+    padding: 8px 8px;
+    text-align: center;
+}
+
+.kpi-mini-label {
+    color: #bfbfbf;
+    font-size: 0.78rem;
+    margin-bottom: 4px;
+}
+
+.kpi-mini-value {
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.kpi-badge {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -199,9 +285,6 @@ def norm_text_nome_flex(x) -> str:
     tokens = [t for t in s.split() if len(t) > 1]
     return " ".join(tokens)
 
-def parse_date_br(x):
-    return pd.to_datetime(x, errors="coerce", dayfirst=True)
-
 def sequence_ratio(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio() * 100
 
@@ -218,16 +301,9 @@ def ult_nome(a: str) -> str:
     toks = a.split()
     return toks[-1] if toks else ""
 
-def wrap_title(txt: str, width: int = 42) -> str:
-    txt = str(txt).strip()
-    if not txt:
-        return ""
-    return "<br>".join(textwrap.wrap(txt, width=width))
-
 def parse_horario_texto(x):
     if pd.isna(x):
         return None
-
     s = str(x).strip()
     if not s or s.lower() in {"nan", "none"}:
         return None
@@ -245,7 +321,7 @@ def parse_horario_texto(x):
 
     return hh, mm, ss
 
-def combinar_data_hora(df: pd.DataFrame, col_data: str = "Data Cadastro", col_hora: str = "Horário da resposta") -> pd.Series:
+def combinar_data_hora(df: pd.DataFrame, col_data="Data Cadastro", col_hora="Horário da resposta") -> pd.Series:
     data = pd.to_datetime(df[col_data], errors="coerce", dayfirst=True) if col_data in df.columns else pd.Series(pd.NaT, index=df.index)
     hora = df[col_hora] if col_hora in df.columns else pd.Series(index=df.index, dtype="object")
 
@@ -279,16 +355,9 @@ def similaridade_nome(resp_nome: str, cand_nome: str) -> float:
         s2 = fuzz.token_sort_ratio(resp_nome, cand_nome)
         s3 = fuzz.WRatio(resp_nome, cand_nome)
         s4 = fuzz.partial_ratio(resp_nome, cand_nome)
-
         seq = sequence_ratio(resp_nome, cand_nome)
 
-        score = max(
-            s1,
-            s2 * 0.99,
-            s3 * 0.98,
-            s4 * 0.97,
-            seq * 0.96,
-        )
+        score = max(s1, s2 * 0.99, s3 * 0.98, s4 * 0.97, seq * 0.96)
 
         inter = token_overlap(resp_nome, cand_nome)
         if inter >= 2:
@@ -755,7 +824,6 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
             tmp["Data Realização"] = pd.NaT
         else:
             form_et = form[form[campo].astype(str).str.strip().eq(valor)].copy()
-
             col_realizacao = "DataHora Resposta" if "DataHora Resposta" in form_et.columns else "Data Cadastro"
 
             real = (
@@ -848,27 +916,13 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
         },
         category_orders={"Faixa": [">= 90%", "80% a 89%", "< 80%"]},
     )
-    fig.update_traces(
-        textposition="outside",
-        cliponaxis=False,
-        width=0.48
-    )
+    fig.update_traces(textposition="outside", cliponaxis=False, width=0.48)
     fig.update_layout(
         height=380,
         template="plotly_dark",
         margin=dict(l=10, r=10, t=25, b=10),
-        yaxis=dict(
-            range=[0, 100],
-            title="",
-            showgrid=False,
-            zeroline=False,
-            showticklabels=False,
-            visible=False
-        ),
-        xaxis=dict(
-            title="",
-            showgrid=False
-        ),
+        yaxis=dict(range=[0, 100], title="", showgrid=False, zeroline=False, showticklabels=False, visible=False),
+        xaxis=dict(title="", showgrid=False),
         legend_title="Faixa",
         paper_bgcolor="#0b0b0b",
         plot_bgcolor="#1a1a1a",
@@ -927,102 +981,102 @@ def filtrar_respostas_por_sidebar(df_resp: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def render_grafico_resposta(df: pd.DataFrame, coluna: str, key_prefix: str):
-    base = (
+    serie = (
         df[coluna]
         .astype(str)
         .str.strip()
         .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
         .dropna()
-        .value_counts(dropna=False)
+    )
+
+    if serie.empty:
+        st.info(f"Sem dados para: {coluna}")
+        return
+
+    base = (
+        serie.value_counts(dropna=False)
         .rename_axis("Resposta")
         .reset_index(name="Qtd")
     )
 
-    if base.empty:
-        st.info(f"Sem dados para: {coluna}")
-        return
+    def normalizar_resposta(v):
+        vv = norm_text(v)
+        if vv == "SIM":
+            return "Sim"
+        if vv in {"NAO", "NÃO"}:
+            return "Não"
+        return str(v).strip()
 
-    total = base["Qtd"].sum()
-    base["%"] = (base["Qtd"] / total) * 100
+    base["Resposta"] = base["Resposta"].apply(normalizar_resposta)
+    base = base.groupby("Resposta", as_index=False)["Qtd"].sum()
 
-    # ordena respostas mais relevantes
-    ordem = {"Sim": 0, "Não": 1, "Nao": 1}
-    base["ordem"] = base["Resposta"].map(ordem).fillna(99)
-    base = base.sort_values(["ordem", "%"], ascending=[True, False]).drop(columns="ordem")
+    total = int(base["Qtd"].sum())
+    qtd_sim = int(base.loc[base["Resposta"].eq("Sim"), "Qtd"].sum())
+    qtd_nao = int(base.loc[base["Resposta"].eq("Não"), "Qtd"].sum())
+    outros = max(total - qtd_sim - qtd_nao, 0)
 
-    cores = []
-    for r in base["Resposta"]:
-        rr = norm_text(r)
-        if rr == "SIM":
-            cores.append("#79c257")
-        elif rr in {"NAO", "NÃO"}:
-            cores.append("#d9534f")
-        else:
-            cores.append("#f0d36b")
+    perc_sim = (qtd_sim / total * 100) if total > 0 else 0
 
-    # título fora do gráfico
-    st.markdown(
-        f"""
-        <div style="
-            background:#151515;
-            border:1px solid #2a2a2a;
-            border-radius:14px 14px 0 0;
-            padding:10px 12px 6px 12px;
-            min-height:70px;
-            color:#ffffff;
-            font-weight:700;
-            font-size:0.95rem;
-            line-height:1.3;
-        ">
-            {coluna}
+    if perc_sim >= 90:
+        cor_barra = "#79c257"
+        badge_bg = "#1f3a22"
+        badge_fg = "#a7e08f"
+        status_txt = "Aderência alta"
+    elif perc_sim >= 80:
+        cor_barra = "#f0d36b"
+        badge_bg = "#3d3517"
+        badge_fg = "#f6df8b"
+        status_txt = "Aderência moderada"
+    else:
+        cor_barra = "#d9534f"
+        badge_bg = "#3d1d1b"
+        badge_fg = "#f2a29f"
+        status_txt = "Ponto de atenção"
+
+    html = f"""
+    <div class="kpi-card">
+        <div class="kpi-title">{coluna}</div>
+
+        <div class="kpi-main">{perc_sim:.1f}%</div>
+        <div class="kpi-sub">Percentual de respostas positivas</div>
+
+        <div class="kpi-progress-wrap">
+            <div class="kpi-progress-bar" style="width:{perc_sim:.1f}%; background:{cor_barra};"></div>
         </div>
-        """,
-        unsafe_allow_html=True
-    )
 
-    fig = px.bar(
-        base,
-        x="%",
-        y="Resposta",
-        orientation="h",
-        text=base["%"].round(1).astype(str) + "%",
-    )
+        <div class="kpi-grid">
+            <div class="kpi-mini">
+                <div class="kpi-mini-label">Sim</div>
+                <div class="kpi-mini-value">{qtd_sim}</div>
+            </div>
+            <div class="kpi-mini">
+                <div class="kpi-mini-label">Não</div>
+                <div class="kpi-mini-value">{qtd_nao}</div>
+            </div>
+            <div class="kpi-mini">
+                <div class="kpi-mini-label">Total</div>
+                <div class="kpi-mini-value">{total}</div>
+            </div>
+        </div>
+    """
 
-    fig.update_traces(
-        marker_color=cores,
-        textposition="outside",
-        cliponaxis=False,
-        marker_line_width=0,
-        hovertemplate="<b>%{y}</b><br>%{x:.1f}%<extra></extra>"
-    )
+    if outros > 0:
+        html += f"""
+        <div style="margin-top:10px; color:#cfcfcf; font-size:0.82rem;">
+            Outras respostas: <b style="color:#fff;">{outros}</b>
+        </div>
+        """
 
-    fig.update_layout(
-        height=max(170, 70 + (len(base) * 42)),
-        margin=dict(l=10, r=20, t=10, b=10),
-        template="plotly_dark",
-        showlegend=False,
-        paper_bgcolor="#1f1f1f",
-        plot_bgcolor="#1f1f1f",
-        xaxis=dict(
-            range=[0, 100],
-            showgrid=False,
-            zeroline=False,
-            showticklabels=False,
-            visible=False,
-            title=""
-        ),
-        yaxis=dict(
-            showgrid=False,
-            zeroline=False,
-            title="",
-            tickfont=dict(size=12, color="#ffffff")
-        ),
-        bargap=0.35,
-    )
+    html += f"""
+        <div class="kpi-badge" style="background:{badge_bg}; color:{badge_fg};">
+            {status_txt}
+        </div>
+    </div>
+    """
 
-    st.plotly_chart(fig, width="stretch", key=key_prefix)
+    st.markdown(html, unsafe_allow_html=True)
 
-def render_lista_respostas(df: pd.DataFrame, coluna: str, limite_visual=30):
+def render_lista_respostas(df: pd.DataFrame, coluna: str):
     textos = (
         df[coluna]
         .astype(str)
@@ -1032,7 +1086,10 @@ def render_lista_respostas(df: pd.DataFrame, coluna: str, limite_visual=30):
         .tolist()
     )
 
-    st.markdown(f'<div class="lista-box"><div class="lista-titulo">{coluna}</div><div class="lista-scroll">', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="lista-box"><div class="lista-titulo">{coluna}</div><div class="lista-scroll">',
+        unsafe_allow_html=True
+    )
 
     if not textos:
         st.markdown('<div class="lista-linha">Sem respostas.</div></div></div>', unsafe_allow_html=True)
@@ -1341,10 +1398,10 @@ with resp_tabs[0]:
         st.info("Sem respostas para os filtros selecionados.")
     else:
         cols = st.columns(2, gap="large")
-for i, coluna in enumerate(colunas_primeira_semana):
-    if coluna in nps_primeira.columns:
-        with cols[i % 2]:
-            render_grafico_resposta(nps_primeira, coluna, key_prefix=f"nps_p1_{i}")
+        for i, coluna in enumerate(colunas_primeira_semana):
+            if coluna in nps_primeira.columns:
+                with cols[i % 2]:
+                    render_grafico_resposta(nps_primeira, coluna, key_prefix=f"nps_p1_{i}")
 
         col_card = st.columns([1, 3])[0]
         with col_card:
@@ -1357,11 +1414,10 @@ for i, coluna in enumerate(colunas_primeira_semana):
         st.info("Sem respostas para os filtros selecionados.")
     else:
         cols = st.columns(2, gap="large")
-
-for i, coluna in enumerate(colunas_ultima_semana):
-    if coluna in nps_ultima.columns:
-        with cols[i % 2]:
-            render_grafico_resposta(nps_ultima, coluna, key_prefix=f"nps_p2_{i}")
+        for i, coluna in enumerate(colunas_ultima_semana):
+            if coluna in nps_ultima.columns:
+                with cols[i % 2]:
+                    render_grafico_resposta(nps_ultima, coluna, key_prefix=f"nps_p2_{i}")
 
         col_card2 = st.columns([1, 3])[0]
         with col_card2:
@@ -1390,7 +1446,6 @@ with resp_tabs[1]:
         bp_terceira = pd.DataFrame()
         bp_ultima = pd.DataFrame()
 
-    # Segunda Semana
     st.markdown('<div class="titulo-amarelo">Segunda Semana</div>', unsafe_allow_html=True)
 
     graficos_segunda = [
@@ -1409,11 +1464,10 @@ with resp_tabs[1]:
         st.info("Sem respostas para os filtros selecionados.")
     else:
         cols = st.columns(2, gap="large")
-
-for i, coluna in enumerate(graficos_segunda):
-    if coluna in bp_segunda.columns:
-        with cols[i % 2]:
-            render_grafico_resposta(bp_segunda, coluna, key_prefix=f"bp_s2_{i}")
+        for i, coluna in enumerate(graficos_segunda):
+            if coluna in bp_segunda.columns:
+                with cols[i % 2]:
+                    render_grafico_resposta(bp_segunda, coluna, key_prefix=f"bp_s2_{i}")
 
         col_card_bp2 = st.columns([1, 3])[0]
         with col_card_bp2:
@@ -1427,7 +1481,6 @@ for i, coluna in enumerate(graficos_segunda):
                     render_lista_respostas(bp_segunda, coluna)
                 idx += 1
 
-    # Terceira Semana
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="titulo-amarelo">Terceira Semana</div>', unsafe_allow_html=True)
 
@@ -1446,11 +1499,10 @@ for i, coluna in enumerate(graficos_segunda):
         st.info("Sem respostas para os filtros selecionados.")
     else:
         cols = st.columns(2, gap="large")
-
-for i, coluna in enumerate(graficos_terceira):
-    if coluna in bp_terceira.columns:
-        with cols[i % 2]:
-            render_grafico_resposta(bp_terceira, coluna, key_prefix=f"bp_s3_{i}")
+        for i, coluna in enumerate(graficos_terceira):
+            if coluna in bp_terceira.columns:
+                with cols[i % 2]:
+                    render_grafico_resposta(bp_terceira, coluna, key_prefix=f"bp_s3_{i}")
 
         col_card_bp3 = st.columns([1, 3])[0]
         with col_card_bp3:
@@ -1464,7 +1516,6 @@ for i, coluna in enumerate(graficos_terceira):
                     render_lista_respostas(bp_terceira, coluna)
                 idx += 1
 
-    # Última Semana
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="titulo-amarelo">Última Semana</div>', unsafe_allow_html=True)
 
@@ -1487,11 +1538,10 @@ for i, coluna in enumerate(graficos_terceira):
         st.info("Sem respostas para os filtros selecionados.")
     else:
         cols = st.columns(2, gap="large")
-
-for i, coluna in enumerate(graficos_ultima):
-    if coluna in bp_ultima.columns:
-        with cols[i % 2]:
-            render_grafico_resposta(bp_ultima, coluna, key_prefix=f"bp_su_{i}")
+        for i, coluna in enumerate(graficos_ultima):
+            if coluna in bp_ultima.columns:
+                with cols[i % 2]:
+                    render_grafico_resposta(bp_ultima, coluna, key_prefix=f"bp_su_{i}")
 
         col_card_bpu = st.columns([1, 3])[0]
         with col_card_bpu:
