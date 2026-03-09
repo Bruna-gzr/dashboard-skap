@@ -1334,6 +1334,30 @@ ARQ_NPS = DATA_DIR / "NPS Mentor.xlsx"
 ARQ_BATEPAPO = DATA_DIR / "Bate papo mentor.xlsx"
 
 # =========================
+# Última atualização + refresh manual
+# =========================
+arquivos_base = [ARQ_ADMITIDOS, ARQ_ATIVOS, ARQ_NPS, ARQ_BATEPAPO]
+ultima_atualizacao = obter_ultima_atualizacao_arquivos(arquivos_base)
+
+if ultima_atualizacao is not None:
+    ultima_atualizacao_txt = ultima_atualizacao.strftime("%d/%m/%Y %H:%M")
+else:
+    ultima_atualizacao_txt = "Não disponível"
+
+st.markdown(
+    f"""
+    <div style="color:#bdbdbd; font-size:0.92rem; margin-bottom:10px;">
+        🕒 <b>Última atualização dos dados:</b> {ultima_atualizacao_txt}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+if st.button("🔄 Atualizar dados agora", width="stretch"):
+    st.cache_data.clear()
+    st.rerun()
+
+# =========================
 # Carregamento
 # =========================
 try:
@@ -1349,6 +1373,15 @@ try:
 except Exception as e:
     st.error(f"Erro ao carregar arquivos: {e}")
     st.stop()
+
+def obter_ultima_atualizacao_arquivos(paths: list[Path]) -> pd.Timestamp | None:
+    datas = []
+    for p in paths:
+        if p.exists():
+            datas.append(pd.to_datetime(datetime.fromtimestamp(p.stat().st_mtime)))
+    if not datas:
+        return None
+    return max(datas)
 
 # =========================
 # Pipeline principal
