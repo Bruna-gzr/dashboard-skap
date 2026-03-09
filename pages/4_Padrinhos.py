@@ -1100,27 +1100,27 @@ def render_lista_respostas(df: pd.DataFrame, coluna: str):
         .tolist()
     )
 
-    linhas_html = ""
-
-    if not textos:
-        linhas_html = '<div class="lista-linha">Sem respostas.</div>'
-    else:
-        for txt in textos:
-            safe_txt = str(txt).replace("<", "&lt;").replace(">", "&gt;")
-            linhas_html += f'<div class="lista-linha">{safe_txt}</div>'
-
-    html = f"""
-    <div class="lista-box">
-        <div class="lista-titulo">{coluna}</div>
-
-        <div class="lista-scroll">
-            {linhas_html}
+    st.markdown(
+        f"""
+        <div class="lista-box">
+            <div class="lista-titulo">{coluna}</div>
         </div>
-    </div>
-    """
+        """,
+        unsafe_allow_html=True
+    )
 
-    st.markdown(html, unsafe_allow_html=True)
+    with st.container(height=520, border=False):
 
+        if not textos:
+            st.write("Sem respostas.")
+            return
+
+        for txt in textos:
+            st.markdown(f"""
+<div style="padding:6px 4px;border-bottom:1px solid #2a2a2a;">
+{txt}
+</div>
+""", unsafe_allow_html=True)
 def render_card_data_resposta(df: pd.DataFrame, titulo="Registro da resposta"):
     if df.empty:
         st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
