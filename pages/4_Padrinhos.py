@@ -1189,6 +1189,30 @@ def render_card_data_resposta(df: pd.DataFrame, titulo="Registro da resposta"):
         unsafe_allow_html=True
     )
 
+def render_lista_respostas_lista(titulo: str, textos: list):
+    st.markdown(
+        f"""
+        <div class="lista-box">
+            <div class="lista-titulo">{titulo}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    with st.container(height=520, border=False):
+        if not textos:
+            st.write("Sem respostas.")
+            return
+
+        for txt in textos:
+            st.markdown(
+                f"""
+<div style="padding:6px 4px;border-bottom:1px solid #2a2a2a;">
+{txt}
+</div>
+""",
+                unsafe_allow_html=True
+            )    
 # =========================
 # Paths
 # =========================
@@ -1538,16 +1562,14 @@ with resp_tabs[1]:
 
     listas_terceira = []
 
-for c in bp_terceira.columns:
-    listas_terceira = []
-
 perguntas_base = [
     "Como foi sua rotina nesta semana?",
     "Você tem alguma dúvida ou algo que eu possa te ajudar?"
 ]
 
-for pergunta in perguntas_base:
+mapa_listas_terceira = {}
 
+for pergunta in perguntas_base:
     colunas_equivalentes = [c for c in bp_terceira.columns if pergunta in c]
 
     if not colunas_equivalentes:
@@ -1566,8 +1588,8 @@ for pergunta in perguntas_base:
         )
 
     if respostas:
-        bp_terceira[pergunta] = respostas
         listas_terceira.append(pergunta)
+        mapa_listas_terceira[pergunta] = respostas
 
     if bp_terceira.empty:
         st.info("Sem respostas para os filtros selecionados.")
@@ -1582,14 +1604,13 @@ for pergunta in perguntas_base:
         with col_card_bp3:
             render_card_data_resposta(bp_terceira, titulo="Registro da resposta")
 
-        listas_terceira_exist = [c for c in listas_terceira if c in bp_terceira.columns]
-        if listas_terceira_exist:
-            cols_lista_ter = st.columns(len(listas_terceira_exist))
-            for idx, coluna in enumerate(listas_terceira_exist):
-                with cols_lista_ter[idx]:
-                    render_lista_respostas(bp_terceira, coluna)
-        else:
-            st.info("Sem respostas abertas para a Terceira Semana.")
+        if listas_terceira:
+    cols_lista_ter = st.columns(len(listas_terceira))
+    for idx, pergunta in enumerate(listas_terceira):
+        with cols_lista_ter[idx]:
+            render_lista_respostas_lista(pergunta, mapa_listas_terceira[pergunta])
+else:
+    st.info("Sem respostas abertas para a Terceira Semana.")
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="titulo-amarelo">➡️Última Semana</div>', unsafe_allow_html=True)
