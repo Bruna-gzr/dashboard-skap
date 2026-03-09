@@ -627,19 +627,32 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
     nome_resp = row_resp.get("nome_norm", "")
     op_resp = row_resp.get("op_norm", "")
 
+    nome_resp_flex = norm_text_nome_flex(nome_resp)
+    op_resp_norm = norm_text(op_resp)
+
     pool = base_lookup.copy()
+    pool = pool[pd.to_datetime(pool["Data_dt"], errors="coerce") <= pd.Timestamp(data_resp)].copy()
 
-    if cpf_resp:
-        pool_cpf = pool[pool["cpf_clean"] == cpf_resp].copy()
-        pool_cpf = pool_cpf[pool_cpf["Data_dt"] <= data_resp].copy()
-        if not pool_cpf.empty:
-            pool_cpf = pool_cpf.sort_values("Data_dt", ascending=False)
-            return pool_cpf.iloc[0], 100.0, "CPF_CONTRATO"
-
-    pool = pool[pool["Data_dt"] <= data_resp].copy()
     if pool.empty:
         return None, 0, "SEM_CONTRATO_ANTERIOR"
 
+    # 1) PRIORIDADE TOTAL: nome exato
+    if nome_resp_flex:
+        pool_nome = pool.copy()
+        pool_nome["nome_norm_flex"] = pool_nome["nome_norm"].apply(norm_text_nome_flex)
+
+        exato = pool_nome[pool_nome["nome_norm_flex"] == nome_resp_flex].copy()
+
+        if op_resp_norm and "op_norm" in exato.columns:
+            exato_op = exato[exato["op_norm"] == op_resp_norm].copy()
+            if not exato_op.empty:
+                exato = exato_op
+
+        if not exato.empty:
+            exato = exato.sort_values("Data_dt", ascending=False)
+            return exato.iloc[0], 100.0, "NOME_EXATO_CONTRATO"
+
+    # 2) nome aproximado
     cand, score = buscar_melhor_candidato_por_nome(
         nome_resp=nome_resp,
         base_lookup=pool,
@@ -647,49 +660,57 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
         score_min=84
     )
 
-    if cand is None:
-        return None, score, "NAO_ENCONTRADO"
+    if cand is not None:
+        cand_nome = norm_text_nome_flex(cand["nome_norm"])
+        inter = token_overlap(nome_resp_flex, cand_nome)
+        primeiro_ok = primeiro_nome(nome_resp_flex) == primeiro_nome(cand_nome)
+        ultimo_ok = ult_nome(nome_resp_flex) == ult_nome(cand_nome)
 
-    cand_nome = norm_text_nome_flex(cand["nome_norm"])
-    nome_resp_flex = norm_text_nome_flex(nome_resp)
+        aceite = False
 
-    inter = token_overlap(nome_resp_flex, cand_nome)
-    primeiro_ok = primeiro_nome(nome_resp_flex) == primeiro_nome(cand_nome)
-    ultimo_ok = ult_nome(nome_resp_flex) == ult_nome(cand_nome)
+        if score >= 92 and inter >= 2 and primeiro_ok:
+            aceite = True
+        elif score >= 90 and inter >= 3:
+            aceite = True
+        elif score >= 95 and primeiro_ok and ultimo_ok:
+            aceite = True
 
-    aceite = False
+        if aceite:
+            pool_nome = pool.copy()
+            pool_nome["score_nome"] = pool_nome["nome_norm"].apply(
+                lambda x: similaridade_nome(nome_resp_flex, norm_text_nome_flex(x))
+            )
+            pool_nome["token_overlap"] = pool_nome["nome_norm"].apply(
+                lambda x: token_overlap(nome_resp_flex, norm_text_nome_flex(x))
+            )
 
-    if score >= 92 and inter >= 2 and primeiro_ok:
-        aceite = True
-    elif score >= 90 and inter >= 3:
-        aceite = True
-    elif score >= 95 and primeiro_ok and ultimo_ok:
-        aceite = True
+            if op_resp_norm and "op_norm" in pool_nome.columns:
+                pool_op = pool_nome[pool_nome["op_norm"] == op_resp_norm].copy()
+                if not pool_op.empty:
+                    pool_nome = pool_op
 
-    if not aceite:
-        return None, score, "NOME_REJEITADO"
+            pool_nome = pool_nome[
+                (pool_nome["score_nome"] >= max(88, score - 3)) &
+                (pool_nome["token_overlap"] >= max(2, inter))
+            ].copy()
 
-    pool_nome = pool.copy()
-    pool_nome["score_nome"] = pool_nome["nome_norm"].apply(
-        lambda x: similaridade_nome(nome_resp_flex, norm_text_nome_flex(x))
-    )
-    pool_nome["token_overlap"] = pool_nome["nome_norm"].apply(
-        lambda x: token_overlap(nome_resp_flex, norm_text_nome_flex(x))
-    )
+            if not pool_nome.empty:
+                pool_nome = pool_nome.sort_values(
+                    ["score_nome", "token_overlap", "Data_dt"],
+                    ascending=[False, False, False]
+                )
+                return pool_nome.iloc[0], float(pool_nome.iloc[0]["score_nome"]), "NOME_FUZZY_CONTRATO"
 
-    pool_nome = pool_nome[
-        (pool_nome["score_nome"] >= max(88, score - 3)) &
-        (pool_nome["token_overlap"] >= max(2, inter))
-    ].copy()
+            return cand, score, "NOME_FUZZY_CONTRATO"
 
-    if not pool_nome.empty:
-        pool_nome = pool_nome.sort_values(
-            ["score_nome", "token_overlap", "Data_dt"],
-            ascending=[False, False, False]
-        )
-        return pool_nome.iloc[0], float(pool_nome.iloc[0]["score_nome"]), "NOME_FUZZY_CONTRATO"
+    # 3) fallback por CPF
+    if cpf_resp:
+        pool_cpf = pool[pool["cpf_clean"] == cpf_resp].copy()
+        if not pool_cpf.empty:
+            pool_cpf = pool_cpf.sort_values("Data_dt", ascending=False)
+            return pool_cpf.iloc[0], 100.0, "CPF_CONTRATO"
 
-    return cand, score, "NOME_FUZZY_CONTRATO"
+    return None, score if 'score' in locals() else 0, "NAO_ENCONTRADO"
 
 def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.DataFrame) -> dict:
     base = base_oper.copy()
@@ -740,9 +761,8 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     bp_df["Data Cadastro"] = pd.to_datetime(bp_df["Data Cadastro"], errors="coerce", dayfirst=True)
     bp_df["DataHora Resposta"] = combinar_data_hora(bp_df, "Data Cadastro", "Horário da resposta")
 
-    def vincular_por_cpf_e_data(df_resp: pd.DataFrame) -> pd.DataFrame:
+    def vincular_por_nome_prioritario(df_resp: pd.DataFrame) -> pd.DataFrame:
         df = df_resp.copy()
-        df["_orig_idx"] = df.index
 
         for col in [
             "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo",
@@ -754,94 +774,28 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         df["match_tipo"] = "NAO_ENCONTRADO"
         df["match_score"] = pd.NA
 
-        col_data_resp = "DataHora Resposta" if "DataHora Resposta" in df.columns else "Data Cadastro"
-        df[col_data_resp] = pd.to_datetime(df[col_data_resp], errors="coerce", dayfirst=True)
+        resultados = df.apply(
+            lambda r: escolher_contrato_da_resposta(r, base[base_cols]),
+            axis=1
+        )
 
-        base_cpf = base[base_cols].copy()
-        base_cpf = base_cpf[base_cpf["cpf_clean"].astype(str).str.len() == 11].copy()
-        base_cpf["Data_dt"] = pd.to_datetime(base_cpf["Data_dt"], errors="coerce", dayfirst=True)
-        base_cpf = base_cpf.dropna(subset=["cpf_clean", "Data_dt"]).copy()
+        for idx, resultado in resultados.items():
+            base_row, score, tipo = resultado
 
-        df_cpf = df.copy()
-        df_cpf = df_cpf[df_cpf["cpf_clean"].astype(str).str.len() == 11].copy()
-        df_cpf[col_data_resp] = pd.to_datetime(df_cpf[col_data_resp], errors="coerce", dayfirst=True)
-        df_cpf = df_cpf.dropna(subset=["cpf_clean", col_data_resp]).copy()
+            if base_row is not None:
+                for col in [
+                    "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo",
+                    "Operação", "Data", "Data_dt", "Status Colaborador"
+                ]:
+                    df.at[idx, col] = base_row[col]
 
-        if not df_cpf.empty and not base_cpf.empty:
-            partes = []
+            df.at[idx, "match_tipo"] = tipo
+            df.at[idx, "match_score"] = score
 
-            for cpf, grp_resp in df_cpf.groupby("cpf_clean", sort=False):
-                grp_base = base_cpf[base_cpf["cpf_clean"] == cpf].copy()
-                if grp_base.empty:
-                    continue
-
-                grp_resp = grp_resp.sort_values(col_data_resp).reset_index(drop=True)
-                grp_base = grp_base.sort_values("Data_dt").reset_index(drop=True)
-
-                merged_part = pd.merge_asof(
-                    grp_resp,
-                    grp_base,
-                    left_on=col_data_resp,
-                    right_on="Data_dt",
-                    direction="backward",
-                    suffixes=("", "_base")
-                )
-                partes.append(merged_part)
-
-            merged = pd.concat(partes, ignore_index=True) if partes else pd.DataFrame()
-
-            if not merged.empty and "contrato_id_base" in merged.columns:
-                preenchidos = merged[merged["contrato_id_base"].notna()].copy()
-
-                for _, row in preenchidos.iterrows():
-                    idx = row["_orig_idx"]
-
-                    mapa_cols = {
-                        "contrato_id": "contrato_id_base",
-                        "Colaborador": "Colaborador_base",
-                        "CPF": "CPF_base",
-                        "Cargo": "Cargo_base",
-                        "Tipo Cargo": "Tipo Cargo_base",
-                        "Operação": "Operação_base",
-                        "Data": "Data_base",
-                        "Data_dt": "Data_dt_base",
-                        "Status Colaborador": "Status Colaborador_base",
-                    }
-
-                    for col_destino, col_origem in mapa_cols.items():
-                        if col_origem in row.index:
-                            df.at[idx, col_destino] = row[col_origem]
-
-                    df.at[idx, "match_tipo"] = "CPF_CONTRATO"
-                    df.at[idx, "match_score"] = 100.0
-
-        falt = df["contrato_id"].isna()
-        if falt.any():
-            resultados = df.loc[falt].apply(
-                lambda r: escolher_contrato_da_resposta(r, base[base_cols]),
-                axis=1
-            )
-
-            for idx, resultado in resultados.items():
-                base_row, score, tipo = resultado
-
-                if base_row is not None:
-                    for col in [
-                        "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo",
-                        "Operação", "Data", "Data_dt", "Status Colaborador"
-                    ]:
-                        df.at[idx, col] = base_row[col]
-                    df.at[idx, "match_tipo"] = tipo
-                    df.at[idx, "match_score"] = score
-                else:
-                    df.at[idx, "match_tipo"] = tipo
-                    df.at[idx, "match_score"] = score
-
-        df = df.sort_values("_orig_idx").drop(columns=["_orig_idx"])
         return df
 
-    nps_m = vincular_por_cpf_e_data(nps_df)
-    bp_m = vincular_por_cpf_e_data(bp_df)
+    nps_m = vincular_por_nome_prioritario(nps_df)
+    bp_m = vincular_por_nome_prioritario(bp_df)
 
     return {
         "base_operacional": base,
