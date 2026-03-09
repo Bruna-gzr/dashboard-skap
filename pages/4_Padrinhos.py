@@ -748,33 +748,15 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         col_data_resp = "DataHora Resposta" if "DataHora Resposta" in df.columns else "Data Cadastro"
         df[col_data_resp] = pd.to_datetime(df[col_data_resp], errors="coerce", dayfirst=True)
 
-        base_cpf = base[base_cols].copy()
-        base_cpf = base_cpf[base_cpf["cpf_clean"].astype(str).str.len() == 11].copy()
-        base_cpf = base_cpf.sort_values(["cpf_clean", "Data_dt"]).reset_index(drop=True)
+         base_cpf = base[base_cols].copy()
 
-        df_cpf = df.copy()
-        df_cpf = df_cpf[df_cpf["cpf_clean"].astype(str).str.len() == 11].copy()
-        df_cpf = df_cpf.sort_values(["cpf_clean", col_data_resp]).reset_index(drop=True)
-
-        if not df_cpf.empty and not base_cpf.empty:
-            merged = pd.merge_asof(
-                df_cpf,
-                base_cpf,
-                left_on=col_data_resp,
-                right_on="Data_dt",
-                by="cpf_clean",
-                direction="backward",
-                suffixes=("", "_base")
-            )
-
-            idx_ok = merged["_orig_idx"][merged["contrato_id"].notna()].tolist()
-
-            for _, row in merged[merged["contrato_id"].notna()].iterrows():
-                idx = row["_orig_idx"]
-                for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
-                    df.at[idx, col] = row[col]
-                df.at[idx, "match_tipo"] = "CPF_CONTRATO"
-                df.at[idx, "match_score"] = 100.0
+                        if not merged.empty:
+                for _, row in merged[merged["contrato_id"].notna()].iterrows():
+                    idx = row["_orig_idx"]
+                    for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                        df.at[idx, col] = row[col]
+                    df.at[idx, "match_tipo"] = "CPF_CONTRATO"
+                    df.at[idx, "match_score"] = 100.0
 
         # =========================
         # Fallback: fuzzy para o que sobrou sem contrato_id
