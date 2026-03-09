@@ -1033,46 +1033,46 @@ def render_grafico_resposta(df: pd.DataFrame, coluna: str, key_prefix: str):
         badge_fg = "#f2a29f"
         status_txt = "Ponto de atenção"
 
-    html = f"""
-    <div class="kpi-card">
-        <div class="kpi-title">{coluna}</div>
-
-        <div class="kpi-main">{perc_sim:.1f}%</div>
-        <div class="kpi-sub">Percentual de respostas positivas</div>
-
-        <div class="kpi-progress-wrap">
-            <div class="kpi-progress-bar" style="width:{perc_sim:.1f}%; background:{cor_barra};"></div>
-        </div>
-
-        <div class="kpi-grid">
-            <div class="kpi-mini">
-                <div class="kpi-mini-label">Sim</div>
-                <div class="kpi-mini-value">{qtd_sim}</div>
-            </div>
-            <div class="kpi-mini">
-                <div class="kpi-mini-label">Não</div>
-                <div class="kpi-mini-value">{qtd_nao}</div>
-            </div>
-            <div class="kpi-mini">
-                <div class="kpi-mini-label">Total</div>
-                <div class="kpi-mini-value">{total}</div>
-            </div>
-        </div>
-    """
-
+    outros_html = ""
     if outros > 0:
-        html += f"""
-        <div style="margin-top:10px; color:#cfcfcf; font-size:0.82rem;">
-            Outras respostas: <b style="color:#fff;">{outros}</b>
-        </div>
-        """
+        outros_html = f"""
+<div style="margin-top:10px; color:#cfcfcf; font-size:0.82rem;">
+    Outras respostas: <b style="color:#fff;">{outros}</b>
+</div>
+"""
 
-    html += f"""
-        <div class="kpi-badge" style="background:{badge_bg}; color:{badge_fg};">
-            {status_txt}
+    html = f"""
+<div class="kpi-card">
+    <div class="kpi-title">{coluna}</div>
+    <div class="kpi-main">{perc_sim:.1f}%</div>
+    <div class="kpi-sub">Percentual de respostas positivas</div>
+
+    <div class="kpi-progress-wrap">
+        <div class="kpi-progress-bar" style="width:{perc_sim:.1f}%; background:{cor_barra};"></div>
+    </div>
+
+    <div class="kpi-grid">
+        <div class="kpi-mini">
+            <div class="kpi-mini-label">Sim</div>
+            <div class="kpi-mini-value">{qtd_sim}</div>
+        </div>
+        <div class="kpi-mini">
+            <div class="kpi-mini-label">Não</div>
+            <div class="kpi-mini-value">{qtd_nao}</div>
+        </div>
+        <div class="kpi-mini">
+            <div class="kpi-mini-label">Total</div>
+            <div class="kpi-mini-value">{total}</div>
         </div>
     </div>
-    """
+
+    {outros_html}
+
+    <div class="kpi-badge" style="background:{badge_bg}; color:{badge_fg};">
+        {status_txt}
+    </div>
+</div>
+"""
 
     st.markdown(html, unsafe_allow_html=True)
 
