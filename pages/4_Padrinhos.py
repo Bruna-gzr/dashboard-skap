@@ -1185,6 +1185,7 @@ try:
     base_ativos = carregar_excel_primeira_aba(ARQ_ATIVOS)
     nps = carregar_excel_primeira_aba(ARQ_NPS)
     batepapo = carregar_excel_primeira_aba(ARQ_BATEPAPO)
+batepapo = renomear_colunas_duplicadas(batepapo)
 except Exception as e:
     st.error(f"Erro ao carregar arquivos: {e}")
     st.stop()
@@ -1510,10 +1511,14 @@ with resp_tabs[1]:
         "Você entende o que é DPO / VPO?",
     ]
 
-    listas_terceira = [
-        "Como foi sua rotina nesta semana?",
-        "Você tem alguma dúvida ou algo que eu possa te ajudar?",
-    ]
+    listas_terceira = []
+
+for c in bp_terceira.columns:
+    if "Como foi sua rotina nesta semana?" in c:
+        listas_terceira.append(c)
+
+    if "Você tem alguma dúvida ou algo que eu possa te ajudar?" in c:
+        listas_terceira.append(c)
 
     if bp_terceira.empty:
         st.info("Sem respostas para os filtros selecionados.")
@@ -1534,6 +1539,7 @@ if listas_terceira_exist:
     cols_lista_ter = st.columns(len(listas_terceira_exist))
     for idx, coluna in enumerate(listas_terceira_exist):
         with cols_lista_ter[idx]:
+            titulo = coluna.split("__")[0].split(".")[0]
             render_lista_respostas(bp_terceira, coluna)
 else:
     st.info("Sem respostas abertas para a Terceira Semana.")
