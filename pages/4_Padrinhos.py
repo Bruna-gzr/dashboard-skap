@@ -1019,62 +1019,75 @@ def render_grafico_resposta(df: pd.DataFrame, coluna: str, key_prefix: str):
 
     if perc_sim >= 90:
         cor_barra = "#79c257"
-        badge_bg = "#1f3a22"
-        badge_fg = "#a7e08f"
+        cor_badge_bg = "#1f3a22"
+        cor_badge_txt = "#a7e08f"
         status_txt = "Aderência alta"
     elif perc_sim >= 80:
         cor_barra = "#f0d36b"
-        badge_bg = "#3d3517"
-        badge_fg = "#f6df8b"
+        cor_badge_bg = "#3d3517"
+        cor_badge_txt = "#f6df8b"
         status_txt = "Aderência moderada"
     else:
         cor_barra = "#d9534f"
-        badge_bg = "#3d1d1b"
-        badge_fg = "#f2a29f"
+        cor_badge_bg = "#3d1d1b"
+        cor_badge_txt = "#f2a29f"
         status_txt = "Ponto de atenção"
 
-    outros_html = ""
-    if outros > 0:
-        outros_html = f"""
-<div style="margin-top:10px; color:#cfcfcf; font-size:0.82rem;">
-    Outras respostas: <b style="color:#fff;">{outros}</b>
-</div>
-"""
+    with st.container(border=True):
+        st.markdown(
+            f"""
+            <div style="color:#ffffff; font-weight:700; font-size:0.96rem; line-height:1.35; min-height:52px; margin-bottom:10px;">
+                {coluna}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-    html = f"""
-<div class="kpi-card">
-    <div class="kpi-title">{coluna}</div>
-    <div class="kpi-main">{perc_sim:.1f}%</div>
-    <div class="kpi-sub">Percentual de respostas positivas</div>
+        st.markdown(
+            f"""
+            <div style="color:#ffffff; font-weight:800; font-size:2.1rem; line-height:1; margin-bottom:6px;">
+                {perc_sim:.1f}%
+            </div>
+            <div style="color:#cfcfcf; font-size:0.88rem; margin-bottom:12px;">
+                Percentual de respostas positivas
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-    <div class="kpi-progress-wrap">
-        <div class="kpi-progress-bar" style="width:{perc_sim:.1f}%; background:{cor_barra};"></div>
-    </div>
+        st.markdown(
+            f"""
+            <div style="width:100%; height:14px; background:#2b2b2b; border-radius:999px; overflow:hidden; border:1px solid #3a3a3a; margin-bottom:14px;">
+                <div style="width:{perc_sim:.1f}%; height:100%; background:{cor_barra}; border-radius:999px;"></div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-    <div class="kpi-grid">
-        <div class="kpi-mini">
-            <div class="kpi-mini-label">Sim</div>
-            <div class="kpi-mini-value">{qtd_sim}</div>
-        </div>
-        <div class="kpi-mini">
-            <div class="kpi-mini-label">Não</div>
-            <div class="kpi-mini-value">{qtd_nao}</div>
-        </div>
-        <div class="kpi-mini">
-            <div class="kpi-mini-label">Total</div>
-            <div class="kpi-mini-value">{total}</div>
-        </div>
-    </div>
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Sim", qtd_sim)
+        c2.metric("Não", qtd_nao)
+        c3.metric("Total", total)
 
-    {outros_html}
+        if outros > 0:
+            st.markdown(
+                f"""
+                <div style="margin-top:8px; color:#cfcfcf; font-size:0.84rem;">
+                    Outras respostas: <b style="color:#ffffff;">{outros}</b>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
-    <div class="kpi-badge" style="background:{badge_bg}; color:{badge_fg};">
-        {status_txt}
-    </div>
-</div>
-"""
-
-    st.markdown(html, unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div style="margin-top:10px; display:inline-block; background:{cor_badge_bg}; color:{cor_badge_txt};
+                        padding:6px 10px; border-radius:999px; font-size:0.78rem; font-weight:700;">
+                {status_txt}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
 def render_lista_respostas(df: pd.DataFrame, coluna: str):
     textos = (
