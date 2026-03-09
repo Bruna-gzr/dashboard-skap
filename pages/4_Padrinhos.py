@@ -397,7 +397,8 @@ def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_m
     if pool.empty:
         return None, 0
 
-    pool["nome_norm_flex"] = pool["nome_norm"].apply(norm_text_nome_flex)
+    if "nome_norm_flex" not in pool.columns:
+        pool["nome_norm_flex"] = pool["nome_norm"].apply(norm_text_nome_flex)
 
     if RAPIDFUZZ_OK:
         candidatos = process.extract(
@@ -625,9 +626,8 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
 
     cpf_resp = row_resp.get("cpf_clean", "")
     nome_resp = row_resp.get("nome_norm", "")
+    nome_resp_flex = row_resp.get("nome_norm_flex", "")
     op_resp = row_resp.get("op_norm", "")
-
-    nome_resp_flex = norm_text_nome_flex(nome_resp)
     op_resp_norm = norm_text(op_resp)
 
     pool = base_lookup.copy()
@@ -636,12 +636,9 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
     if pool.empty:
         return None, 0, "SEM_CONTRATO_ANTERIOR"
 
-    # 1) PRIORIDADE TOTAL: nome exato
+    # 1) nome exato normalizado
     if nome_resp_flex:
-        pool_nome = pool.copy()
-        pool_nome["nome_norm_flex"] = pool_nome["nome_norm"].apply(norm_text_nome_flex)
-
-        exato = pool_nome[pool_nome["nome_norm_flex"] == nome_resp_flex].copy()
+        exato = pool[pool["nome_norm_flex"] == nome_resp_flex].copy()
 
         if op_resp_norm and "op_norm" in exato.columns:
             exato_op = exato[exato["op_norm"] == op_resp_norm].copy()
@@ -652,72 +649,48 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
             exato = exato.sort_values("Data_dt", ascending=False)
             return exato.iloc[0], 100.0, "NOME_EXATO_CONTRATO"
 
-    # 2) nome aproximado
-    cand, score = buscar_melhor_candidato_por_nome(
-        nome_resp=nome_resp,
-        base_lookup=pool,
-        op_resp=op_resp,
-        score_min=84
-    )
-
-    if cand is not None:
-        cand_nome = norm_text_nome_flex(cand["nome_norm"])
-        inter = token_overlap(nome_resp_flex, cand_nome)
-        primeiro_ok = primeiro_nome(nome_resp_flex) == primeiro_nome(cand_nome)
-        ultimo_ok = ult_nome(nome_resp_flex) == ult_nome(cand_nome)
-
-        aceite = False
-
-        if score >= 92 and inter >= 2 and primeiro_ok:
-            aceite = True
-        elif score >= 90 and inter >= 3:
-            aceite = True
-        elif score >= 95 and primeiro_ok and ultimo_ok:
-            aceite = True
-
-        if aceite:
-            pool_nome = pool.copy()
-            pool_nome["score_nome"] = pool_nome["nome_norm"].apply(
-                lambda x: similaridade_nome(nome_resp_flex, norm_text_nome_flex(x))
-            )
-            pool_nome["token_overlap"] = pool_nome["nome_norm"].apply(
-                lambda x: token_overlap(nome_resp_flex, norm_text_nome_flex(x))
-            )
-
-            if op_resp_norm and "op_norm" in pool_nome.columns:
-                pool_op = pool_nome[pool_nome["op_norm"] == op_resp_norm].copy()
-                if not pool_op.empty:
-                    pool_nome = pool_op
-
-            pool_nome = pool_nome[
-                (pool_nome["score_nome"] >= max(88, score - 3)) &
-                (pool_nome["token_overlap"] >= max(2, inter))
-            ].copy()
-
-            if not pool_nome.empty:
-                pool_nome = pool_nome.sort_values(
-                    ["score_nome", "token_overlap", "Data_dt"],
-                    ascending=[False, False, False]
-                )
-                return pool_nome.iloc[0], float(pool_nome.iloc[0]["score_nome"]), "NOME_FUZZY_CONTRATO"
-
-            return cand, score, "NOME_FUZZY_CONTRATO"
-
-    # 3) fallback por CPF
+    # 2) CPF como segunda tentativa
     if cpf_resp:
         pool_cpf = pool[pool["cpf_clean"] == cpf_resp].copy()
         if not pool_cpf.empty:
             pool_cpf = pool_cpf.sort_values("Data_dt", ascending=False)
             return pool_cpf.iloc[0], 100.0, "CPF_CONTRATO"
 
-    return None, score if 'score' in locals() else 0, "NAO_ENCONTRADO"
+    # 3) fuzzy só se realmente não achou antes
+    cand, score = buscar_melhor_candidato_por_nome(
+        nome_resp=nome_resp_flex,
+        base_lookup=pool,
+        op_resp=op_resp_norm,
+        score_min=90
+    )
+
+    if cand is None:
+        return None, score, "NAO_ENCONTRADO"
+
+    cand_nome = cand["nome_norm_flex"]
+    inter = token_overlap(nome_resp_flex, cand_nome)
+    primeiro_ok = primeiro_nome(nome_resp_flex) == primeiro_nome(cand_nome)
+    ultimo_ok = ult_nome(nome_resp_flex) == ult_nome(cand_nome)
+
+    aceite = False
+    if score >= 94 and inter >= 2 and primeiro_ok:
+        aceite = True
+    elif score >= 92 and inter >= 3:
+        aceite = True
+    elif score >= 96 and primeiro_ok and ultimo_ok:
+        aceite = True
+
+    if not aceite:
+        return None, score, "NOME_REJEITADO"
+
+    return cand, score, "NOME_FUZZY_CONTRATO"
 
 def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.DataFrame) -> dict:
     base = base_oper.copy()
     base["cpf_clean"] = base["cpf_clean"].fillna("")
     base["nome_norm"] = base["nome_norm"].fillna("")
-    base["nome_norm_flex"] = base["nome_norm"].apply(norm_text_nome_flex)
-    base["op_norm"] = base["Operação"].apply(norm_text)
+    base["nome_norm_flex"] = base["nome_norm_flex"].fillna("")
+    base["op_norm"] = base["op_norm"].fillna("")
 
     base_cols = [
         "contrato_id", "cpf_clean", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação",
@@ -762,7 +735,7 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     bp_df["DataHora Resposta"] = combinar_data_hora(bp_df, "Data Cadastro", "Horário da resposta")
 
     def vincular_por_nome_prioritario(df_resp: pd.DataFrame) -> pd.DataFrame:
-        df = df_resp.copy()
+        df = df_resp.copy().reset_index(drop=True)
 
         for col in [
             "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo",
@@ -774,23 +747,110 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         df["match_tipo"] = "NAO_ENCONTRADO"
         df["match_score"] = pd.NA
 
-        resultados = df.apply(
-            lambda r: escolher_contrato_da_resposta(r, base[base_cols]),
-            axis=1
+        # 1) MATCH EXATO POR NOME + OPERAÇÃO
+        mapa_nome_op = (
+            base[base_cols]
+            .sort_values("Data_dt")
+            .drop_duplicates(subset=["nome_norm_flex", "op_norm"], keep="last")
+            .copy()
         )
 
-        for idx, resultado in resultados.items():
-            base_row, score, tipo = resultado
+        df_merge_nome_op = df.merge(
+            mapa_nome_op[
+                ["nome_norm_flex", "op_norm", "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]
+            ],
+            on=["nome_norm_flex", "op_norm"],
+            how="left",
+            suffixes=("", "_base")
+        )
 
-            if base_row is not None:
-                for col in [
-                    "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo",
-                    "Operação", "Data", "Data_dt", "Status Colaborador"
-                ]:
-                    df.at[idx, col] = base_row[col]
+        achou_nome_op = df_merge_nome_op["contrato_id_base"].notna()
 
-            df.at[idx, "match_tipo"] = tipo
-            df.at[idx, "match_score"] = score
+        for idx in df_merge_nome_op[achou_nome_op].index:
+            for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                df.at[idx, col] = df_merge_nome_op.at[idx, f"{col}_base"]
+            df.at[idx, "match_tipo"] = "NOME_EXATO_CONTRATO"
+            df.at[idx, "match_score"] = 100.0
+
+        # 1.1) MATCH EXATO POR NOME APENAS, nos que faltaram
+        falt = df["contrato_id"].isna()
+        if falt.any():
+            mapa_nome = (
+                base[base_cols]
+                .sort_values("Data_dt")
+                .drop_duplicates(subset=["nome_norm_flex"], keep="last")
+                .copy()
+            )
+
+            df_falt_nome = df.loc[falt].copy().reset_index()
+            df_falt_nome = df_falt_nome.merge(
+                mapa_nome[
+                    ["nome_norm_flex", "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]
+                ],
+                on="nome_norm_flex",
+                how="left",
+                suffixes=("", "_base")
+            )
+
+            achou_nome = df_falt_nome["contrato_id_base"].notna()
+
+            for _, row in df_falt_nome[achou_nome].iterrows():
+                idx_real = row["index"]
+                for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                    df.at[idx_real, col] = row[f"{col}_base"]
+                df.at[idx_real, "match_tipo"] = "NOME_EXATO_CONTRATO"
+                df.at[idx_real, "match_score"] = 100.0
+
+        # 2) MATCH EXATO POR CPF NOS QUE FALTARAM
+        falt = df["contrato_id"].isna()
+        if falt.any():
+            mapa_cpf = (
+                base[base_cols]
+                .loc[base["cpf_clean"].astype(str).str.len() == 11]
+                .sort_values("Data_dt")
+                .drop_duplicates(subset=["cpf_clean"], keep="last")
+                .copy()
+            )
+
+            df_falt = df.loc[falt].copy().reset_index()
+            df_falt = df_falt.merge(
+                mapa_cpf[
+                    ["cpf_clean", "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]
+                ],
+                on="cpf_clean",
+                how="left",
+                suffixes=("", "_base")
+            )
+
+            achou_cpf = df_falt["contrato_id_base"].notna()
+
+            for _, row in df_falt[achou_cpf].iterrows():
+                idx_real = row["index"]
+                for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                    df.at[idx_real, col] = row[f"{col}_base"]
+                df.at[idx_real, "match_tipo"] = "CPF_CONTRATO"
+                df.at[idx_real, "match_score"] = 100.0
+
+        # 3) FUZZY SÓ NOS RESTANTES
+        falt = df["contrato_id"].isna()
+        if falt.any():
+            resultados = df.loc[falt].apply(
+                lambda r: escolher_contrato_da_resposta(r, base[base_cols]),
+                axis=1
+            )
+
+            for idx, resultado in resultados.items():
+                base_row, score, tipo = resultado
+
+                if base_row is not None:
+                    for col in [
+                        "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo",
+                        "Operação", "Data", "Data_dt", "Status Colaborador"
+                    ]:
+                        df.at[idx, col] = base_row[col]
+
+                df.at[idx, "match_tipo"] = tipo
+                df.at[idx, "match_score"] = score
 
         return df
 
