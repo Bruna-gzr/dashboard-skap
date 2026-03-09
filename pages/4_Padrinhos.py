@@ -1142,6 +1142,30 @@ def render_lista_respostas(df: pd.DataFrame, coluna: str):
                 unsafe_allow_html=True
             )
 
+def render_lista_respostas_lista(titulo: str, textos: list):
+    st.markdown(
+        f"""
+        <div class="lista-box">
+            <div class="lista-titulo">{titulo}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    with st.container(height=520, border=False):
+        if not textos:
+            st.write("Sem respostas.")
+            return
+
+        for txt in textos:
+            st.markdown(
+                f"""
+<div style="padding:6px 4px;border-bottom:1px solid #2a2a2a;">
+{txt}
+</div>
+""",
+                unsafe_allow_html=True
+            )
 def render_info_colaborador(df: pd.DataFrame, coluna_padrinho: str):
     if not filtro_colaborador or len(filtro_colaborador) != 1:
         return
@@ -1495,27 +1519,65 @@ with resp_tabs[0]:
 
         textos_existentes = [c for c in colunas_texto_ultima if c in nps_ultima.columns]
         if textos_existentes:
-            st.markdown("<br>", unsafe_allow_html=True)
-            cols_texto = st.columns(len(textos_existentes))
-            for i, coltxt in enumerate(textos_existentes):
-                with cols_texto[i]:
-                    render_lista_respostas(nps_ultima, coltxt)
+                st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">➡️Terceira Semana</div>', unsafe_allow_html=True)
 
-with resp_tabs[1]:
-    bp_f = filtrar_respostas_por_sidebar(df_bp)
-    render_info_colaborador(bp_f, "Informe o nome do padrinho:")
+    graficos_terceira = [
+        "Você conhece a rotina de reuniões semanais que você deve participar?",
+        "Você sabe fazer relatos de segurança e abordagens positivas?",
+        "Você entende o que é DPO / VPO?",
+    ]
 
-    coluna_semana_bp = "Selecione a semana do bate papo:"
+    perguntas_base_terceira = [
+        "Como foi sua rotina nesta semana?",
+        "Você tem alguma dúvida ou algo que eu possa te ajudar?"
+    ]
 
-    if coluna_semana_bp in bp_f.columns:
-        bp_segunda = bp_f[bp_f[coluna_semana_bp].astype(str).str.strip().eq("Segunda Semana")].copy()
-        bp_terceira = bp_f[bp_f[coluna_semana_bp].astype(str).str.strip().eq("Terceira Semana")].copy()
-        bp_ultima = bp_f[bp_f[coluna_semana_bp].astype(str).str.strip().eq("Última Semana")].copy()
+    if bp_terceira.empty:
+        st.info("Sem respostas para os filtros selecionados.")
     else:
-        bp_segunda = pd.DataFrame()
-        bp_terceira = pd.DataFrame()
-        bp_ultima = pd.DataFrame()
+        cols = st.columns(2, gap="large")
+        for i, coluna in enumerate(graficos_terceira):
+            if coluna in bp_terceira.columns:
+                with cols[i % 2]:
+                    render_grafico_resposta(bp_terceira, coluna, key_prefix=f"bp_s3_{i}")
 
+        col_card_bp3 = st.columns([1, 3])[0]
+        with col_card_bp3:
+            render_card_data_resposta(bp_terceira, titulo="Registro da resposta")
+
+        listas_terceira = []
+        mapa_listas_terceira = {}
+
+        for pergunta in perguntas_base_terceira:
+            colunas_equivalentes = [c for c in bp_terceira.columns if pergunta in c]
+
+            if not colunas_equivalentes:
+                continue
+
+            respostas = []
+
+            for col in colunas_equivalentes:
+                respostas.extend(
+                    bp_terceira[col]
+                    .astype(str)
+                    .str.strip()
+                    .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA, "-": pd.NA})
+                    .dropna()
+                    .tolist()
+                )
+
+            if respostas:
+                listas_terceira.append(pergunta)
+                mapa_listas_terceira[pergunta] = respostas
+
+        if listas_terceira:
+            cols_lista_ter = st.columns(len(listas_terceira))
+            for idx, pergunta in enumerate(listas_terceira):
+                with cols_lista_ter[idx]:
+                    render_lista_respostas_lista(pergunta, mapa_listas_terceira[pergunta])
+        else:
+            st.info("Sem respostas abertas para a Terceira Semana.")
     st.markdown('<div class="titulo-amarelo">➡️Segunda Semana</div>', unsafe_allow_html=True)
 
     graficos_segunda = [
