@@ -433,6 +433,23 @@ def formatar_datas_para_tabela(df: pd.DataFrame) -> pd.DataFrame:
             out[c] = pd.to_datetime(out[c], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
     return out
 
+def renomear_colunas_duplicadas(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    cols = pd.Series(df.columns, dtype="object")
+    contagem = {}
+    novas = []
+
+    for c in cols:
+        if c not in contagem:
+            contagem[c] = 0
+            novas.append(c)
+        else:
+            contagem[c] += 1
+            novas.append(f"{c}__{contagem[c]}")
+
+    df.columns = novas
+    return df
+
 # =========================
 # Match de nomes
 # =========================
@@ -1090,6 +1107,7 @@ def render_grafico_resposta(df: pd.DataFrame, coluna: str, key_prefix: str):
         )
 
 def render_lista_respostas(df: pd.DataFrame, coluna: str):
+    titulo_limpo = str(coluna).split("__")[0].split(".")[0]
 
     textos = (
         df[coluna]
@@ -1103,14 +1121,13 @@ def render_lista_respostas(df: pd.DataFrame, coluna: str):
     st.markdown(
         f"""
         <div class="lista-box">
-            <div class="lista-titulo">{coluna}</div>
+            <div class="lista-titulo">{titulo_limpo}</div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
     with st.container(height=520, border=False):
-
         if not textos:
             st.write("Sem respostas.")
             return
@@ -1121,26 +1138,6 @@ def render_lista_respostas(df: pd.DataFrame, coluna: str):
 {txt}
 </div>
 """, unsafe_allow_html=True)
-def render_card_data_resposta(df: pd.DataFrame, titulo="Registro da resposta"):
-    if df.empty:
-        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
-        return
-
-    col_dt = "DataHora Resposta" if "DataHora Resposta" in df.columns else "Data Cadastro"
-    if col_dt not in df.columns:
-        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
-        return
-
-    dt = pd.to_datetime(df[col_dt], errors="coerce", dayfirst=True).max()
-    if pd.isna(dt):
-        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
-        return
-
-    data_fmt = dt.strftime("%d/%m/%Y")
-    hora_fmt = dt.strftime("%H:%M")
-    st.markdown(
-        f'<div class="info-box"><b>{titulo}</b><br>{data_fmt} às {hora_fmt}</div>',
-        unsafe_allow_html=True
     )
 
 def render_info_colaborador(df: pd.DataFrame, coluna_padrinho: str):
@@ -1183,9 +1180,13 @@ ARQ_BATEPAPO = DATA_DIR / "Bate papo mentor.xlsx"
 try:
     admitidos = carregar_excel_primeira_aba(ARQ_ADMITIDOS)
     base_ativos = carregar_excel_primeira_aba(ARQ_ATIVOS)
+
     nps = carregar_excel_primeira_aba(ARQ_NPS)
+    nps = renomear_colunas_duplicadas(nps)
+
     batepapo = carregar_excel_primeira_aba(ARQ_BATEPAPO)
-batepapo = renomear_colunas_duplicadas(batepapo)
+    batepapo = renomear_colunas_duplicadas(batepapo)
+
 except Exception as e:
     st.error(f"Erro ao carregar arquivos: {e}")
     st.stop()
@@ -1512,13 +1513,11 @@ with resp_tabs[1]:
     ]
 
     listas_terceira = []
-
-for c in bp_terceira.columns:
-    if "Como foi sua rotina nesta semana?" in c:
-        listas_terceira.append(c)
-
-    if "Você tem alguma dúvida ou algo que eu possa te ajudar?" in c:
-        listas_terceira.append(c)
+    for c in bp_terceira.columns:
+        if "Como foi sua rotina nesta semana?" in c:
+            listas_terceira.append(c)
+        if "Você tem alguma dúvida ou algo que eu possa te ajudar?" in c:
+            listas_terceira.append(c)
 
     if bp_terceira.empty:
         st.info("Sem respostas para os filtros selecionados.")
@@ -1534,15 +1533,13 @@ for c in bp_terceira.columns:
             render_card_data_resposta(bp_terceira, titulo="Registro da resposta")
 
         listas_terceira_exist = [c for c in listas_terceira if c in bp_terceira.columns]
-
-if listas_terceira_exist:
-    cols_lista_ter = st.columns(len(listas_terceira_exist))
-    for idx, coluna in enumerate(listas_terceira_exist):
-        with cols_lista_ter[idx]:
-            titulo = coluna.split("__")[0].split(".")[0]
-            render_lista_respostas(bp_terceira, coluna)
-else:
-    st.info("Sem respostas abertas para a Terceira Semana.")
+        if listas_terceira_exist:
+            cols_lista_ter = st.columns(len(listas_terceira_exist))
+            for idx, coluna in enumerate(listas_terceira_exist):
+                with cols_lista_ter[idx]:
+                    render_lista_respostas(bp_terceira, coluna)
+        else:
+            st.info("Sem respostas abertas para a Terceira Semana.")
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="titulo-amarelo">➡️Última Semana</div>', unsafe_allow_html=True)
