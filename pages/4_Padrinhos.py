@@ -1133,12 +1133,14 @@ def render_lista_respostas(df: pd.DataFrame, coluna: str):
             return
 
         for txt in textos:
-            st.markdown(f"""
+            st.markdown(
+                f"""
 <div style="padding:6px 4px;border-bottom:1px solid #2a2a2a;">
 {txt}
 </div>
-""", unsafe_allow_html=True)
-    )
+""",
+                unsafe_allow_html=True
+            )
 
 def render_info_colaborador(df: pd.DataFrame, coluna_padrinho: str):
     if not filtro_colaborador or len(filtro_colaborador) != 1:
@@ -1162,6 +1164,28 @@ def render_info_colaborador(df: pd.DataFrame, coluna_padrinho: str):
         f'<div class="info-box"><b>Colaborador:</b> {colab} &nbsp;&nbsp;&nbsp; '
         f'<b>Cargo:</b> {cargo} &nbsp;&nbsp;&nbsp; '
         f'<b>Padrinho:</b> {padrinho}</div>',
+        unsafe_allow_html=True
+    )
+
+def render_card_data_resposta(df: pd.DataFrame, titulo="Registro da resposta"):
+    if df.empty:
+        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
+        return
+
+    col_dt = "DataHora Resposta" if "DataHora Resposta" in df.columns else "Data Cadastro"
+    if col_dt not in df.columns:
+        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
+        return
+
+    dt = pd.to_datetime(df[col_dt], errors="coerce", dayfirst=True).max()
+    if pd.isna(dt):
+        st.markdown('<div class="info-box">Sem Data Cadastro disponível.</div>', unsafe_allow_html=True)
+        return
+
+    data_fmt = dt.strftime("%d/%m/%Y")
+    hora_fmt = dt.strftime("%H:%M")
+    st.markdown(
+        f'<div class="info-box"><b>{titulo}</b><br>{data_fmt} às {hora_fmt}</div>',
         unsafe_allow_html=True
     )
 
