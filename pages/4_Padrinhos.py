@@ -703,7 +703,9 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         "Data", "Data_dt", "nome_norm", "nome_norm_flex", "op_norm", "Status Colaborador"
     ]
 
-    # ---------- NPS ----------
+    # =========================
+    # NPS
+    # =========================
     nps_df = nps.copy()
     nps_nome_col = "Informe seu nome completo:"
     nps_cpf_col = "Informe seu CPF:"
@@ -720,21 +722,23 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
     nps_df["Data Cadastro"] = pd.to_datetime(nps_df["Data Cadastro"], errors="coerce", dayfirst=True)
     nps_df["DataHora Resposta"] = combinar_data_hora(nps_df, "Data Cadastro", "Horário da resposta")
 
-    # ---------- BP ----------
-    bp = batepapo.copy()
+    # =========================
+    # Bate-papo
+    # =========================
+    bp_df = batepapo.copy()
     bp_nome_col = "Insira o nome do colaborador:"
     bp_cpf_col = "Inserir o CPF do colaborador:"
 
     for c in [bp_nome_col, bp_cpf_col, "Data Cadastro"]:
-        if c not in bp.columns:
+        if c not in bp_df.columns:
             raise KeyError(f"No Bate papo mentor não encontrei a coluna '{c}'")
 
-    bp["cpf_clean"] = bp[bp_cpf_col].apply(clean_cpf)
-    bp["nome_norm"] = bp[bp_nome_col].apply(norm_text)
-    bp["nome_norm_flex"] = bp[bp_nome_col].apply(norm_text_nome_flex)
-    bp["op_norm"] = ""
-    bp["Data Cadastro"] = pd.to_datetime(bp["Data Cadastro"], errors="coerce", dayfirst=True)
-    bp["DataHora Resposta"] = combinar_data_hora(bp, "Data Cadastro", "Horário da resposta")
+    bp_df["cpf_clean"] = bp_df[bp_cpf_col].apply(clean_cpf)
+    bp_df["nome_norm"] = bp_df[bp_nome_col].apply(norm_text)
+    bp_df["nome_norm_flex"] = bp_df[bp_nome_col].apply(norm_text_nome_flex)
+    bp_df["op_norm"] = ""
+    bp_df["Data Cadastro"] = pd.to_datetime(bp_df["Data Cadastro"], errors="coerce", dayfirst=True)
+    bp_df["DataHora Resposta"] = combinar_data_hora(bp_df, "Data Cadastro", "Horário da resposta")
 
     def vincular_por_cpf_e_data(df_resp: pd.DataFrame) -> pd.DataFrame:
         df = df_resp.copy()
@@ -786,28 +790,30 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
 
             merged = pd.concat(partes, ignore_index=True) if partes else pd.DataFrame()
 
-            if not merged.empty:
-    for _, row in merged[merged["contrato_id_base"].notna()]
-        idx = row["_orig_idx"]
+            if not merged.empty and "contrato_id_base" in merged.columns:
+                preenchidos = merged[merged["contrato_id_base"].notna()].copy()
 
-        mapa_cols = {
-            "contrato_id": "contrato_id_base",
-            "Colaborador": "Colaborador_base",
-            "CPF": "CPF_base",
-            "Cargo": "Cargo_base",
-            "Tipo Cargo": "Tipo Cargo_base",
-            "Operação": "Operação_base",
-            "Data": "Data_base",
-            "Data_dt": "Data_dt_base",
-            "Status Colaborador": "Status Colaborador_base",
-        }
+                for _, row in preenchidos.iterrows():
+                    idx = row["_orig_idx"]
 
-        for col_destino, col_origem in mapa_cols.items():
-            if col_origem in row.index:
-                df.at[idx, col_destino] = row[col_origem]
+                    mapa_cols = {
+                        "contrato_id": "contrato_id_base",
+                        "Colaborador": "Colaborador_base",
+                        "CPF": "CPF_base",
+                        "Cargo": "Cargo_base",
+                        "Tipo Cargo": "Tipo Cargo_base",
+                        "Operação": "Operação_base",
+                        "Data": "Data_base",
+                        "Data_dt": "Data_dt_base",
+                        "Status Colaborador": "Status Colaborador_base",
+                    }
 
-        df.at[idx, "match_tipo"] = "CPF_CONTRATO"
-        df.at[idx, "match_score"] = 100.0
+                    for col_destino, col_origem in mapa_cols.items():
+                        if col_origem in row.index:
+                            df.at[idx, col_destino] = row[col_origem]
+
+                    df.at[idx, "match_tipo"] = "CPF_CONTRATO"
+                    df.at[idx, "match_score"] = 100.0
 
         falt = df["contrato_id"].isna()
         if falt.any():
@@ -835,7 +841,7 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
         return df
 
     nps_m = vincular_por_cpf_e_data(nps_df)
-    bp_m = vincular_por_cpf_e_data(bp)
+    bp_m = vincular_por_cpf_e_data(bp_df)
 
     return {
         "base_operacional": base,
