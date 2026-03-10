@@ -581,10 +581,25 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
             if not pool_op.empty:
                 pool = pool_op
 
-        # 1) tenta nome exato primeiro
+        # 1) nome exato primeiro
         exatos = pool[pool["nome_norm_flex"] == nome_base_flex].copy()
 
         if len(exatos) == 1:
+            cpf_ativo = str(exatos.iloc[0].get("cpf_clean", "")).strip()
+
+            # se ambos têm CPF, valida
+            if cpf_base and cpf_ativo:
+                if cpf_base == cpf_ativo:
+                    status_lista.append("Ativo")
+                    tipo_lista.append("NOME_EXATO_UNICO_CPF_OK")
+                    score_lista.append(100.0)
+                else:
+                    status_lista.append("Inativo")
+                    tipo_lista.append("NOME_EXATO_UNICO_CPF_DIVERGENTE")
+                    score_lista.append(pd.NA)
+                continue
+
+            # nome exato único sem CPF para validar
             status_lista.append("Ativo")
             tipo_lista.append("NOME_EXATO_UNICO")
             score_lista.append(100.0)
@@ -605,48 +620,7 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
             score_lista.append(pd.NA)
             continue
 
-        # 3) tenta fuzzy por nome
-        cand, score = buscar_melhor_candidato_por_nome(
-            nome_resp=nome_base_flex,
-            base_lookup=pool,
-            op_resp=op_base,
-            score_min=93
-        )
-
-        if cand is not None:
-            cand_nome = norm_text_nome_flex(cand["nome_norm"])
-            inter = token_overlap(nome_base_flex, cand_nome)
-            primeiro_ok = primeiro_nome(nome_base_flex) == primeiro_nome(cand_nome)
-            ultimo_ok = ult_nome(nome_base_flex) == ult_nome(cand_nome)
-
-            if (score >= 96 and inter >= 2 and primeiro_ok and ultimo_ok) or (score >= 98 and inter >= 3):
-                candidatos_fortes = pool.copy()
-                candidatos_fortes["score_nome"] = candidatos_fortes["nome_norm_flex"].apply(
-                    lambda x: similaridade_nome(nome_base_flex, x)
-                )
-                candidatos_fortes = candidatos_fortes[candidatos_fortes["score_nome"] >= max(96, score - 1)].copy()
-
-                if len(candidatos_fortes) == 1:
-                    status_lista.append("Ativo")
-                    tipo_lista.append("NOME_FUZZY_UNICO")
-                    score_lista.append(score)
-                    continue
-
-                if len(candidatos_fortes) > 1:
-                    if cpf_base and len(cpf_base) == 11:
-                        cand_cpf = candidatos_fortes[candidatos_fortes["cpf_clean"] == cpf_base].copy()
-                        if len(cand_cpf) == 1:
-                            status_lista.append("Ativo")
-                            tipo_lista.append("NOME_FUZZY_CPF")
-                            score_lista.append(score)
-                            continue
-
-                    status_lista.append("Inativo")
-                    tipo_lista.append("NOME_FUZZY_AMBIGUO")
-                    score_lista.append(score)
-                    continue
-
-        # 4) fallback por CPF só se não achou por nome
+        # 3) fallback por CPF só se não achou por nome
         if cpf_base and len(cpf_base) == 11:
             cpf_hit = pool[pool["cpf_clean"] == cpf_base].copy()
             if len(cpf_hit) == 1:
@@ -655,6 +629,7 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
                 score_lista.append(100.0)
                 continue
 
+        # 4) não usa fuzzy para status de ativo/inativo
         status_lista.append("Inativo")
         tipo_lista.append("NAO_ENCONTRADO")
         score_lista.append(pd.NA)
