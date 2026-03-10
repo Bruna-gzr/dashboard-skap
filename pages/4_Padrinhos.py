@@ -1633,7 +1633,7 @@ with tabs[5]:
 # Acompanhamento processo padrinhos
 # =========================
 st.markdown("<br>", unsafe_allow_html=True)
-st.header("📋 Acompanhamento Processo Padrinhos")
+st.header("📋 Feedbacks dos Novatos & Padrinhos")
 
 resp_tabs = st.tabs(["NPS Mentor", "Bate papo mentor"])
 
