@@ -1431,23 +1431,6 @@ if ultima_atualizacao is not None:
 else:
     ultima_atualizacao_txt = "Não disponível"
 
-col_data, col_botao, col_space = st.columns([5, 2, 13])
-
-with col_data:
-    st.markdown(
-        f"""
-        <div style="color:#bdbdbd; font-size:0.92rem; padding-top:8px;">
-            🕒 <b>Última atualização dos dados:</b> {ultima_atualizacao_txt}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col_botao:
-    if st.button("🔄 Atualizar dados", key="btn_refresh_padrinhos_topo"):
-        st.cache_data.clear()
-        st.rerun()
-
 # =========================
 # Carregamento
 # =========================
@@ -1573,6 +1556,13 @@ filtro_status = st.sidebar.multiselect(
     default=[],
     key="f_status_etapa_sidebar"
 )
+
+st.sidebar.markdown("---")
+st.sidebar.caption(f"Última atualização: {ultima_atualizacao_txt}")
+
+if st.sidebar.button("🔄 Atualizar dados", key="btn_refresh_sidebar", width="stretch"):
+    st.cache_data.clear()
+    st.rerun()
 
 def aplicar_filtros_farol(df_farol: pd.DataFrame) -> pd.DataFrame:
     df = df_farol.copy()
