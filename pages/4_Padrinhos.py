@@ -436,54 +436,6 @@ def buscar_melhor_candidato_por_nome(nome_resp, base_lookup, op_resp="", score_m
 
     return row, score
 
-def status_ativo_por_nome(nome_base: str, op_base: str, ativos_lookup: pd.DataFrame):
-    if ativos_lookup.empty or not nome_base:
-        return "Inativo", "NAO_ENCONTRADO", pd.NA
-
-    nome_norm = norm_text_nome_flex(nome_base)
-    op_norm = norm_text(op_base)
-
-    exato = ativos_lookup[ativos_lookup["nome_norm_flex"] == nome_norm].copy()
-    if op_norm and "op_norm" in exato.columns:
-        exato_op = exato[exato["op_norm"] == op_norm].copy()
-        if not exato_op.empty:
-            exato = exato_op
-
-    if not exato.empty:
-        return "Ativo", "NOME_EXATO", 100.0
-
-    pool = ativos_lookup.copy()
-    if op_norm and "op_norm" in pool.columns:
-        pool_op = pool[pool["op_norm"] == op_norm].copy()
-        if not pool_op.empty:
-            pool = pool_op
-
-    if pool.empty:
-        pool = ativos_lookup.copy()
-
-    cand, score = buscar_melhor_candidato_por_nome(
-        nome_resp=nome_norm,
-        base_lookup=pool,
-        op_resp=op_norm,
-        score_min=93
-    )
-
-    if cand is None:
-        return "Inativo", "NAO_ENCONTRADO", score if score else pd.NA
-
-    cand_nome = norm_text_nome_flex(cand["nome_norm"])
-    inter = token_overlap(nome_norm, cand_nome)
-    primeiro_ok = primeiro_nome(nome_norm) == primeiro_nome(cand_nome)
-    ultimo_ok = ult_nome(nome_norm) == ult_nome(cand_nome)
-
-    if score >= 96 and inter >= 2 and primeiro_ok and ultimo_ok:
-        return "Ativo", "NOME_FUZZY", score
-
-    if score >= 98 and inter >= 3:
-        return "Ativo", "NOME_FUZZY", score
-
-    return "Inativo", "NAO_ENCONTRADO", score
-
 # =========================
 # Base operacional
 # =========================
@@ -728,7 +680,6 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
         return None, 0, "SEM_DATA_RESPOSTA"
 
     cpf_resp = row_resp.get("cpf_clean", "")
-    nome_resp = row_resp.get("nome_norm", "")
     nome_resp_flex = row_resp.get("nome_norm_flex", "")
     op_resp = row_resp.get("op_norm", "")
     op_resp_norm = norm_text(op_resp)
@@ -809,6 +760,17 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
 
     return None, score if "score" in locals() else 0, "NAO_ENCONTRADO"
 
+def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.DataFrame) -> dict:
+    base = base_oper.copy()
+    base["cpf_clean"] = base["cpf_clean"].fillna("")
+    base["nome_norm"] = base["nome_norm"].fillna("")
+    base["nome_norm_flex"] = base["nome_norm_flex"].fillna("")
+    base["op_norm"] = base["op_norm"].fillna("")
+
+    base_cols = [
+        "contrato_id", "cpf_clean", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação",
+        "Data", "Data_dt", "nome_norm", "nome_norm_flex", "op_norm", "Status Colaborador"
+    ]
 
     # =========================
     # NPS
@@ -1510,6 +1472,7 @@ with col_botao:
     if st.button("🔄 Atualizar dados", key="btn_refresh_padrinhos_topo"):
         st.cache_data.clear()
         st.rerun()
+
 # =========================
 # Carregamento
 # =========================
