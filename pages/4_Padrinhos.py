@@ -31,7 +31,7 @@ except Exception:
 # =========================
 # Título
 # =========================
-st.title("🚦 Farol de execução do Processo de Padrinhos")
+st.title("👨🏻‍🎓 Gestão de Padrinhos")
 
 # =========================
 # Estilo
@@ -1606,7 +1606,7 @@ tabs = st.tabs([
 with tabs[0]:
     df_all = pd.concat([farois[e["chave"]] for e in ETAPAS], ignore_index=True)
     df_all = aplicar_filtros_farol(df_all)
-    render_farol(df_all, "PROCESSO PADRINHOS — ADERÊNCIA GERAL", key_prefix="GERAL")
+    render_farol(df_all, "🚦Processo Padrinhos: Aderência Geral", key_prefix="GERAL")
 
 with tabs[1]:
     df = aplicar_filtros_farol(farois["NPS_1_SEMANA"])
