@@ -1532,9 +1532,33 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-if st.button("🔄 Atualizar dados agora", width="stretch"):
-    st.cache_data.clear()
-    st.rerun()
+# =========================
+# Última atualização + refresh manual
+# =========================
+arquivos_base = [ARQ_ADMITIDOS, ARQ_ATIVOS, ARQ_NPS, ARQ_BATEPAPO]
+ultima_atualizacao = obter_ultima_atualizacao_arquivos(arquivos_base)
+
+if ultima_atualizacao is not None:
+    ultima_atualizacao_txt = ultima_atualizacao.strftime("%d/%m/%Y %H:%M")
+else:
+    ultima_atualizacao_txt = "Não disponível"
+
+col_info, col_botao, col_vazio = st.columns([3, 1, 8])
+
+with col_info:
+    st.markdown(
+        f"""
+        <div style="color:#bdbdbd; font-size:0.92rem; margin-bottom:10px; padding-top:8px;">
+            🕒 <b>Última atualização dos dados:</b> {ultima_atualizacao_txt}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with col_botao:
+    if st.button("🔄 Atualizar dados agora", key="btn_refresh_topo"):
+        st.cache_data.clear()
+        st.rerun()
 
 # =========================
 # Carregamento
@@ -1566,15 +1590,6 @@ try:
 except Exception as e:
     st.error(f"Erro no pipeline de mentoria: {e}")
     st.stop()
-
-# =========================
-# Cards topo
-# =========================
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Admitidos (arquivo)", f"{len(admitidos):,}".replace(",", "."))
-c2.metric("Operacional Logístico (base do farol)", f"{len(base_oper):,}".replace(",", "."))
-c3.metric("NPS (linhas)", f"{len(df_nps):,}".replace(",", "."))
-c4.metric("Bate-papo (linhas)", f"{len(df_bp):,}".replace(",", "."))
 
 # =========================
 # Sidebar — filtros
