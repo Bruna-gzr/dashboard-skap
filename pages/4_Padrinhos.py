@@ -39,9 +39,8 @@ st.title("👨🏻‍🎓 Gestão de Padrinhos")
 st.markdown("""
 <style>
 .stApp { background: #0b0b0b; color: #f5f5f5; }
-h1, h2, h3 { color: white !important; }
-</style>
-""", unsafe_allow_html=True)
+h1 { color: #f0d36b !important; }
+h2, h3 { color: white !important; }
 
 .card {
   background: #000000;
