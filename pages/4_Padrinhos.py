@@ -564,6 +564,18 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
         (~mask_ponta_grossa | (oper["Data_dt"] >= corte_ponta_grossa))
     ].copy()
 
+    # Mantém somente a admissão mais recente por pessoa
+    oper["pessoa_key"] = oper.apply(
+        lambda r: r["cpf_clean"] if str(r.get("cpf_clean", "")).strip() else r["nome_norm_flex"],
+        axis=1
+    )
+
+    oper = (
+        oper.sort_values(["pessoa_key", "Data_dt"], ascending=[True, False])
+            .drop_duplicates(subset=["pessoa_key"], keep="first")
+            .copy()
+    )
+
     oper = oper.sort_values(["nome_norm_flex", "cpf_clean", "Data_dt"]).reset_index(drop=True)
     oper["contrato_id"] = oper.index.astype(str)
 
@@ -583,9 +595,19 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
     atv["nome_norm_flex"] = atv["Colaborador"].apply(norm_text_nome_flex)
     atv["op_norm"] = atv["Operação"].apply(norm_text) if "Operação" in atv.columns else ""
 
+    col_cpf_ativos = None
+    for c in atv.columns:
+        if norm_text(c) == "CPF":
+            col_cpf_ativos = c
+            break
+
+    if col_cpf_ativos is not None:
+        atv["cpf_clean"] = atv[col_cpf_ativos].apply(clean_cpf)
+    else:
+        atv["cpf_clean"] = ""
+
     ativos_lookup = (
-        atv[["nome_norm", "nome_norm_flex", "op_norm"]]
-        .dropna(subset=["nome_norm_flex"])
+        atv[["cpf_clean", "nome_norm", "nome_norm_flex", "op_norm"]]
         .drop_duplicates()
         .copy()
     )
@@ -595,14 +617,95 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
     score_lista = []
 
     for _, row in base.iterrows():
-        status, tipo, score = status_ativo_por_nome(
-            nome_base=row.get("Colaborador", ""),
-            op_base=row.get("Operação", ""),
-            ativos_lookup=ativos_lookup
+        nome_base = row.get("Colaborador", "")
+        nome_base_flex = norm_text_nome_flex(nome_base)
+        cpf_base = str(row.get("cpf_clean", "")).strip()
+        op_base = norm_text(row.get("Operação", ""))
+
+        pool = ativos_lookup.copy()
+
+        if op_base and "op_norm" in pool.columns:
+            pool_op = pool[pool["op_norm"] == op_base].copy()
+            if not pool_op.empty:
+                pool = pool_op
+
+        # 1) tenta nome exato primeiro
+        exatos = pool[pool["nome_norm_flex"] == nome_base_flex].copy()
+
+        if len(exatos) == 1:
+            status_lista.append("Ativo")
+            tipo_lista.append("NOME_EXATO_UNICO")
+            score_lista.append(100.0)
+            continue
+
+        # 2) se nome exato veio duplicado, usa CPF para desempate
+        if len(exatos) > 1:
+            if cpf_base and len(cpf_base) == 11:
+                exato_cpf = exatos[exatos["cpf_clean"] == cpf_base].copy()
+                if len(exato_cpf) == 1:
+                    status_lista.append("Ativo")
+                    tipo_lista.append("NOME_DUPLICADO_CPF")
+                    score_lista.append(100.0)
+                    continue
+
+            status_lista.append("Inativo")
+            tipo_lista.append("NOME_DUPLICADO_SEM_DESEMPATE")
+            score_lista.append(pd.NA)
+            continue
+
+        # 3) tenta fuzzy por nome
+        cand, score = buscar_melhor_candidato_por_nome(
+            nome_resp=nome_base_flex,
+            base_lookup=pool,
+            op_resp=op_base,
+            score_min=93
         )
-        status_lista.append(status)
-        tipo_lista.append(tipo)
-        score_lista.append(score)
+
+        if cand is not None:
+            cand_nome = norm_text_nome_flex(cand["nome_norm"])
+            inter = token_overlap(nome_base_flex, cand_nome)
+            primeiro_ok = primeiro_nome(nome_base_flex) == primeiro_nome(cand_nome)
+            ultimo_ok = ult_nome(nome_base_flex) == ult_nome(cand_nome)
+
+            if (score >= 96 and inter >= 2 and primeiro_ok and ultimo_ok) or (score >= 98 and inter >= 3):
+                candidatos_fortes = pool.copy()
+                candidatos_fortes["score_nome"] = candidatos_fortes["nome_norm_flex"].apply(
+                    lambda x: similaridade_nome(nome_base_flex, x)
+                )
+                candidatos_fortes = candidatos_fortes[candidatos_fortes["score_nome"] >= max(96, score - 1)].copy()
+
+                if len(candidatos_fortes) == 1:
+                    status_lista.append("Ativo")
+                    tipo_lista.append("NOME_FUZZY_UNICO")
+                    score_lista.append(score)
+                    continue
+
+                if len(candidatos_fortes) > 1:
+                    if cpf_base and len(cpf_base) == 11:
+                        cand_cpf = candidatos_fortes[candidatos_fortes["cpf_clean"] == cpf_base].copy()
+                        if len(cand_cpf) == 1:
+                            status_lista.append("Ativo")
+                            tipo_lista.append("NOME_FUZZY_CPF")
+                            score_lista.append(score)
+                            continue
+
+                    status_lista.append("Inativo")
+                    tipo_lista.append("NOME_FUZZY_AMBIGUO")
+                    score_lista.append(score)
+                    continue
+
+        # 4) fallback por CPF só se não achou por nome
+        if cpf_base and len(cpf_base) == 11:
+            cpf_hit = pool[pool["cpf_clean"] == cpf_base].copy()
+            if len(cpf_hit) == 1:
+                status_lista.append("Ativo")
+                tipo_lista.append("CPF_FALLBACK")
+                score_lista.append(100.0)
+                continue
+
+        status_lista.append("Inativo")
+        tipo_lista.append("NAO_ENCONTRADO")
+        score_lista.append(pd.NA)
 
     base["Status Colaborador"] = status_lista
     base["match_ativo_tipo"] = tipo_lista
@@ -636,27 +739,26 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
     if pool.empty:
         return None, 0, "SEM_CONTRATO_ANTERIOR"
 
-    # 1) nome exato normalizado
-    if nome_resp_flex:
-        exato = pool[pool["nome_norm_flex"] == nome_resp_flex].copy()
+    # 1) nome exato + operação
+    exato = pool[pool["nome_norm_flex"] == nome_resp_flex].copy()
 
-        if op_resp_norm and "op_norm" in exato.columns:
-            exato_op = exato[exato["op_norm"] == op_resp_norm].copy()
-            if not exato_op.empty:
-                exato = exato_op
+    if op_resp_norm and "op_norm" in exato.columns:
+        exato_op = exato[exato["op_norm"] == op_resp_norm].copy()
+        if not exato_op.empty:
+            exato = exato_op
 
-        if not exato.empty:
-            exato = exato.sort_values("Data_dt", ascending=False)
-            return exato.iloc[0], 100.0, "NOME_EXATO_CONTRATO"
+    if len(exato) == 1:
+        exato = exato.sort_values("Data_dt", ascending=False)
+        return exato.iloc[0], 100.0, "NOME_EXATO_CONTRATO"
 
-    # 2) CPF como segunda tentativa
-    if cpf_resp:
-        pool_cpf = pool[pool["cpf_clean"] == cpf_resp].copy()
-        if not pool_cpf.empty:
-            pool_cpf = pool_cpf.sort_values("Data_dt", ascending=False)
-            return pool_cpf.iloc[0], 100.0, "CPF_CONTRATO"
+    if len(exato) > 1:
+        if cpf_resp and len(cpf_resp) == 11:
+            exato_cpf = exato[exato["cpf_clean"] == cpf_resp].copy()
+            if len(exato_cpf) == 1:
+                exato_cpf = exato_cpf.sort_values("Data_dt", ascending=False)
+                return exato_cpf.iloc[0], 100.0, "NOME_DUPLICADO_CPF_CONTRATO"
 
-    # 3) fuzzy só se realmente não achou antes
+    # 2) fuzzy por nome
     cand, score = buscar_melhor_candidato_por_nome(
         nome_resp=nome_resp_flex,
         base_lookup=pool,
@@ -664,8 +766,48 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
         score_min=90
     )
 
-    if cand is None:
-        return None, score, "NAO_ENCONTRADO"
+    if cand is not None:
+        cand_nome = cand["nome_norm_flex"]
+        inter = token_overlap(nome_resp_flex, cand_nome)
+        primeiro_ok = primeiro_nome(nome_resp_flex) == primeiro_nome(cand_nome)
+        ultimo_ok = ult_nome(nome_resp_flex) == ult_nome(cand_nome)
+
+        aceite = False
+        if score >= 94 and inter >= 2 and primeiro_ok:
+            aceite = True
+        elif score >= 92 and inter >= 3:
+            aceite = True
+        elif score >= 96 and primeiro_ok and ultimo_ok:
+            aceite = True
+
+        if aceite:
+            pool2 = pool.copy()
+            pool2["score_nome"] = pool2["nome_norm_flex"].apply(lambda x: similaridade_nome(nome_resp_flex, x))
+            candidatos = pool2[pool2["score_nome"] >= max(94, score - 1)].copy()
+
+            if op_resp_norm and "op_norm" in candidatos.columns:
+                cand_op = candidatos[candidatos["op_norm"] == op_resp_norm].copy()
+                if not cand_op.empty:
+                    candidatos = cand_op
+
+            if len(candidatos) == 1:
+                candidatos = candidatos.sort_values("Data_dt", ascending=False)
+                return candidatos.iloc[0], score, "NOME_FUZZY_CONTRATO"
+
+            if len(candidatos) > 1 and cpf_resp and len(cpf_resp) == 11:
+                cand_cpf = candidatos[candidatos["cpf_clean"] == cpf_resp].copy()
+                if len(cand_cpf) == 1:
+                    cand_cpf = cand_cpf.sort_values("Data_dt", ascending=False)
+                    return cand_cpf.iloc[0], score, "NOME_FUZZY_CPF_CONTRATO"
+
+    # 3) fallback final por CPF
+    if cpf_resp and len(cpf_resp) == 11:
+        pool_cpf = pool[pool["cpf_clean"] == cpf_resp].copy()
+        if not pool_cpf.empty:
+            pool_cpf = pool_cpf.sort_values("Data_dt", ascending=False)
+            return pool_cpf.iloc[0], 100.0, "CPF_FALLBACK_CONTRATO"
+
+    return None, score if "score" in locals() else 0, "NAO_ENCONTRADO"
 
     cand_nome = cand["nome_norm_flex"]
     inter = token_overlap(nome_resp_flex, cand_nome)
