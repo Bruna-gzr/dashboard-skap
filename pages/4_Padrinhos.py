@@ -1522,15 +1522,33 @@ if ultima_atualizacao is not None:
     ultima_atualizacao_txt = ultima_atualizacao.strftime("%d/%m/%Y %H:%M")
 else:
     ultima_atualizacao_txt = "Não disponível"
+    # =========================
+# Última atualização + refresh manual
+# =========================
+arquivos_base = [ARQ_ADMITIDOS, ARQ_ATIVOS, ARQ_NPS, ARQ_BATEPAPO]
+ultima_atualizacao = obter_ultima_atualizacao_arquivos(arquivos_base)
 
-st.markdown(
-    f"""
-    <div style="color:#bdbdbd; font-size:0.92rem; margin-bottom:10px;">
+if ultima_atualizacao is not None:
+    ultima_atualizacao_txt = ultima_atualizacao.strftime("%d/%m/%Y %H:%M")
+else:
+    ultima_atualizacao_txt = "Não disponível"
+
+col_data, col_botao, col_space = st.columns([6,2,10])
+
+with col_data:
+    st.markdown(
+        f"""
+        <div style="color:#bdbdbd; font-size:0.92rem; padding-top:8px;">
         🕒 <b>Última atualização dos dados:</b> {ultima_atualizacao_txt}
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with col_botao:
+    if st.button("🔄 Atualizar dados", key="btn_refresh_topo"):
+        st.cache_data.clear()
+        st.rerun()
 
 # =========================
 # Última atualização + refresh manual
