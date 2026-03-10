@@ -1561,12 +1561,12 @@ if ultima_atualizacao is not None:
 else:
     ultima_atualizacao_txt = "Não disponível"
 
-col_info, col_botao, col_vazio = st.columns([3, 1, 8])
+col_data, col_botao, col_space = st.columns([6, 2, 10])
 
-with col_info:
+with col_data:
     st.markdown(
         f"""
-        <div style="color:#bdbdbd; font-size:0.92rem; margin-bottom:10px; padding-top:8px;">
+        <div style="color:#bdbdbd; font-size:0.92rem; padding-top:8px;">
             🕒 <b>Última atualização dos dados:</b> {ultima_atualizacao_txt}
         </div>
         """,
@@ -1574,7 +1574,7 @@ with col_info:
     )
 
 with col_botao:
-    if st.button("🔄 Atualizar dados agora", key="btn_refresh_topo"):
+    if st.button("🔄 Atualizar dados", key="btn_refresh_padrinhos_topo_v2"):
         st.cache_data.clear()
         st.rerun()
 
