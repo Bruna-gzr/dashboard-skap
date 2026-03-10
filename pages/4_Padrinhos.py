@@ -1590,7 +1590,6 @@ def aplicar_filtros_farol(df_farol: pd.DataFrame) -> pd.DataFrame:
 # =========================
 # FAROL
 # =========================
-st.header("🚦 ADERÊNCIA — PROCESSO PADRINHOS")
 
 hoje = pd.Timestamp(datetime.now().date())
 farois = montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje=hoje)
