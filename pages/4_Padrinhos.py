@@ -809,35 +809,6 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
 
     return None, score if "score" in locals() else 0, "NAO_ENCONTRADO"
 
-    cand_nome = cand["nome_norm_flex"]
-    inter = token_overlap(nome_resp_flex, cand_nome)
-    primeiro_ok = primeiro_nome(nome_resp_flex) == primeiro_nome(cand_nome)
-    ultimo_ok = ult_nome(nome_resp_flex) == ult_nome(cand_nome)
-
-    aceite = False
-    if score >= 94 and inter >= 2 and primeiro_ok:
-        aceite = True
-    elif score >= 92 and inter >= 3:
-        aceite = True
-    elif score >= 96 and primeiro_ok and ultimo_ok:
-        aceite = True
-
-    if not aceite:
-        return None, score, "NOME_REJEITADO"
-
-    return cand, score, "NOME_FUZZY_CONTRATO"
-
-def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.DataFrame) -> dict:
-    base = base_oper.copy()
-    base["cpf_clean"] = base["cpf_clean"].fillna("")
-    base["nome_norm"] = base["nome_norm"].fillna("")
-    base["nome_norm_flex"] = base["nome_norm_flex"].fillna("")
-    base["op_norm"] = base["op_norm"].fillna("")
-
-    base_cols = [
-        "contrato_id", "cpf_clean", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação",
-        "Data", "Data_dt", "nome_norm", "nome_norm_flex", "op_norm", "Status Colaborador"
-    ]
 
     # =========================
     # NPS
@@ -1522,46 +1493,8 @@ if ultima_atualizacao is not None:
     ultima_atualizacao_txt = ultima_atualizacao.strftime("%d/%m/%Y %H:%M")
 else:
     ultima_atualizacao_txt = "Não disponível"
-    # =========================
-# Última atualização + refresh manual
-# =========================
-arquivos_base = [ARQ_ADMITIDOS, ARQ_ATIVOS, ARQ_NPS, ARQ_BATEPAPO]
-ultima_atualizacao = obter_ultima_atualizacao_arquivos(arquivos_base)
 
-if ultima_atualizacao is not None:
-    ultima_atualizacao_txt = ultima_atualizacao.strftime("%d/%m/%Y %H:%M")
-else:
-    ultima_atualizacao_txt = "Não disponível"
-
-col_data, col_botao, col_space = st.columns([6,2,10])
-
-with col_data:
-    st.markdown(
-        f"""
-        <div style="color:#bdbdbd; font-size:0.92rem; padding-top:8px;">
-        🕒 <b>Última atualização dos dados:</b> {ultima_atualizacao_txt}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with col_botao:
-    if st.button("🔄 Atualizar dados", key="btn_refresh_topo"):
-        st.cache_data.clear()
-        st.rerun()
-
-# =========================
-# Última atualização + refresh manual
-# =========================
-arquivos_base = [ARQ_ADMITIDOS, ARQ_ATIVOS, ARQ_NPS, ARQ_BATEPAPO]
-ultima_atualizacao = obter_ultima_atualizacao_arquivos(arquivos_base)
-
-if ultima_atualizacao is not None:
-    ultima_atualizacao_txt = ultima_atualizacao.strftime("%d/%m/%Y %H:%M")
-else:
-    ultima_atualizacao_txt = "Não disponível"
-
-col_data, col_botao, col_space = st.columns([6, 2, 10])
+col_data, col_botao, col_space = st.columns([5, 2, 13])
 
 with col_data:
     st.markdown(
@@ -1574,10 +1507,9 @@ with col_data:
     )
 
 with col_botao:
-    if st.button("🔄 Atualizar dados", key="btn_refresh_padrinhos_topo_v2"):
+    if st.button("🔄 Atualizar dados", key="btn_refresh_padrinhos_topo"):
         st.cache_data.clear()
         st.rerun()
-
 # =========================
 # Carregamento
 # =========================
