@@ -1669,7 +1669,7 @@ with resp_tabs[0]:
         nps_primeira = pd.DataFrame()
         nps_ultima = pd.DataFrame()
 
-    st.markdown('<div class="titulo-amarelo">➡️Primeira semana junto ao padrinho.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">✍🏻Primeira semana junto ao padrinho.</div>', unsafe_allow_html=True)
 
     if nps_primeira.empty:
         st.info("Sem respostas para os filtros selecionados.")
@@ -1685,7 +1685,7 @@ with resp_tabs[0]:
             render_card_data_resposta(nps_primeira, titulo="Registro da resposta")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="titulo-amarelo">➡️Última semana junto ao padrinho.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">✍🏻Última semana junto ao padrinho.</div>', unsafe_allow_html=True)
 
     if nps_ultima.empty:
         st.info("Sem respostas para os filtros selecionados.")
@@ -1731,7 +1731,7 @@ with resp_tabs[1]:
         bp_terceira = pd.DataFrame()
         bp_ultima = pd.DataFrame()
 
-    st.markdown('<div class="titulo-amarelo">➡️Segunda Semana</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">✍🏻Segunda Semana</div>', unsafe_allow_html=True)
 
     graficos_segunda = [
         "Você conhece quais são os EPIs obrigatórios da sua função?",
@@ -1766,7 +1766,7 @@ with resp_tabs[1]:
                     render_lista_respostas(bp_segunda, coluna)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="titulo-amarelo">➡️Terceira Semana</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">✍🏻Terceira Semana</div>', unsafe_allow_html=True)
 
     graficos_terceira = [
         "Você conhece a rotina de reuniões semanais que você deve participar?",
@@ -1826,7 +1826,7 @@ with resp_tabs[1]:
             st.info("Sem respostas abertas para a Terceira Semana.")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="titulo-amarelo">➡️Última Semana</div>', unsafe_allow_html=True)
+    st.markdown('<div class="titulo-amarelo">✍🏻Última Semana</div>', unsafe_allow_html=True)
 
     graficos_ultima = [
         "Você se sente integrado a empresa?",
