@@ -220,36 +220,39 @@ ICONES = {
 # FUNÇÃO PARA CRIAR O CARD DA UNIDADE
 # ============================================
 
-def criar_card_unidade(nome_unidade, dados):
-    with st.container(border=True):
+# ===== LOGO + TITULO CENTRALIZADOS NO MESMO EIXO =====
+esp1, centro, esp2 = st.columns([1,2,1])
 
-        # Logo centralizada
-        esp1, centro, esp2 = st.columns([1, 2, 1])
+with centro:
 
-        with centro:
-            col_a, col_b, col_c = st.columns([1, 2, 1])
+    col_a, col_b, col_c = st.columns([1,2,1])
 
-            with col_b:
-                try:
-                    st.image(dados["logo"], width=120)
-                except Exception:
-                    st.markdown(
-                        """
-                        <div style='
-                            background: white;
-                            border-radius: 50%;
-                            width: 120px;
-                            height: 120px;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            margin: 0 auto;
-                        '>
-                            <span style='font-size: 60px;'>🏢</span>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
+    with col_b:
+        try:
+            st.image(dados["logo"], width=120)
+        except:
+            st.markdown(
+                """
+                <div style='
+                    background: white;
+                    border-radius: 50%;
+                    width: 120px;
+                    height: 120px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0 auto;
+                '>
+                    <span style='font-size: 60px;'>🏢</span>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        st.markdown(
+            f"<div class='titulo-unidade'>{nome_unidade}</div>",
+            unsafe_allow_html=True
+        )
 
         # Nome da unidade centralizado
         st.markdown(
