@@ -3,7 +3,7 @@ import streamlit as st
 # Configuração da página
 st.set_page_config(page_title="Materiais de Integração", layout="wide")
 
-# CSS personalizado - APENAS O ESSENCIAL
+# CSS personalizado
 st.markdown("""
 <style>
     /* Título centralizado */
@@ -24,13 +24,20 @@ st.markdown("""
         border: 1px solid #555555;
     }
     
+    /* Container da logo */
+    .logo-wrapper {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 15px;
+    }
+    
     /* Nome da unidade centralizado */
     .unidade-nome {
         color: white;
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin: 20px 0 25px 0;
+        margin-bottom: 25px;
         padding-bottom: 10px;
         border-bottom: 2px solid rgba(255,255,255,0.2);
     }
@@ -64,6 +71,14 @@ st.markdown("""
         transform: translateX(5px);
         color: #FFFFFF;
         border-color: #777777;
+    }
+    
+    /* Linha separadora entre linhas de unidades */
+    .separador-linhas {
+        margin: 30px 0;
+        border: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, #555555, transparent);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -216,27 +231,27 @@ ICONES = {
 # ============================================
 
 def criar_card_unidade(nome_unidade, dados):
-    """Cria um card para a unidade com logo CENTRALIZADA acima do nome"""
+    """Cria um card para a unidade com logo centralizada acima do nome"""
     
     with st.container():
         st.markdown(f'<div class="unidade-card">', unsafe_allow_html=True)
         
-        # ===== LOGO CENTRALIZADA USANDO COLUNAS =====
-        # Cria 3 colunas: vazia | logo | vazia
-        col_esq, col_logo, col_dir = st.columns([1, 2, 1])
+        # ===== LOGO CENTRALIZADA =====
+        st.markdown('<div class="logo-wrapper">', unsafe_allow_html=True)
         
-        with col_logo:
-            try:
-                # Tenta carregar a imagem na coluna do meio
-                st.image(dados["logo"], width=120)
-            except:
-                # Fallback com emoji
-                st.markdown(f'''
-                    <div style="background: white; border-radius: 50%; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
-                        <span style="font-size: 60px;">🏢</span>
-                    </div>
-                ''', unsafe_allow_html=True)
-        # ===========================================
+        try:
+            # Tenta carregar a imagem
+            st.image(dados["logo"], width=120)
+        except:
+            # Fallback com emoji
+            st.markdown(f'''
+                <div style="background: white; border-radius: 50%; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 60px;">🏢</span>
+                </div>
+            ''', unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        # =============================
         
         # Nome da unidade centralizado
         st.markdown(f'<div class="unidade-nome">{nome_unidade}</div>', unsafe_allow_html=True)
@@ -285,8 +300,9 @@ for i in range(0, len(unidades_lista), 2):
             nome, dados = unidades_lista[i + 1]
             criar_card_unidade(nome, dados)
     
-    # Espaço entre linhas
-    st.markdown("<br>", unsafe_allow_html=True)
+    # LINHA SEPARADORA ENTRE AS LINHAS DE UNIDADES (só se não for a última)
+    if i + 2 < len(unidades_lista):
+        st.markdown('<hr class="separador-linhas">', unsafe_allow_html=True)
 
 # Rodapé
 st.markdown("---")
