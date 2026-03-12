@@ -1,189 +1,224 @@
 import streamlit as st
 
 # Configuração da página
-st.set_page_config(page_title="Central de Links por Unidade", layout="wide")
+st.set_page_config(page_title="Central de Unidades", layout="wide")
 
 # CSS personalizado para os cards
 st.markdown("""
 <style>
+    /* Container do card */
     .unidade-card {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 20px;
+        padding: 25px 15px;
         margin: 10px;
-        border: 1px solid #ddd;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        transition: transform 0.3s;
+        height: fit-content;
     }
-    .unidade-titulo {
-        color: #0e1117;
-        font-size: 24px;
-        font-weight: bold;
-        margin-bottom: 15px;
+    
+    .unidade-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+    }
+    
+    /* Área da logo */
+    .logo-container {
         text-align: center;
+        background: white;
+        border-radius: 50%;
+        width: 100px;
+        height: 100px;
+        margin: 0 auto 15px auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
     }
-    .area-botao {
-        margin: 5px 0;
-        width: 100%;
+    
+    /* Nome da unidade */
+    .unidade-nome {
+        color: white;
+        font-size: 22px;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid rgba(255,255,255,0.3);
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
     }
+    
+    /* Container dos botões */
+    .botoes-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 0 5px;
+    }
+    
+    /* Estilo dos botões */
     .stButton button {
         width: 100%;
-        background-color: white;
-        color: #0e1117;
-        border: 1px solid #ccc;
-        border-radius: 5px;
-        padding: 10px;
+        background: white;
+        color: #333;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 15px;
+        font-size: 16px;
+        font-weight: 500;
+        text-align: left;
         transition: all 0.3s;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
+    
     .stButton button:hover {
-        background-color: #e6e9ef;
-        border-color: #9c27b0;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        background: #f0f0f0;
+        transform: scale(1.02);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        color: #667eea;
+    }
+    
+    /* Ícones nos botões */
+    .botao-icone {
+        margin-right: 10px;
+        font-size: 18px;
+    }
+    
+    /* Ajuste para mobile */
+    @media (max-width: 768px) {
+        .unidade-card {
+            margin: 5px;
+            padding: 15px 10px;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Dados completos das unidades e suas áreas
+# Dados das 10 unidades com suas logos e setores
 UNIDADES = {
-    "Cascavel": {
-        "logo": "logos/cascavel.png",  # Caminho da logo
-        "areas": {
-            "Gestão": {
-                "links": {
-                    "Distribuição": "https://docs.google.com/spreadsheets/d/1",
-                    "Gente": "https://docs.google.com/forms/d/1",
-                    "Segurança": "https://canva.com/seguranca1",
-                    "Frota": "https://docs.google.com/spreadsheets/d/2",
-                    "Armazem": "https://canva.com/armazem1",
-                    "Financeiro": "https://docs.google.com/spreadsheets/d/3"
-                }
-            }
-        }
+    "Unidade 1 - Centro": {
+        "logo": "https://via.placeholder.com/80/ffffff/667eea?text=U1",  # Placeholder com cor
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
     },
-    "Maringá": {
-        "logo": "logos/maringa.png",
-        "areas": {
-            "Gestão": {
-                "links": {
-                    "Distribuição": "https://docs.google.com/spreadsheets/d/4",
-                    "Gente": "https://docs.google.com/forms/d/2",
-                    "Segurança": "https://canva.com/seguranca2",
-                    "Frota": "https://docs.google.com/spreadsheets/d/5"
-                }
-            }
-        }
+    "Unidade 2 - Norte": {
+        "logo": "https://via.placeholder.com/80/ffffff/764ba2?text=U2",
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota"]
     },
-    "Londrina": {
-        "logo": "logos/londrina.png",
-        "areas": {
-            "Gestão": {
-                "links": {
-                    "Distribuição": "https://docs.google.com/spreadsheets/d/6",
-                    "Gente": "https://docs.google.com/forms/d/3",
-                    "Segurança": "https://canva.com/seguranca3"
-                }
-            },
-            "Armazém": {
-                "links": {
-                    "Gente": "https://docs.google.com/forms/d/4",
-                    "Segurança": "https://canva.com/seguranca4",
-                    "Ajudante": "https://docs.google.com/spreadsheets/d/7",
-                    "Operador": "https://docs.google.com/spreadsheets/d/8"
-                }
-            }
-        }
+    "Unidade 3 - Sul": {
+        "logo": "https://via.placeholder.com/80/ffffff/667eea?text=U3",
+        "setores": ["Gestão", "Armazém", "Gente", "Segurança", "Operador"]
     },
-    "Foz do Iguaçu": {
-        "logo": "logos/foz.png",
-        "areas": {
-            "Gestão": {
-                "links": {
-                    "Distribuição": "https://docs.google.com/spreadsheets/d/9",
-                    "Gente": "https://docs.google.com/forms/d/5",
-                    "Segurança": "https://canva.com/seguranca5"
-                }
-            },
-            "Armazém": {
-                "links": {
-                    "Gente": "https://docs.google.com/forms/d/6",
-                    "Segurança": "https://canva.com/seguranca6",
-                    "Operador": "https://docs.google.com/spreadsheets/d/10"
-                }
-            },
-            "Frota": {
-                "links": {
-                    "Manutenção": "https://docs.google.com/spreadsheets/d/11",
-                    "Abastecimento": "https://forms.gle/abastecimento"
-                }
-            }
-        }
+    "Unidade 4 - Leste": {
+        "logo": "https://via.placeholder.com/80/ffffff/764ba2?text=U4",
+        "setores": ["Gestão", "Distribuição", "Financeiro", "Gente"]
+    },
+    "Unidade 5 - Oeste": {
+        "logo": "https://via.placeholder.com/80/ffffff/667eea?text=U5",
+        "setores": ["Gestão", "Frota", "Manutenção", "Segurança", "Armazém"]
+    },
+    "Unidade 6 - Industrial": {
+        "logo": "https://via.placeholder.com/80/ffffff/764ba2?text=U6",
+        "setores": ["Gestão", "Produção", "Qualidade", "Segurança", "Manutenção"]
+    },
+    "Unidade 7 - Comercial": {
+        "logo": "https://via.placeholder.com/80/ffffff/667eea?text=U7",
+        "setores": ["Vendas", "Marketing", "Financeiro", "Gente", "Jurídico"]
+    },
+    "Unidade 8 - Logística": {
+        "logo": "https://via.placeholder.com/80/ffffff/764ba2?text=U8",
+        "setores": ["Distribuição", "Armazém", "Frota", "Roteirização", "Expedição"]
+    },
+    "Unidade 9 - Matriz": {
+        "logo": "https://via.placeholder.com/80/ffffff/667eea?text=U9",
+        "setores": ["Diretoria", "Gestão", "Financeiro", "Jurídico", "Gente", "TI"]
+    },
+    "Unidade 10 - Filial": {
+        "logo": "https://via.placeholder.com/80/ffffff/764ba2?text=U10",
+        "setores": ["Gestão", "Operações", "Gente", "Segurança", "Manutenção"]
     }
 }
 
-def criar_card_unidade(nome_unidade, dados_unidade):
-    """Cria um card para uma unidade com suas áreas e links"""
+# Dicionário de URLs para cada setor (exemplo - você deve preencher com suas URLs reais)
+URLS_SETORES = {
+    "Gestão": "https://docs.google.com/spreadsheets/d/gestao",
+    "Distribuição": "https://docs.google.com/spreadsheets/d/distribuicao",
+    "Gente": "https://docs.google.com/forms/d/gente",
+    "Segurança": "https://canva.com/seguranca",
+    "Frota": "https://docs.google.com/spreadsheets/d/frota",
+    "Armazém": "https://canva.com/armazem",
+    "Financeiro": "https://docs.google.com/spreadsheets/d/financeiro",
+    "Operador": "https://docs.google.com/spreadsheets/d/operador",
+    "Manutenção": "https://docs.google.com/spreadsheets/d/manutencao",
+    "Produção": "https://docs.google.com/spreadsheets/d/producao",
+    "Qualidade": "https://docs.google.com/forms/d/qualidade",
+    "Vendas": "https://docs.google.com/spreadsheets/d/vendas",
+    "Marketing": "https://canva.com/marketing",
+    "Jurídico": "https://docs.google.com/document/d/juridico",
+    "Roteirização": "https://maps.google.com/roteiros",
+    "Expedição": "https://docs.google.com/spreadsheets/d/expedicao",
+    "Diretoria": "https://docs.google.com/presentation/d/diretoria",
+    "TI": "https://docs.google.com/forms/d/ti",
+    "Operações": "https://docs.google.com/spreadsheets/d/operacoes"
+}
+
+# Mapeamento de ícones para cada setor
+ICONES_SETORES = {
+    "Gestão": "📊",
+    "Distribuição": "📦",
+    "Gente": "👥",
+    "Segurança": "🛡️",
+    "Frota": "🚛",
+    "Armazém": "🏭",
+    "Financeiro": "💰",
+    "Operador": "🔧",
+    "Manutenção": "🔨",
+    "Produção": "⚙️",
+    "Qualidade": "✅",
+    "Vendas": "📈",
+    "Marketing": "🎯",
+    "Jurídico": "⚖️",
+    "Roteirização": "🗺️",
+    "Expedição": "📬",
+    "Diretoria": "👔",
+    "TI": "💻",
+    "Operações": "🔄"
+}
+
+def criar_card_unidade(nome_unidade, dados):
+    """Cria um card para a unidade com logo e botões verticais"""
     
     with st.container():
-        # Card da unidade
         st.markdown(f'<div class="unidade-card">', unsafe_allow_html=True)
         
-        # Logo e nome da unidade
-        col_logo, col_titulo = st.columns([1, 3])
+        # Logo
+        st.markdown(f'''
+            <div class="logo-container">
+                <img src="{dados["logo"]}" width="60" height="60" style="border-radius: 50%;">
+            </div>
+        ''', unsafe_allow_html=True)
         
-        with col_logo:
-            try:
-                st.image(dados_unidade["logo"], width=60)
-            except:
-                # Se não encontrar a logo, mostra um placeholder
-                st.markdown("🏢")
+        # Nome da unidade
+        st.markdown(f'<div class="unidade-nome">{nome_unidade}</div>', unsafe_allow_html=True)
         
-        with col_titulo:
-            st.markdown(f'<p class="unidade-titulo">{nome_unidade}</p>', unsafe_allow_html=True)
+        # Container dos botões
+        st.markdown('<div class="botoes-container">', unsafe_allow_html=True)
         
-        st.divider()
-        
-        # Para cada área dentro da unidade
-        for nome_area, dados_area in dados_unidade["areas"].items():
-            st.subheader(f"📌 {nome_area}")
+        # Botões para cada setor
+        for setor in dados["setores"]:
+            icone = ICONES_SETORES.get(setor, "🔗")
+            url = URLS_SETORES.get(setor, "#")
             
-            # Criar botões para cada link da área
-            # Distribuir em 2 colunas para não ficar muito longo
-            col1, col2 = st.columns(2)
-            
-            # Pegar todos os links da área
-            links_items = list(dados_area["links"].items())
-            
-            # Distribuir os links entre as duas colunas
-            for idx, (nome_link, url) in enumerate(links_items):
-                coluna_alvo = col1 if idx % 2 == 0 else col2
-                
-                with coluna_alvo:
-                    # Determinar ícone baseado no tipo de área
-                    icone = {
-                        "Gente": "👥",
-                        "Segurança": "🛡️",
-                        "Frota": "🚛",
-                        "Distribuição": "📦",
-                        "Armazem": "🏭",
-                        "Financeiro": "💰",
-                        "Gestão": "📊",
-                        "Ajudante": "👷",
-                        "Operador": "🔧",
-                        "Manutenção": "🔨",
-                        "Abastecimento": "⛽"
-                    }.get(nome_link, "🔗")
-                    
-                    # Botão com link
-                    if st.button(f"{icone} {nome_link}", key=f"{nome_unidade}_{nome_area}_{nome_link}", use_container_width=True):
-                        # Abrir link em nova aba usando JavaScript
-                        js = f"window.open('{url}')"
-                        st.markdown(f'<script>{js}</script>', unsafe_allow_html=True)
-            
-            st.markdown("<br>", unsafe_allow_html=True)  # Espaço entre áreas
+            # Criar botão com key única
+            if st.button(f"{icone} {setor}", key=f"{nome_unidade}_{setor}", use_container_width=True):
+                js = f"window.open('{url}', '_blank')"
+                st.markdown(f'<script>{js}</script>', unsafe_allow_html=True)
         
         st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-# Página principal
-st.title("📚 Central de Materiais por Unidade")
+# Título da página
+st.title("🏢 Central de Unidades")
 st.markdown("---")
 
 # Organizar unidades em linhas de 2 cards
@@ -191,22 +226,23 @@ unidades_lista = list(UNIDADES.items())
 
 for i in range(0, len(unidades_lista), 2):
     # Criar linha com 2 colunas
-    cols = st.columns(2)
+    cols = st.columns(2, gap="large")
     
     # Primeira unidade da linha
     with cols[0]:
         if i < len(unidades_lista):
-            nome_unidade, dados_unidade = unidades_lista[i]
-            criar_card_unidade(nome_unidade, dados_unidade)
+            nome, dados = unidades_lista[i]
+            criar_card_unidade(nome, dados)
     
     # Segunda unidade da linha
     with cols[1]:
         if i + 1 < len(unidades_lista):
-            nome_unidade, dados_unidade = unidades_lista[i + 1]
-            criar_card_unidade(nome_unidade, dados_unidade)
+            nome, dados = unidades_lista[i + 1]
+            criar_card_unidade(nome, dados)
     
-    st.markdown("---")  # Separador entre linhas
+    # Espaço entre linhas
+    st.markdown("<br>", unsafe_allow_html=True)
 
-# Rodapé com informações
+# Rodapé
 st.markdown("---")
-st.caption("🔄 Clique nos botões para acessar os materiais. Os links abrirão em novas abas.")
+st.caption("🔄 Clique nos botões para acessar os materiais de cada setor")
