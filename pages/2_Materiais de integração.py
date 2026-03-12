@@ -3,18 +3,9 @@ import streamlit as st
 # Configuração da página
 st.set_page_config(page_title="Materiais de Integração", layout="wide")
 
-# CSS personalizado
+# CSS apenas para as cores (não mexe na centralização)
 st.markdown("""
 <style>
-    /* Título centralizado */
-    .titulo-central {
-        text-align: center;
-        font-size: 3rem;
-        margin-bottom: 2rem;
-        color: #FFFFFF;
-    }
-    
-    /* Container do card da unidade */
     .unidade-card {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
@@ -24,34 +15,6 @@ st.markdown("""
         border: 1px solid #555555;
     }
     
-    /* Container da logo */
-    .logo-wrapper {
-        display: flex;
-        justify-content: center;
-        margin-bottom: 15px;
-    }
-    
-    /* Nome da unidade centralizado */
-    .unidade-nome {
-        color: white;
-        font-size: 24px;
-        font-weight: bold;
-        text-align: center;
-        margin-bottom: 25px;
-        padding-bottom: 10px;
-        border-bottom: 2px solid rgba(255,255,255,0.2);
-    }
-    
-    /* Títulos das seções */
-    .titulo-secao {
-        color: #CCCCCC;
-        font-size: 18px;
-        font-weight: bold;
-        margin: 15px 0 10px 0;
-        padding-left: 5px;
-    }
-    
-    /* Estilo dos botões */
     .stButton button {
         width: 100%;
         background: #3A3A3A;
@@ -63,19 +26,15 @@ st.markdown("""
         font-weight: 500;
         text-align: left;
         margin: 3px 0;
-        transition: all 0.2s;
     }
     
     .stButton button:hover {
         background: #4A4A4A;
-        transform: translateX(5px);
         color: #FFFFFF;
-        border-color: #777777;
     }
     
-    /* Linha separadora entre linhas de unidades */
     .separador-linhas {
-        margin: 30px 0;
+        margin: 20px 0;
         border: 0;
         height: 1px;
         background: linear-gradient(90deg, transparent, #555555, transparent);
@@ -83,8 +42,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Título centralizado
-st.markdown('<h1 class="titulo-central">🧠 Materiais de Integração</h1>', unsafe_allow_html=True)
+# Título
+st.markdown("<h1 style='text-align: center;'>🧠 Materiais de Integração</h1>", unsafe_allow_html=True)
 
 # ============================================
 # DADOS DAS UNIDADES
@@ -231,49 +190,45 @@ ICONES = {
 # ============================================
 
 def criar_card_unidade(nome_unidade, dados):
-    """Cria um card para a unidade com logo centralizada acima do nome"""
+    """Cria um card para a unidade"""
     
     with st.container():
         st.markdown(f'<div class="unidade-card">', unsafe_allow_html=True)
         
         # ===== LOGO CENTRALIZADA =====
-        st.markdown('<div class="logo-wrapper">', unsafe_allow_html=True)
-        
-        try:
-            # Tenta carregar a imagem
-            st.image(dados["logo"], width=120)
-        except:
-            # Fallback com emoji
-            st.markdown(f'''
-                <div style="background: white; border-radius: 50%; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center;">
-                    <span style="font-size: 60px;">🏢</span>
-                </div>
-            ''', unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-        # =============================
+        # Usando colunas para centralizar
+        left, center, right = st.columns([1, 2, 1])
+        with center:
+            try:
+                st.image(dados["logo"], width=120)
+            except:
+                st.markdown("""
+                    <div style='background: white; border-radius: 50%; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; margin: 0 auto;'>
+                        <span style='font-size: 60px;'>🏢</span>
+                    </div>
+                """, unsafe_allow_html=True)
         
         # Nome da unidade centralizado
-        st.markdown(f'<div class="unidade-nome">{nome_unidade}</div>', unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align: center; color: white; margin: 20px 0;'>{nome_unidade}</h3>", unsafe_allow_html=True)
         
-        # Criar duas colunas dentro do card para os setores
-        col_esquerda, col_direita = st.columns(2)
+        # Duas colunas para os setores
+        col1, col2 = st.columns(2)
         
-        # Coluna Esquerda - DISTRIBUIÇÃO
-        with col_esquerda:
-            st.markdown(f'<p class="titulo-secao">{dados["coluna1"]["titulo"]}</p>', unsafe_allow_html=True)
+        # Coluna 1 - DISTRIBUIÇÃO
+        with col1:
+            st.markdown(f"<p style='color: #CCCCCC; font-weight: bold;'>{dados['coluna1']['titulo']}</p>", unsafe_allow_html=True)
             for setor in dados["coluna1"]["setores"]:
                 icone = ICONES.get(setor, "🔗")
                 if st.button(f"{icone} {setor}", key=f"{nome_unidade}_dist_{setor}", use_container_width=True):
-                    st.info(f"Link para {setor} será adicionado depois")
+                    st.info(f"Link para {setor}")
         
-        # Coluna Direita - ARMAZEM
-        with col_direita:
-            st.markdown(f'<p class="titulo-secao">{dados["coluna2"]["titulo"]}</p>', unsafe_allow_html=True)
+        # Coluna 2 - ARMAZEM
+        with col2:
+            st.markdown(f"<p style='color: #CCCCCC; font-weight: bold;'>{dados['coluna2']['titulo']}</p>", unsafe_allow_html=True)
             for setor in dados["coluna2"]["setores"]:
                 icone = ICONES.get(setor, "🔗")
                 if st.button(f"{icone} {setor}", key=f"{nome_unidade}_arm_{setor}", use_container_width=True):
-                    st.info(f"Link para {setor} será adicionado depois")
+                    st.info(f"Link para {setor}")
         
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -281,29 +236,21 @@ def criar_card_unidade(nome_unidade, dados):
 # PÁGINA PRINCIPAL
 # ============================================
 
-# Organizar unidades em linhas de 2 cards
 unidades_lista = list(UNIDADES.items())
 
 for i in range(0, len(unidades_lista), 2):
-    # Criar linha com 2 colunas para as unidades
     cols = st.columns(2, gap="large")
     
-    # Primeira unidade da linha
     with cols[0]:
         if i < len(unidades_lista):
             nome, dados = unidades_lista[i]
             criar_card_unidade(nome, dados)
     
-    # Segunda unidade da linha
     with cols[1]:
         if i + 1 < len(unidades_lista):
             nome, dados = unidades_lista[i + 1]
             criar_card_unidade(nome, dados)
     
-    # LINHA SEPARADORA ENTRE AS LINHAS DE UNIDADES (só se não for a última)
+    # Linha separadora entre as fileiras de cards
     if i + 2 < len(unidades_lista):
         st.markdown('<hr class="separador-linhas">', unsafe_allow_html=True)
-
-# Rodapé
-st.markdown("---")
-st.caption("🔄 Clique nos botões para acessar os materiais de cada setor")
