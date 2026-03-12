@@ -111,7 +111,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Fco Beltrão": {
+    "Fco Beltrao": {
         "logo": "logos/Fco Beltrao.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -122,7 +122,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Foz do Iguaçu": {
+    "Foz do Iguacu": {
         "logo": "logos/Foz do Iguacu.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -188,7 +188,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "São Cristovão": {
+    "Sao Cristovao": {
         "logo": "logos/Sao Cristovao.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
