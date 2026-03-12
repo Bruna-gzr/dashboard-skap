@@ -3,18 +3,41 @@ import streamlit as st
 # Configuração da página
 st.set_page_config(page_title="Materiais de Integração", layout="wide")
 
-# CSS apenas para as cores
+# CSS
 st.markdown("""
 <style>
-    .unidade-card {
+    .stApp {
+        background-color: #050816;
+    }
+
+    h1 {
+        color: white;
+    }
+
+    /* Card visual */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
-        padding: 25px 20px;
-        margin: 10px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        padding: 18px 18px 22px 18px;
         border: 1px solid #555555;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     }
-    
+
+    .titulo-unidade {
+        text-align: center;
+        color: white;
+        margin: 6px 0 20px 0;
+        font-size: 20px;
+        font-weight: 700;
+    }
+
+    .titulo-coluna {
+        color: #CCCCCC;
+        font-weight: bold;
+        margin-bottom: 8px;
+        font-size: 14px;
+    }
+
     .stButton button {
         width: 100%;
         background: #3A3A3A;
@@ -27,18 +50,30 @@ st.markdown("""
         text-align: left;
         margin: 3px 0;
     }
-    
+
     .stButton button:hover {
         background: #4A4A4A;
         color: #FFFFFF;
+        border: 1px solid #777777;
     }
-    
-    /* CLASSE REMOVIDA - não use mais */
+
+    /* tira excesso de espaço do image */
+    div[data-testid="stImage"] {
+        text-align: center;
+    }
+
+    div[data-testid="stImage"] img {
+        margin: 0 auto;
+        display: block;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Título
-st.markdown("<h1 style='text-align: center;'>🧠 Materiais de Integração</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<h1 style='text-align: center;'>🧠 Materiais de Integração</h1>",
+    unsafe_allow_html=True
+)
 
 # ============================================
 # DADOS DAS UNIDADES
@@ -185,52 +220,70 @@ ICONES = {
 # ============================================
 
 def criar_card_unidade(nome_unidade, dados):
-    """Cria um card para a unidade com logo centralizada acima do nome"""
-    
-    with st.container():
-        st.markdown(f'<div class="unidade-card">', unsafe_allow_html=True)
-        
-        # ===== LOGO CENTRALIZADA ACIMA DO NOME =====
-        # Removi as colunas extras e usei flex no container
-        
-        # Container flexível para centralizar a logo
-        st.markdown('<div style="display: flex; justify-content: center; margin-bottom: 15px;">', unsafe_allow_html=True)
-        
-        try:
-            st.image(dados["logo"], width=120)
-        except:
-            st.markdown("""
-                <div style='background: white; border-radius: 50%; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center;'>
-                    <span style='font-size: 60px;'>🏢</span>
-                </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-        # ===========================================
-        
+    with st.container(border=True):
+
+        # Logo centralizada
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            try:
+                st.image(dados["logo"], width=120)
+            except Exception:
+                st.markdown(
+                    """
+                    <div style='
+                        background: white;
+                        border-radius: 50%;
+                        width: 120px;
+                        height: 120px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        margin: 0 auto;
+                    '>
+                        <span style='font-size: 60px;'>🏢</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
         # Nome da unidade centralizado
-        st.markdown(f"<h3 style='text-align: center; color: white; margin: 0 0 20px 0;'>{nome_unidade}</h3>", unsafe_allow_html=True)
-        
+        st.markdown(
+            f"<div class='titulo-unidade'>{nome_unidade}</div>",
+            unsafe_allow_html=True
+        )
+
         # Duas colunas para os setores
         col1, col2 = st.columns(2)
-        
+
         # Coluna 1 - DISTRIBUIÇÃO
         with col1:
-            st.markdown(f"<p style='color: #CCCCCC; font-weight: bold;'>{dados['coluna1']['titulo']}</p>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",
+                unsafe_allow_html=True
+            )
             for setor in dados["coluna1"]["setores"]:
                 icone = ICONES.get(setor, "🔗")
-                if st.button(f"{icone} {setor}", key=f"{nome_unidade}_dist_{setor}", use_container_width=True):
+                if st.button(
+                    f"{icone} {setor}",
+                    key=f"{nome_unidade}_dist_{setor}",
+                    use_container_width=True
+                ):
                     st.info(f"Link para {setor}")
-        
+
         # Coluna 2 - ARMAZEM
         with col2:
-            st.markdown(f"<p style='color: #CCCCCC; font-weight: bold;'>{dados['coluna2']['titulo']}</p>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",
+                unsafe_allow_html=True
+            )
             for setor in dados["coluna2"]["setores"]:
                 icone = ICONES.get(setor, "🔗")
-                if st.button(f"{icone} {setor}", key=f"{nome_unidade}_arm_{setor}", use_container_width=True):
+                if st.button(
+                    f"{icone} {setor}",
+                    key=f"{nome_unidade}_arm_{setor}",
+                    use_container_width=True
+                ):
                     st.info(f"Link para {setor}")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================
 # PÁGINA PRINCIPAL
@@ -240,17 +293,13 @@ unidades_lista = list(UNIDADES.items())
 
 for i in range(0, len(unidades_lista), 2):
     cols = st.columns(2, gap="large")
-    
+
     with cols[0]:
         if i < len(unidades_lista):
             nome, dados = unidades_lista[i]
             criar_card_unidade(nome, dados)
-    
+
     with cols[1]:
         if i + 1 < len(unidades_lista):
             nome, dados = unidades_lista[i + 1]
             criar_card_unidade(nome, dados)
-    
-    # ⚠️ LINHA REMOVIDA - Não tem mais separador
-    # if i + 2 < len(unidades_lista):
-    #     st.markdown('<hr class="separador-linhas">', unsafe_allow_html=True)
