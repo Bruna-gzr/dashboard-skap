@@ -58,13 +58,6 @@ st.markdown("""
         opacity: 0.9;
     }
     
-    /* Container das duas colunas internas */
-    .colunas-internas {
-        display: flex;
-        gap: 15px;
-        margin-top: 10px;
-    }
-    
     /* Estilo dos botões */
     .stButton button {
         width: 100%;
@@ -92,7 +85,7 @@ st.markdown("""
 st.markdown('<h1 class="titulo-central">🧠 Materiais de Integração</h1>', unsafe_allow_html=True)
 
 # ============================================
-# DADOS DAS UNIDADES
+# DADOS DAS UNIDADES COM CAMINHOS CORRIGIDOS
 # ============================================
 
 UNIDADES = {
@@ -118,7 +111,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Fco Beltrao": {
+    "Fco Beltrão": {
         "logo": "logos/Fco Beltrão.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -130,7 +123,7 @@ UNIDADES = {
         }
     },
     "Foz do Iguaçu": {
-        "logo": "logos/Foz do Iguacu.png",
+        "logo": "logos/Foz do Iguaçu.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
             "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
@@ -196,7 +189,7 @@ UNIDADES = {
         }
     },
     "São Cristovão": {
-        "logo": "logos/Sao Cristovao.png",
+        "logo": "logos/São Cristovão.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
             "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
@@ -232,7 +225,7 @@ ICONES = {
 }
 
 # ============================================
-# FUNÇÃO PARA CRIAR O CARD DA UNIDADE
+# FUNÇÃO PARA CRIAR O CARD DA UNIDADE (COM LOGOS CORRIGIDAS)
 # ============================================
 
 def criar_card_unidade(nome_unidade, dados):
@@ -241,12 +234,21 @@ def criar_card_unidade(nome_unidade, dados):
     with st.container():
         st.markdown(f'<div class="unidade-card">', unsafe_allow_html=True)
         
-        # Logo
-        st.markdown(f'''
-            <div class="logo-container">
-                <img src="{dados["logo"]}" width="60" height="60" style="border-radius: 50%;">
-            </div>
-        ''', unsafe_allow_html=True)
+        # ===== LOGO COM TRATAMENTO DE ERRO =====
+        try:
+            # Tenta carregar a imagem do caminho especificado
+            st.image(dados["logo"], width=80)
+        except Exception as e:
+            # Se falhar, mostra um placeholder bonito com emoji
+            st.markdown(f'''
+                <div class="logo-container">
+                    <span style="font-size: 40px;">🏢</span>
+                </div>
+            ''', unsafe_allow_html=True)
+            
+            # Opcional: mostra uma mensagem de debug (pode remover depois)
+            # st.caption(f"Logo não encontrada: {dados['logo']}")
+        # =======================================
         
         # Nome da unidade
         st.markdown(f'<div class="unidade-nome">{nome_unidade}</div>', unsafe_allow_html=True)
