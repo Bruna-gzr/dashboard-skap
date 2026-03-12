@@ -112,7 +112,7 @@ UNIDADES = {
         }
     },
     "Fco Beltrão": {
-        "logo": "logos/Fco Beltrão.png",
+        "logo": "logos/Fco Beltrao.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
             "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
@@ -123,7 +123,7 @@ UNIDADES = {
         }
     },
     "Foz do Iguaçu": {
-        "logo": "logos/Foz do Iguaçu.png",
+        "logo": "logos/Foz do Iguacu.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
             "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
@@ -189,7 +189,7 @@ UNIDADES = {
         }
     },
     "São Cristovão": {
-        "logo": "logos/São Cristovão.png",
+        "logo": "logos/Sao Cristovao.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
             "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
