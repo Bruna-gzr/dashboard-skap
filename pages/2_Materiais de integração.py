@@ -1,7 +1,7 @@
 import streamlit as st
 
 # Configuração da página
-st.set_page_config(page_title="Central de Unidades", layout="wide")
+st.set_page_config(page_title="Materiais de Integração", layout="wide")
 
 # CSS personalizado para os cards
 st.markdown("""
