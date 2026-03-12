@@ -14,7 +14,7 @@ st.markdown("""
         color: #FFFFFF;
     }
     
-    /* Container do card da unidade - CINZA ESCURO ELEGANTE */
+    /* Container do card da unidade */
     .unidade-card {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
@@ -24,22 +24,25 @@ st.markdown("""
         border: 1px solid #555555;
     }
     
-    /* Logo container */
+    /* Container da logo - CENTRALIZADO */
     .logo-container {
-        text-align: center;
-        background: white;
-        border-radius: 50%;
-        width: 100px;
-        height: 100px;
-        margin: 0 auto 15px auto;
         display: flex;
-        align-items: center;
         justify-content: center;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    /* Estilo para a imagem da logo */
+    .logo-imagem {
+        display: block;
+        margin: 0 auto;
+        border-radius: 50%;
+        background: white;
         padding: 10px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.3);
     }
     
-    /* Nome da unidade */
+    /* Nome da unidade - CENTRALIZADO */
     .unidade-nome {
         color: white;
         font-size: 24px;
@@ -87,7 +90,7 @@ st.markdown("""
 st.markdown('<h1 class="titulo-central">🧠 Materiais de Integração</h1>', unsafe_allow_html=True)
 
 # ============================================
-# DADOS DAS UNIDADES COM CAMINHOS CORRIGIDOS
+# DADOS DAS UNIDADES
 # ============================================
 
 UNIDADES = {
@@ -231,25 +234,29 @@ ICONES = {
 # ============================================
 
 def criar_card_unidade(nome_unidade, dados):
-    """Cria um card para a unidade com logo e duas colunas internas"""
+    """Cria um card para a unidade com logo CENTRALIZADA acima do nome"""
     
     with st.container():
         st.markdown(f'<div class="unidade-card">', unsafe_allow_html=True)
         
-        # ===== LOGO COM TRATAMENTO DE ERRO =====
+        # ===== LOGO CENTRALIZADA ACIMA DO NOME =====
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        
         try:
-            # Tenta carregar a imagem do caminho especificado
-            st.image(dados["logo"], width=80)
+            # Tenta carregar a imagem centralizada
+            st.image(dados["logo"], width=120)
         except Exception as e:
-            # Se falhar, mostra um placeholder bonito com emoji
+            # Se falhar, mostra um placeholder centralizado
             st.markdown(f'''
-                <div class="logo-container">
-                    <span style="font-size: 40px;">🏢</span>
+                <div style="text-align: center; background: white; border-radius: 50%; width: 120px; height: 120px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 60px;">🏢</span>
                 </div>
             ''', unsafe_allow_html=True)
-        # =======================================
         
-        # Nome da unidade
+        st.markdown('</div>', unsafe_allow_html=True)
+        # ===========================================
+        
+        # Nome da unidade (já centralizado pelo CSS)
         st.markdown(f'<div class="unidade-nome">{nome_unidade}</div>', unsafe_allow_html=True)
         
         # Criar duas colunas dentro do card
