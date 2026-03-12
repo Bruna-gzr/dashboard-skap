@@ -78,91 +78,74 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         color: #667eea;
     }
-    
-    /* Ícones nos botões */
-    .botao-icone {
-        margin-right: 10px;
-        font-size: 18px;
-    }
-    
-    /* Ajuste para mobile */
-    @media (max-width: 768px) {
-        .unidade-card {
-            margin: 5px;
-            padding: 15px 10px;
-        }
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Dados das 10 unidades com suas logos e setores
+# ============================================
+# SEUS DADOS - UNIDADES E LOGOS
+# ============================================
+
 UNIDADES = {
-    "Unidade 1 - Centro": {
-        "logo": "https://via.placeholder.com/80/ffffff/667eea?text=U1",  # Placeholder com cor
+    "Cascavel": {
+        "logo": "logos/Cascavel.png",  # ← ATENÇÃO: Primeira letra maiúscula
         "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
     },
-    "Unidade 2 - Norte": {
-        "logo": "https://via.placeholder.com/80/ffffff/764ba2?text=U2",
-        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota"]
+    "Diadema": {
+        "logo": "logos/Diadema.png",
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
     },
-    "Unidade 3 - Sul": {
-        "logo": "https://via.placeholder.com/80/ffffff/667eea?text=U3",
-        "setores": ["Gestão", "Armazém", "Gente", "Segurança", "Operador"]
+    "Fco Beltrão": {
+        "logo": "logos/Fco Beltrão.png",  # ← Com espaço e acento
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
     },
-    "Unidade 4 - Leste": {
-        "logo": "https://via.placeholder.com/80/ffffff/764ba2?text=U4",
-        "setores": ["Gestão", "Distribuição", "Financeiro", "Gente"]
+    "Foz do Iguaçu": {
+        "logo": "logos/Foz do Iguaçu.png",  # ← Com espaços e acento
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
     },
-    "Unidade 5 - Oeste": {
-        "logo": "https://via.placeholder.com/80/ffffff/667eea?text=U5",
-        "setores": ["Gestão", "Frota", "Manutenção", "Segurança", "Armazém"]
+    "Litoral": {
+        "logo": "logos/Litoral.png",
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
     },
-    "Unidade 6 - Industrial": {
-        "logo": "https://via.placeholder.com/80/ffffff/764ba2?text=U6",
-        "setores": ["Gestão", "Produção", "Qualidade", "Segurança", "Manutenção"]
+    "Londrina": {
+        "logo": "logos/Londrina.png",
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
     },
-    "Unidade 7 - Comercial": {
-        "logo": "https://via.placeholder.com/80/ffffff/667eea?text=U7",
-        "setores": ["Vendas", "Marketing", "Financeiro", "Gente", "Jurídico"]
+    "Petropolis": {
+        "logo": "logos/Petropolis.png",
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
     },
-    "Unidade 8 - Logística": {
-        "logo": "https://via.placeholder.com/80/ffffff/764ba2?text=U8",
-        "setores": ["Distribuição", "Armazém", "Frota", "Roteirização", "Expedição"]
+    "Ponta Grossa Armazem": {
+        "logo": "logos/Ponta Grossa Armazem.png",  ← Com espaços
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
     },
-    "Unidade 9 - Matriz": {
-        "logo": "https://via.placeholder.com/80/ffffff/667eea?text=U9",
-        "setores": ["Diretoria", "Gestão", "Financeiro", "Jurídico", "Gente", "TI"]
+    "Ponta Grossa Empurrada": {
+        "logo": "logos/Ponta Grossa Empurrada.png",  ← Com espaços
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
     },
-    "Unidade 10 - Filial": {
-        "logo": "https://via.placeholder.com/80/ffffff/764ba2?text=U10",
-        "setores": ["Gestão", "Operações", "Gente", "Segurança", "Manutenção"]
+    "São Cristovão": {
+        "logo": "logos/São Cristovão.png",  ← Com acento e espaços
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
+    },
+    "Vidros": {
+        "logo": "logos/Vidros.png",
+        "setores": ["Gestão", "Distribuição", "Gente", "Segurança", "Frota", "Armazém", "Financeiro"]
     }
 }
 
-# Dicionário de URLs para cada setor (exemplo - você deve preencher com suas URLs reais)
+# ============================================
+# URLs E ÍCONES (VOCÊ VAI PERSONALIZAR DEPOIS)
+# ============================================
+
 URLS_SETORES = {
-    "Gestão": "https://docs.google.com/spreadsheets/d/gestao",
-    "Distribuição": "https://docs.google.com/spreadsheets/d/distribuicao",
-    "Gente": "https://docs.google.com/forms/d/gente",
-    "Segurança": "https://canva.com/seguranca",
-    "Frota": "https://docs.google.com/spreadsheets/d/frota",
-    "Armazém": "https://canva.com/armazem",
-    "Financeiro": "https://docs.google.com/spreadsheets/d/financeiro",
-    "Operador": "https://docs.google.com/spreadsheets/d/operador",
-    "Manutenção": "https://docs.google.com/spreadsheets/d/manutencao",
-    "Produção": "https://docs.google.com/spreadsheets/d/producao",
-    "Qualidade": "https://docs.google.com/forms/d/qualidade",
-    "Vendas": "https://docs.google.com/spreadsheets/d/vendas",
-    "Marketing": "https://canva.com/marketing",
-    "Jurídico": "https://docs.google.com/document/d/juridico",
-    "Roteirização": "https://maps.google.com/roteiros",
-    "Expedição": "https://docs.google.com/spreadsheets/d/expedicao",
-    "Diretoria": "https://docs.google.com/presentation/d/diretoria",
-    "TI": "https://docs.google.com/forms/d/ti",
-    "Operações": "https://docs.google.com/spreadsheets/d/operacoes"
+    "Gestão": "#",
+    "Distribuição": "#",
+    "Gente": "#",
+    "Segurança": "#",
+    "Frota": "#",
+    "Armazém": "#",
+    "Financeiro": "#"
 }
 
-# Mapeamento de ícones para cada setor
 ICONES_SETORES = {
     "Gestão": "📊",
     "Distribuição": "📦",
@@ -170,20 +153,12 @@ ICONES_SETORES = {
     "Segurança": "🛡️",
     "Frota": "🚛",
     "Armazém": "🏭",
-    "Financeiro": "💰",
-    "Operador": "🔧",
-    "Manutenção": "🔨",
-    "Produção": "⚙️",
-    "Qualidade": "✅",
-    "Vendas": "📈",
-    "Marketing": "🎯",
-    "Jurídico": "⚖️",
-    "Roteirização": "🗺️",
-    "Expedição": "📬",
-    "Diretoria": "👔",
-    "TI": "💻",
-    "Operações": "🔄"
+    "Financeiro": "💰"
 }
+
+# ============================================
+# FUNÇÃO PARA CRIAR OS CARDS
+# ============================================
 
 def criar_card_unidade(nome_unidade, dados):
     """Cria um card para a unidade com logo e botões verticais"""
@@ -217,7 +192,10 @@ def criar_card_unidade(nome_unidade, dados):
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-# Título da página
+# ============================================
+# PÁGINA PRINCIPAL
+# ============================================
+
 st.title("🏢 Central de Unidades")
 st.markdown("---")
 
