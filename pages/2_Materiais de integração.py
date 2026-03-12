@@ -1,77 +1,204 @@
 import streamlit as st
+import base64
+from pathlib import Path
 
-# Configuração da página
+# ============================================
+# CONFIGURAÇÃO DA PÁGINA
+# ============================================
 st.set_page_config(page_title="Materiais de Integração", layout="wide")
 
-# CSS apenas para as cores
+# ============================================
+# CSS
+# ============================================
 st.markdown("""
 <style>
     .stApp {
         background-color: #050816;
     }
 
+    .page-title {
+        text-align: center;
+        color: white;
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin-bottom: 30px;
+    }
+
     .unidade-card {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
-        padding: 25px 20px;
-        margin: 10px 0;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        padding: 28px 22px;
+        margin: 10px 0 18px 0;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.28);
         border: 1px solid #555555;
-    }
-
-    .titulo-unidade {
-        text-align: center;
-        color: white;
-        margin: 10px 0 20px 0;
-        font-size: 20px;
-        font-weight: 700;
-    }
-
-    .titulo-coluna {
-        color: #CCCCCC;
-        font-weight: bold;
-        font-size: 14px;
-        margin-bottom: 8px;
+        min-height: 760px;
     }
 
     .logo-wrap {
+        width: 100%;
         display: flex;
         justify-content: center;
         align-items: center;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
     }
 
-    .stButton button {
+    .logo-wrap img {
+        max-width: 120px;
+        max-height: 120px;
+        object-fit: contain;
+        display: block;
+    }
+
+    .logo-fallback {
+        width: 110px;
+        height: 110px;
+        border-radius: 50%;
+        background: white;
+        color: black;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 56px;
+    }
+
+    .unidade-title {
+        text-align: center;
+        color: white;
+        font-size: 20px;
+        font-weight: 700;
+        margin: 0 0 26px 0;
+    }
+
+    .duas-colunas {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+
+    .coluna-titulo {
+        color: #D7D7D7;
+        font-size: 14px;
+        font-weight: 700;
+        margin: 0 0 10px 0;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .setor-link {
+        display: block;
         width: 100%;
+        text-decoration: none;
         background: #3A3A3A;
-        color: #FFFFFF;
+        color: #FFFFFF !important;
         border: 1px solid #555555;
         border-radius: 8px;
-        padding: 8px 12px;
+        padding: 10px 12px;
         font-size: 14px;
         font-weight: 500;
         text-align: center;
-        margin: 3px 0;
+        margin: 8px 0;
+        transition: 0.2s ease-in-out;
+        box-sizing: border-box;
     }
 
-    .stButton button:hover {
+    .setor-link:hover {
         background: #4A4A4A;
-        color: #FFFFFF;
-        border: 1px solid #777777;
+        border-color: #777777;
+        color: #FFFFFF !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Título
-st.markdown(
-    "<h1 style='text-align: center; color: white;'>🧠 Materiais de Integração</h1>",
-    unsafe_allow_html=True
-)
+# ============================================
+# TÍTULO
+# ============================================
+st.markdown("<div class='page-title'>🧠 Materiais de Integração</div>", unsafe_allow_html=True)
+
+# ============================================
+# FUNÇÕES AUXILIARES
+# ============================================
+def imagem_para_base64(caminho_imagem: str):
+    try:
+        path = Path(caminho_imagem)
+        if not path.exists():
+            return None
+
+        extensao = path.suffix.lower().replace(".", "")
+        if extensao == "jpg":
+            extensao = "jpeg"
+
+        with open(path, "rb") as f:
+            img_bytes = f.read()
+
+        img_base64 = base64.b64encode(img_bytes).decode()
+        return f"data:image/{extensao};base64,{img_base64}"
+    except Exception:
+        return None
+
+
+def montar_links(setores):
+    html = ""
+    for setor in setores:
+        icone = ICONES.get(setor, "🔗")
+        link = LINKS.get(setor, "#")
+        html += f'<a class="setor-link" href="{link}" target="_blank">{icone} {setor}</a>'
+    return html
+
+
+def criar_card_unidade(nome_unidade, dados):
+    logo_src = imagem_para_base64(dados["logo"])
+
+    if logo_src:
+        logo_html = f"""
+        <div class="logo-wrap">
+            <img src="{logo_src}" alt="{nome_unidade}">
+        </div>
+        """
+    else:
+        logo_html = """
+        <div class="logo-wrap">
+            <div class="logo-fallback">🏢</div>
+        </div>
+        """
+
+    html = f"""
+    <div class="unidade-card">
+        {logo_html}
+        <div class="unidade-title">{nome_unidade}</div>
+
+        <div class="duas-colunas">
+            <div>
+                <div class="coluna-titulo">{dados['coluna1']['titulo']}</div>
+                {montar_links(dados['coluna1']['setores'])}
+            </div>
+
+            <div>
+                <div class="coluna-titulo">{dados['coluna2']['titulo']}</div>
+                {montar_links(dados['coluna2']['setores'])}
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+# ============================================
+# LINKS DOS SETORES
+# TROQUE PELOS LINKS REAIS
+# ============================================
+LINKS = {
+    "GENTE": "#",
+    "SEGURANÇA": "#",
+    "ENTREGA": "#",
+    "FINANCEIRO": "#",
+    "FROTA": "#",
+    "GESTÃO": "#",
+    "AJUDANTE DE ARMAZEM": "#",
+    "OPERADOR": "#"
+}
 
 # ============================================
 # DADOS DAS UNIDADES
 # ============================================
-
 UNIDADES = {
     "Cascavel": {
         "logo": "logos/Cascavel.png",
@@ -196,7 +323,9 @@ UNIDADES = {
     }
 }
 
-# Mapeamento de ícones
+# ============================================
+# MAPEAMENTO DE ÍCONES
+# ============================================
 ICONES = {
     "GENTE": "👥",
     "SEGURANÇA": "🛡️",
@@ -209,86 +338,19 @@ ICONES = {
 }
 
 # ============================================
-# FUNÇÃO PARA CRIAR O CARD DA UNIDADE
-# ============================================
-
-def criar_card_unidade(nome_unidade, dados):
-    with st.container():
-        st.markdown('<div class="unidade-card">', unsafe_allow_html=True)
-
-        # Logo centralizada
-        col_logo_esq, col_logo_centro, col_logo_dir = st.columns([1, 2, 1])
-
-        with col_logo_centro:
-            try:
-                st.image(dados["logo"], width=120)
-            except:
-                st.markdown(
-                    """
-                    <div style='display:flex; justify-content:center; align-items:center;'>
-                        <div style='background: white; border-radius: 50%; width: 120px; height: 120px;
-                                    display: flex; align-items: center; justify-content: center;'>
-                            <span style='font-size: 60px;'>🏢</span>
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-        # Nome da unidade centralizado
-        st.markdown(
-            f"<div class='titulo-unidade'>{nome_unidade}</div>",
-            unsafe_allow_html=True
-        )
-
-        # Duas colunas para setores
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown(
-                f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",
-                unsafe_allow_html=True
-            )
-            for setor in dados["coluna1"]["setores"]:
-                icone = ICONES.get(setor, "🔗")
-                if st.button(
-                    f"{icone} {setor}",
-                    key=f"{nome_unidade}_dist_{setor}",
-                    use_container_width=True
-                ):
-                    st.info(f"Link para {setor}")
-
-        with col2:
-            st.markdown(
-                f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",
-                unsafe_allow_html=True
-            )
-            for setor in dados["coluna2"]["setores"]:
-                icone = ICONES.get(setor, "🔗")
-                if st.button(
-                    f"{icone} {setor}",
-                    key=f"{nome_unidade}_arm_{setor}",
-                    use_container_width=True
-                ):
-                    st.info(f"Link para {setor}")
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-# ============================================
 # PÁGINA PRINCIPAL
 # ============================================
-
 unidades_lista = list(UNIDADES.items())
 
 for i in range(0, len(unidades_lista), 2):
-    cols = st.columns(2, gap="large")
+    col1, col2 = st.columns(2, gap="large")
 
-    with cols[0]:
+    with col1:
         if i < len(unidades_lista):
             nome, dados = unidades_lista[i]
             criar_card_unidade(nome, dados)
 
-    with cols[1]:
+    with col2:
         if i + 1 < len(unidades_lista):
             nome, dados = unidades_lista[i + 1]
             criar_card_unidade(nome, dados)
