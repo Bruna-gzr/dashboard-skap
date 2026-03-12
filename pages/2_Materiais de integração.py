@@ -24,18 +24,18 @@ st.markdown("""
         border: 1px solid #555555;
     }
     
-    /* Logo container - AUMENTADO */
+    /* Logo container */
     .logo-container {
         text-align: center;
         background: white;
         border-radius: 50%;
-        width: 140px;  /* Aumentado de 100px para 140px */
-        height: 140px; /* Aumentado de 100px para 140px */
-        margin: 0 auto 20px auto; /* Margem inferior aumentada */
+        width: 100px;
+        height: 100px;
+        margin: 0 auto 15px auto;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 15px; /* Padding aumentado */
+        padding: 10px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.3);
     }
     
@@ -236,15 +236,15 @@ def criar_card_unidade(nome_unidade, dados):
     with st.container():
         st.markdown(f'<div class="unidade-card">', unsafe_allow_html=True)
         
-        # ===== LOGO COM TRATAMENTO DE ERRO E TAMANHO AUMENTADO =====
+        # ===== LOGO COM TRATAMENTO DE ERRO =====
         try:
-            # Tenta carregar a imagem do caminho especificado - TAMANHO AUMENTADO para 120px
-            st.image(dados["logo"], width=120)
+            # Tenta carregar a imagem do caminho especificado
+            st.image(dados["logo"], width=80)
         except Exception as e:
-            # Se falhar, mostra um placeholder bonito com emoji - TAMANHO AUMENTADO
+            # Se falhar, mostra um placeholder bonito com emoji
             st.markdown(f'''
                 <div class="logo-container">
-                    <span style="font-size: 60px;">🏢</span>  <!-- Emoji aumentado -->
+                    <span style="font-size: 40px;">🏢</span>
                 </div>
             ''', unsafe_allow_html=True)
         # =======================================
