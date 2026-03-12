@@ -128,7 +128,7 @@ ICONES = {
 # FUNÇÃO PRINCIPAL
 # ============================================
 
-st.title("🧠 Mateiais de Integração")
+st.title("🧠 Materiais de Integração")
 
 # Criar linhas com 2 colunas cada
 unidades_lista = list(UNIDADES.items())
