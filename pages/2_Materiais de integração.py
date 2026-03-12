@@ -3,7 +3,7 @@ import streamlit as st
 # Configuração da página
 st.set_page_config(page_title="Materiais de Integração", layout="wide")
 
-# CSS personalizado
+# CSS personalizado - VERSÃO SIMPLIFICADA
 st.markdown("""
 <style>
     /* Título centralizado */
@@ -24,25 +24,16 @@ st.markdown("""
         border: 1px solid #555555;
     }
     
-    /* Container da logo - CENTRALIZADO */
-    .logo-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin-bottom: 15px;
+    /* Container da logo - FORÇADO CENTRALIZADO */
+    .logo-centralizada {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        width: 100% !important;
+        margin-bottom: 20px !important;
     }
     
-    /* Estilo para a imagem da logo */
-    .logo-imagem {
-        display: block;
-        margin: 0 auto;
-        border-radius: 50%;
-        background: white;
-        padding: 10px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    }
-    
-    /* Nome da unidade - CENTRALIZADO */
+    /* Nome da unidade centralizado */
     .unidade-nome {
         color: white;
         font-size: 24px;
@@ -239,24 +230,24 @@ def criar_card_unidade(nome_unidade, dados):
     with st.container():
         st.markdown(f'<div class="unidade-card">', unsafe_allow_html=True)
         
-        # ===== LOGO CENTRALIZADA ACIMA DO NOME =====
-        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        # ===== LOGO CENTRALIZADA =====
+        st.markdown('<div class="logo-centralizada">', unsafe_allow_html=True)
         
         try:
-            # Tenta carregar a imagem centralizada
+            # Tenta carregar a imagem - centralizada pelo CSS
             st.image(dados["logo"], width=120)
-        except Exception as e:
-            # Se falhar, mostra um placeholder centralizado
+        except:
+            # Fallback com emoji
             st.markdown(f'''
-                <div style="text-align: center; background: white; border-radius: 50%; width: 120px; height: 120px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+                <div style="background: white; border-radius: 50%; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
                     <span style="font-size: 60px;">🏢</span>
                 </div>
             ''', unsafe_allow_html=True)
         
         st.markdown('</div>', unsafe_allow_html=True)
-        # ===========================================
+        # =============================
         
-        # Nome da unidade (já centralizado pelo CSS)
+        # Nome da unidade centralizado
         st.markdown(f'<div class="unidade-nome">{nome_unidade}</div>', unsafe_allow_html=True)
         
         # Criar duas colunas dentro do card
