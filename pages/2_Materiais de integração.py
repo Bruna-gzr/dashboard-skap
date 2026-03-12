@@ -13,9 +13,9 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     
-    /* Container do card da unidade */
+    /* Container do card da unidade - NOVO GRADIENTE AMARELO PARA LARANJA */
     .unidade-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #FDB813 0%, #F97316 100%);
         border-radius: 20px;
         padding: 25px 20px;
         margin: 10px;
@@ -76,7 +76,7 @@ st.markdown("""
     .stButton button:hover {
         background: #f0f0f0;
         transform: translateX(5px);
-        color: #667eea;
+        color: #F97316;  /* Laranja no hover combinando com o gradiente */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -225,7 +225,7 @@ ICONES = {
 }
 
 # ============================================
-# FUNÇÃO PARA CRIAR O CARD DA UNIDADE (COM LOGOS CORRIGIDAS)
+# FUNÇÃO PARA CRIAR O CARD DA UNIDADE
 # ============================================
 
 def criar_card_unidade(nome_unidade, dados):
@@ -245,9 +245,6 @@ def criar_card_unidade(nome_unidade, dados):
                     <span style="font-size: 40px;">🏢</span>
                 </div>
             ''', unsafe_allow_html=True)
-            
-            # Opcional: mostra uma mensagem de debug (pode remover depois)
-            # st.caption(f"Logo não encontrada: {dados['logo']}")
         # =======================================
         
         # Nome da unidade
