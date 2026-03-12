@@ -43,7 +43,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Título
-st.markdown("<h1 style='text-align: center;'>🧠 Materiais de Integração</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>Materiais de Integração</h1>", unsafe_allow_html=True)
 
 # ============================================
 # DADOS DAS UNIDADES
