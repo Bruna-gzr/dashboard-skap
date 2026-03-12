@@ -11,15 +11,17 @@ st.markdown("""
         text-align: center;
         font-size: 3rem;
         margin-bottom: 2rem;
+        color: #FFFFFF;
     }
     
-    /* Container do card da unidade - NOVO GRADIENTE AMARELO PARA LARANJA */
+    /* Container do card da unidade - CINZA ESCURO ELEGANTE */
     .unidade-card {
-        background: linear-gradient(135deg, #FDB813 0%, #F97316 100%);
+        background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
         padding: 25px 20px;
         margin: 10px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        border: 1px solid #555555;
     }
     
     /* Logo container */
@@ -34,7 +36,7 @@ st.markdown("""
         align-items: center;
         justify-content: center;
         padding: 10px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
     }
     
     /* Nome da unidade */
@@ -45,25 +47,24 @@ st.markdown("""
         text-align: center;
         margin-bottom: 25px;
         padding-bottom: 10px;
-        border-bottom: 2px solid rgba(255,255,255,0.3);
+        border-bottom: 2px solid rgba(255,255,255,0.2);
     }
     
     /* Títulos das seções */
     .titulo-secao {
-        color: white;
+        color: #CCCCCC;
         font-size: 18px;
         font-weight: bold;
         margin: 15px 0 10px 0;
         padding-left: 5px;
-        opacity: 0.9;
     }
     
     /* Estilo dos botões */
     .stButton button {
         width: 100%;
-        background: white;
-        color: #333;
-        border: none;
+        background: #3A3A3A;
+        color: #FFFFFF;
+        border: 1px solid #555555;
         border-radius: 8px;
         padding: 8px 12px;
         font-size: 14px;
@@ -74,9 +75,10 @@ st.markdown("""
     }
     
     .stButton button:hover {
-        background: #f0f0f0;
+        background: #4A4A4A;
         transform: translateX(5px);
-        color: #F97316;  /* Laranja no hover combinando com o gradiente */
+        color: #FFFFFF;
+        border-color: #777777;
     }
 </style>
 """, unsafe_allow_html=True)
