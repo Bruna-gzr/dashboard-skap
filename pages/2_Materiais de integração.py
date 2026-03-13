@@ -223,7 +223,7 @@ ICONES = {
 def criar_card_unidade(nome_unidade, dados):
     with st.container(border=True):
 
-        # logo + título no MESMO eixo
+        # logo + título no mesmo eixo
         _, centro, _ = st.columns([1, 2, 1])
 
         with centro:
