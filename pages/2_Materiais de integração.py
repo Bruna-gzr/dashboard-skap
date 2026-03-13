@@ -16,12 +16,29 @@ st.markdown("""
         margin-bottom: 20px;
     }
 
-    .titulo-unidade {
+    /* Container do cabeçalho da unidade */
+    .unidade-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+    }
+    
+    .unidade-logo {
+        width: 120px;
+        height: 120px;
+        object-fit: contain;
+        margin-bottom: 10px;
+    }
+    
+    .unidade-titulo {
         text-align: center;
         color: white;
-        margin: 8px 0 20px 0;
         font-size: 22px;
         font-weight: 700;
+        margin: 0;
+        padding: 0;
     }
 
     .titulo-coluna {
@@ -39,6 +56,7 @@ st.markdown("""
         margin: 8px 0;
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         border: 1px solid #555555;
+        height: fit-content;
     }
 
     .stButton button {
@@ -59,16 +77,21 @@ st.markdown("""
         color: #FFFFFF;
         border: 1px solid #777777;
     }
-
-    /* força a imagem a ficar realmente no centro */
-    div[data-testid="stImage"] {
-        text-align: center;
+    
+    /* Fallback para logo */
+    .logo-fallback {
+        background: white;
+        border-radius: 50%;
+        width: 120px;
+        height: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 10px auto;
     }
-
-    div[data-testid="stImage"] img {
-        display: block;
-        margin-left: auto;
-        margin-right: auto;
+    
+    .logo-fallback span {
+        font-size: 60px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -222,36 +245,26 @@ ICONES = {
 
 def criar_card_unidade(nome_unidade, dados):
     with st.container(border=True):
-
-        # logo + título no MESMO eixo
-        _, centro, _ = st.columns([1, 2, 1])
-
-        with centro:
-            try:
-                st.image(dados["logo"], width=120)
-            except Exception:
-                st.markdown(
-                    """
-                    <div style='
-                        background: white;
-                        border-radius: 50%;
-                        width: 120px;
-                        height: 120px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        margin: 0 auto;
-                    '>
-                        <span style='font-size: 60px;'>🏢</span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-            st.markdown(
-                f"<div class='titulo-unidade'>{nome_unidade}</div>",
-                unsafe_allow_html=True
-            )
+        
+        # Cabeçalho com logo e título alinhados
+        st.markdown(f"""
+        <div class="unidade-header">
+        """, unsafe_allow_html=True)
+        
+        # Tenta carregar a imagem, se não conseguir mostra fallback
+        try:
+            st.image(dados["logo"], width=120)
+        except Exception:
+            st.markdown(f"""
+            <div class="logo-fallback">
+                <span>🏢</span>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown(f"""
+            <div class="unidade-titulo">{nome_unidade}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
         # Duas colunas para os setores
         col1, col2 = st.columns(2)
