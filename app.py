@@ -8,3 +8,4 @@ st.set_page_config(
 
 st.title("🏠 Home — Painel Gente & Gestão")
 st.write("Use o menu lateral para navegar entre os módulos.")
+
