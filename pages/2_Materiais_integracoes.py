@@ -22,14 +22,14 @@ st.markdown("""
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        margin-bottom: 20px;
+        margin-bottom: 30px;  /* Aumentado de 20px para 30px */
     }
     
     .unidade-logo {
         width: 120px;
         height: 120px;
         object-fit: contain;
-        margin-bottom: 10px;
+        margin-bottom: 15px;  /* Aumentado de 10px para 15px */
     }
     
     /* Classe especial para logos maiores */
@@ -37,7 +37,7 @@ st.markdown("""
         width: 160px !important;
         height: 160px !important;
         object-fit: contain;
-        margin-bottom: 10px;
+        margin-bottom: 15px;  /* Aumentado de 10px para 15px */
     }
     
     .unidade-titulo {
@@ -47,20 +47,24 @@ st.markdown("""
         font-weight: 700;
         margin: 0;
         padding: 0;
+        margin-bottom: 25px;  /* NOVO: espaço extra após o título */
     }
 
     .titulo-coluna {
         color: #CCCCCC;
         font-weight: bold;
-        margin-bottom: 8px;
-        font-size: 14px;
+        margin-bottom: 15px;  /* Aumentado de 8px para 15px */
+        font-size: 16px;  /* Aumentado de 14px para 16px */
+        text-align: center;  /* Centralizado */
+        width: 100%;
+        letter-spacing: 0.5px;
     }
 
     /* Card com visual parecido com o seu */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
-        padding: 20px 18px 20px 18px;
+        padding: 25px 20px 25px 20px;  /* Aumentado padding superior/inferior */
         margin: 8px 0;
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         border: 1px solid #555555;
@@ -95,7 +99,7 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 10px auto;
+        margin: 0 auto 15px auto;  /* Aumentado margin-bottom */
     }
     
     /* Fallback maior para Litoral e Vidros */
@@ -107,7 +111,7 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 10px auto;
+        margin: 0 auto 15px auto;  /* Aumentado margin-bottom */
     }
     
     .logo-fallback span, .logo-fallback-grande span {
@@ -201,10 +205,10 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Ponta Grossa": {  # Nome alterado de "Ponta Grossa Armazem" para "Ponta Grossa"
-        "logo": "logos/Ponta Grossa Armazem.png",  # Mantém o mesmo arquivo de logo
+    "Ponta Grossa": {
+        "logo": "logos/Ponta Grossa Armazem.png",
         "coluna1": {
-            "titulo": "🚛 EMPURRADA",  # Título alterado de DISTRIBUIÇÃO para EMPURRADA
+            "titulo": "🚛 EMPURRADA",
             "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
         },
         "coluna2": {
@@ -215,20 +219,19 @@ UNIDADES = {
     "Sao Cristovao": {
         "logo": "logos/Sao Cristovao.png",
         "coluna1": {
-            "titulo": "🚛 DISTRIBUIÇÃO",  # Apenas DISTRIBUIÇÃO
+            "titulo": "🚛 DISTRIBUIÇÃO",
             "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
         },
-        "coluna2": None  # ARMAZEM removido
+        "coluna2": None
     },
     "Vidros": {
         "logo": "logos/Vidros.png",
-        "coluna1": None,  # DISTRIBUIÇÃO removido
+        "coluna1": None,
         "coluna2": {
-            "titulo": "👷🏻‍♂️ ARMAZEM",  # Apenas ARMAZEM
+            "titulo": "👷🏻‍♂️ ARMAZEM",
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     }
-    # "Ponta Grossa Empurrada" foi removida
 }
 
 # Mapeamento de ícones
@@ -329,7 +332,7 @@ def criar_card_unidade(nome_unidade, dados):
             with col:
                 if dados["coluna1"] is not None:
                     st.markdown(
-                        f"<div class='titulo-coluna' style='text-align: center;'>{dados['coluna1']['titulo']}</div>",
+                        f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",
                         unsafe_allow_html=True
                     )
                     for setor in dados["coluna1"]["setores"]:
@@ -343,7 +346,7 @@ def criar_card_unidade(nome_unidade, dados):
                 
                 elif dados["coluna2"] is not None:
                     st.markdown(
-                        f"<div class='titulo-coluna' style='text-align: center;'>{dados['coluna2']['titulo']}</div>",
+                        f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",
                         unsafe_allow_html=True
                     )
                     for setor in dados["coluna2"]["setores"]:
