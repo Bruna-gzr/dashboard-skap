@@ -63,17 +63,29 @@ st.markdown("""
         width: 100%;
     }
 
-    /* Card */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
-        border-radius: 20px;
-        padding: 25px 20px 25px 20px;
-        margin: 8px 0;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        border: 1px solid #555555;
-        height: 100%;
-        min-height: 600px;
-    }
+    /* Faz as colunas terem a mesma altura visual */
+div[data-testid="column"] {
+    display: flex;
+}
+
+div[data-testid="column"] > div {
+    width: 100%;
+}
+
+/* Card */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
+    border-radius: 20px;
+    padding: 25px 20px 25px 20px;
+    margin: 8px 0;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    border: 1px solid #555555;
+    
+    height: 650px;              /* altura igual para todos */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
 
     .stButton button {
         width: 100%;
