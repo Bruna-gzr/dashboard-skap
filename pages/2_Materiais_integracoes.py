@@ -14,113 +14,57 @@ st.markdown("""
         text-align: center;
         color: white;
         margin-bottom: 20px;
-        font-size: 32px;
     }
 
-    /* colunas com mesma altura */
-    div[data-testid="column"] {
-        display: flex;
-        align-items: stretch;
-    }
-
-    div[data-testid="column"] > div {
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-    }
-
-    /* card */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
-        border-radius: 20px;
-        padding: 25px 20px;
-        margin: 8px 0;
-        border: 1px solid #555555;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        min-height: 660px;
-        height: 660px;
-        width: 100%;
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-
-    /* cabeçalho da unidade */
+    /* Container do cabeçalho da unidade */
     .unidade-header {
-        height: 235px;
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: flex-start;
-        flex-shrink: 0;
+        justify-content: center;
+        margin-bottom: 20px;
+    }
+    
+    .unidade-logo {
+        width: 120px;
+        height: 120px;
+        object-fit: contain;
         margin-bottom: 10px;
     }
     
-    /* imagens */
-    div[data-testid="stImage"] {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 160px;
-    }
-
-    div[data-testid="stImage"] img {
-        display: block;
-        margin: 0 auto;
+    /* Classe especial para logos maiores */
+    .unidade-logo-grande {
+        width: 160px !important;
+        height: 160px !important;
         object-fit: contain;
+        margin-bottom: 10px;
     }
-
-    /* título unidade */
+    
     .unidade-titulo {
-        min-height: 42px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         text-align: center;
         color: white;
-        font-size: 26px;
+        font-size: 22px;
         font-weight: 700;
         margin: 0;
-        padding: 0 8px;
-        text-transform: uppercase !important;
-    }
-
-    /* conteúdo do card */
-    .conteudo-card {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-    }
-
-    .scroll-card {
-        flex: 1;
-        overflow-y: auto;
-        overflow-x: hidden;
-        padding-right: 4px;
-    }
-
-    .scroll-card::-webkit-scrollbar {
-        width: 6px;
-    }
-
-    .scroll-card::-webkit-scrollbar-thumb {
-        background: #666;
-        border-radius: 10px;
-    }
-
-    .scroll-card::-webkit-scrollbar-track {
-        background: transparent;
+        padding: 0;
     }
 
     .titulo-coluna {
         color: #CCCCCC;
         font-weight: bold;
-        margin-bottom: 15px;
-        font-size: 16px;
-        text-align: center;
-        width: 100%;
+        margin-bottom: 8px;
+        font-size: 14px;
+    }
+
+    /* Card com visual parecido com o seu */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
+        border-radius: 20px;
+        padding: 20px 18px 20px 18px;
+        margin: 8px 0;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        border: 1px solid #555555;
+        height: fit-content;
     }
 
     .stButton button {
@@ -134,27 +78,27 @@ st.markdown("""
         font-weight: 500;
         text-align: left;
         margin: 3px 0;
-        transition: 0.2s ease;
     }
 
     .stButton button:hover {
         background: #4A4A4A;
+        color: #FFFFFF;
         border: 1px solid #777777;
-        transform: translateY(-1px);
     }
     
-    /* fallback para logo */
+    /* Fallback para logo */
     .logo-fallback {
         background: white;
         border-radius: 50%;
-        width: 120px !important;
-        height: 120px !important;
+        width: 120px;
+        height: 120px;
         display: flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 15px auto;
+        margin: 0 auto 10px auto;
     }
     
+    /* Fallback maior para Litoral e Vidros */
     .logo-fallback-grande {
         background: white;
         border-radius: 50%;
@@ -163,12 +107,11 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 15px auto;
+        margin: 0 auto 10px auto;
     }
     
-    .logo-fallback span,
-    .logo-fallback-grande span {
-        font-size: 70px;
+    .logo-fallback span, .logo-fallback-grande span {
+        font-size: 60px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -258,10 +201,10 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Ponta Grossa": {
-        "logo": "logos/Ponta Grossa Armazem.png",
+    "Ponta Grossa": {  # Nome alterado de "Ponta Grossa Armazem" para "Ponta Grossa"
+        "logo": "logos/Ponta Grossa Armazem.png",  # Mantém o mesmo arquivo de logo
         "coluna1": {
-            "titulo": "🚛 EMPURRADA",
+            "titulo": "🚛 EMPURRADA",  # Título alterado de DISTRIBUIÇÃO para EMPURRADA
             "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
         },
         "coluna2": {
@@ -272,21 +215,23 @@ UNIDADES = {
     "Sao Cristovao": {
         "logo": "logos/Sao Cristovao.png",
         "coluna1": {
-            "titulo": "🚛 DISTRIBUIÇÃO",
+            "titulo": "🚛 DISTRIBUIÇÃO",  # Apenas DISTRIBUIÇÃO
             "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
         },
-        "coluna2": None
+        "coluna2": None  # ARMAZEM removido
     },
     "Vidros": {
         "logo": "logos/Vidros.png",
-        "coluna1": None,
+        "coluna1": None,  # DISTRIBUIÇÃO removido
         "coluna2": {
-            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "titulo": "👷🏻‍♂️ ARMAZEM",  # Apenas ARMAZEM
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     }
+    # "Ponta Grossa Empurrada" foi removida
 }
 
+# Mapeamento de ícones
 ICONES = {
     "GENTE": "👥",
     "SEGURANÇA": "🛡️",
@@ -298,7 +243,8 @@ ICONES = {
     "OPERADOR": "🔧"
 }
 
-UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros", "Londrina", "Sao Cristovao"]
+# Unidades que terão logo maior
+UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros"]
 
 # ============================================
 # FUNÇÃO PARA CRIAR O CARD DA UNIDADE
@@ -307,36 +253,43 @@ UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros", "Londrina", "Sao Cristovao"]
 def criar_card_unidade(nome_unidade, dados):
     with st.container(border=True):
         
+        # Verifica se a unidade deve ter logo maior
         logo_grande = nome_unidade in UNIDADES_LOGO_GRANDE
+        
+        # Define classes CSS baseado no tamanho da logo
+        logo_class = "unidade-logo-grande" if logo_grande else "unidade-logo"
         fallback_class = "logo-fallback-grande" if logo_grande else "logo-fallback"
         logo_width = 160 if logo_grande else 120
-
-        # cabeçalho
-        st.markdown("<div class='unidade-header'>", unsafe_allow_html=True)
-
+        
+        # Cabeçalho com logo e título alinhados
+        st.markdown(f"""
+        <div class="unidade-header">
+        """, unsafe_allow_html=True)
+        
+        # Tenta carregar a imagem, se não conseguir mostra fallback
         try:
+            # Para imagens, usamos o parâmetro width do st.image
             st.image(dados["logo"], width=logo_width)
         except Exception:
             st.markdown(f"""
-                <div class="{fallback_class}">
-                    <span>🏢</span>
-                </div>
+            <div class="{fallback_class}">
+                <span>🏢</span>
+            </div>
             """, unsafe_allow_html=True)
-
+        
         st.markdown(f"""
             <div class="unidade-titulo">{nome_unidade}</div>
         </div>
         """, unsafe_allow_html=True)
 
-        # área de conteúdo com rolagem
-        st.markdown("<div class='conteudo-card'><div class='scroll-card'>", unsafe_allow_html=True)
-
+        # Verifica quantas colunas precisamos criar
         colunas_ativas = 0
         if dados["coluna1"] is not None:
             colunas_ativas += 1
         if dados["coluna2"] is not None:
             colunas_ativas += 1
-
+        
+        # Se tiver duas colunas ativas
         if colunas_ativas == 2:
             col1, col2 = st.columns(2)
             
@@ -367,14 +320,16 @@ def criar_card_unidade(nome_unidade, dados):
                         use_container_width=True
                     ):
                         st.info(f"Link para {setor}")
-
+        
+        # Se tiver apenas uma coluna ativa (Vidros ou Sao Cristovao)
         elif colunas_ativas == 1:
+            # Usa coluna centralizada
             col = st.columns([1, 2, 1])[1]
             
             with col:
                 if dados["coluna1"] is not None:
                     st.markdown(
-                        f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",
+                        f"<div class='titulo-coluna' style='text-align: center;'>{dados['coluna1']['titulo']}</div>",
                         unsafe_allow_html=True
                     )
                     for setor in dados["coluna1"]["setores"]:
@@ -385,10 +340,10 @@ def criar_card_unidade(nome_unidade, dados):
                             use_container_width=True
                         ):
                             st.info(f"Link para {setor}")
-
+                
                 elif dados["coluna2"] is not None:
                     st.markdown(
-                        f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",
+                        f"<div class='titulo-coluna' style='text-align: center;'>{dados['coluna2']['titulo']}</div>",
                         unsafe_allow_html=True
                     )
                     for setor in dados["coluna2"]["setores"]:
@@ -399,8 +354,6 @@ def criar_card_unidade(nome_unidade, dados):
                             use_container_width=True
                         ):
                             st.info(f"Link para {setor}")
-
-        st.markdown("</div></div>", unsafe_allow_html=True)
 
 # ============================================
 # PÁGINA PRINCIPAL
