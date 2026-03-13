@@ -63,13 +63,21 @@ st.markdown("""
         width: 100%;
     }
 
-    /* Faz as colunas terem a mesma altura visual */
+    /* Faz as colunas esticarem os cards */
 div[data-testid="column"] {
     display: flex;
+    align-self: stretch;
 }
 
 div[data-testid="column"] > div {
     width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Container interno do Streamlit */
+div[data-testid="stVerticalBlock"] {
+    height: 100%;
 }
 
 /* Card */
@@ -80,11 +88,13 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     margin: 8px 0;
     box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     border: 1px solid #555555;
-    
-    height: 650px;              /* altura igual para todos */
+
+    height: 650px;
+    width: 100%;
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
+    box-sizing: border-box;
 }
 
     .stButton button {
@@ -269,7 +279,7 @@ UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros", "Londrina", "Sao Cristovao"]
 # ============================================
 
 def criar_card_unidade(nome_unidade, dados):
-    with st.container(border=True):
+    with st.container():
         
         # Verifica se a unidade deve ter logo maior
         logo_grande = nome_unidade in UNIDADES_LOGO_GRANDE
