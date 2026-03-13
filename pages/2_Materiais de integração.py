@@ -14,7 +14,6 @@ st.markdown("""
         text-align: center;
         color: white;
         margin-bottom: 20px;
-        font-size: 32px;
     }
 
     /* Container do cabeçalho da unidade */
@@ -23,14 +22,14 @@ st.markdown("""
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        margin-bottom: 30px;
+        margin-bottom: 30px;  /* Aumentado de 20px para 30px */
     }
     
     .unidade-logo {
         width: 120px;
         height: 120px;
         object-fit: contain;
-        margin-bottom: 15px;
+        margin-bottom: 15px;  /* Aumentado de 10px para 15px */
     }
     
     /* Classe especial para logos maiores */
@@ -38,49 +37,38 @@ st.markdown("""
         width: 160px !important;
         height: 160px !important;
         object-fit: contain;
-        margin-bottom: 15px;
+        margin-bottom: 15px;  /* Aumentado de 10px para 15px */
     }
     
     .unidade-titulo {
         text-align: center;
         color: white;
-        font-size: 26px;  /* Aumentado de 22px para 26px */
+        font-size: 22px;
         font-weight: 700;
         margin: 0;
         padding: 0;
-        margin-bottom: 25px;
-        letter-spacing: 0.5px;
+        margin-bottom: 25px;  /* NOVO: espaço extra após o título */
     }
 
     .titulo-coluna {
         color: #CCCCCC;
         font-weight: bold;
-        margin-bottom: 15px;
-        font-size: 16px;
-        text-align: center;
+        margin-bottom: 15px;  /* Aumentado de 8px para 15px */
+        font-size: 16px;  /* Aumentado de 14px para 16px */
+        text-align: center;  /* Centralizado */
         width: 100%;
         letter-spacing: 0.5px;
     }
 
-    /* Card com visual parecido com o seu - AGORA COM ALTURA MÍNIMA FIXA */
+    /* Card com visual parecido com o seu */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
-        padding: 25px 20px 25px 20px;
+        padding: 25px 20px 25px 20px;  /* Aumentado padding superior/inferior */
         margin: 8px 0;
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         border: 1px solid #555555;
-        height: 100%;  /* Altura relativa ao container */
-        min-height: 580px;  /* Altura mínima fixa para todos os cards */
-        display: flex;
-        flex-direction: column;
-    }
-    
-    /* Garante que o conteúdo interno use todo o espaço disponível */
-    div[data-testid="stVerticalBlockBorderWrapper"] > div {
-        height: 100%;
-        display: flex;
-        flex-direction: column;
+        height: fit-content;
     }
 
     .stButton button {
@@ -94,15 +82,12 @@ st.markdown("""
         font-weight: 500;
         text-align: left;
         margin: 3px 0;
-        transition: all 0.2s ease;
     }
 
     .stButton button:hover {
         background: #4A4A4A;
         color: #FFFFFF;
         border: 1px solid #777777;
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
     }
     
     /* Fallback para logo */
@@ -114,7 +99,7 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 15px auto;
+        margin: 0 auto 15px auto;  /* Aumentado margin-bottom */
     }
     
     /* Fallback maior para Litoral e Vidros */
@@ -126,33 +111,11 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 15px auto;
+        margin: 0 auto 15px auto;  /* Aumentado margin-bottom */
     }
     
     .logo-fallback span, .logo-fallback-grande span {
-        font-size: 70px;  /* Aumentado de 60px para 70px */
-    }
-    
-    /* Ajuste para as colunas ficarem com altura consistente */
-    div[data-testid="column"] {
-        height: 100%;
-    }
-    
-    /* Container dos botões para distribuição uniforme */
-    .botoes-container {
-        display: flex;
-        flex-direction: column;
-        flex-grow: 1;
-    }
-    
-    /* Para cards com apenas uma coluna */
-    .coluna-unica {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        height: 100%;
+        font-size: 60px;
     }
 </style>
 """, unsafe_allow_html=True)
