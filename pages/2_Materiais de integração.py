@@ -32,6 +32,14 @@ st.markdown("""
         margin-bottom: 10px;
     }
     
+    /* Classe especial para logos maiores */
+    .unidade-logo-grande {
+        width: 160px !important;
+        height: 160px !important;
+        object-fit: contain;
+        margin-bottom: 10px;
+    }
+    
     .unidade-titulo {
         text-align: center;
         color: white;
@@ -90,7 +98,19 @@ st.markdown("""
         margin: 0 auto 10px auto;
     }
     
-    .logo-fallback span {
+    /* Fallback maior para Litoral e Vidros */
+    .logo-fallback-grande {
+        background: white;
+        border-radius: 50%;
+        width: 160px !important;
+        height: 160px !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 10px auto;
+    }
+    
+    .logo-fallback span, .logo-fallback-grande span {
         font-size: 60px;
     }
 </style>
@@ -239,12 +259,23 @@ ICONES = {
     "OPERADOR": "🔧"
 }
 
+# Unidades que terão logo maior
+UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros"]
+
 # ============================================
 # FUNÇÃO PARA CRIAR O CARD DA UNIDADE
 # ============================================
 
 def criar_card_unidade(nome_unidade, dados):
     with st.container(border=True):
+        
+        # Verifica se a unidade deve ter logo maior
+        logo_grande = nome_unidade in UNIDADES_LOGO_GRANDE
+        
+        # Define classes CSS baseado no tamanho da logo
+        logo_class = "unidade-logo-grande" if logo_grande else "unidade-logo"
+        fallback_class = "logo-fallback-grande" if logo_grande else "logo-fallback"
+        logo_width = 160 if logo_grande else 120
         
         # Cabeçalho com logo e título alinhados
         st.markdown(f"""
@@ -253,10 +284,11 @@ def criar_card_unidade(nome_unidade, dados):
         
         # Tenta carregar a imagem, se não conseguir mostra fallback
         try:
-            st.image(dados["logo"], width=120)
+            # Para imagens, usamos o parâmetro width do st.image
+            st.image(dados["logo"], width=logo_width)
         except Exception:
             st.markdown(f"""
-            <div class="logo-fallback">
+            <div class="{fallback_class}">
                 <span>🏢</span>
             </div>
             """, unsafe_allow_html=True)
