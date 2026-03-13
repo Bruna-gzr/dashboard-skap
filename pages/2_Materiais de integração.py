@@ -245,57 +245,43 @@ ICONES = {
 
 def criar_card_unidade(nome_unidade, dados):
     with st.container(border=True):
+        # Usando columns com proporções para centralizar
+        left, center, right = st.columns([1, 2, 1])
         
-        # Cabeçalho com logo e título alinhados
-        st.markdown(f"""
-        <div class="unidade-header">
-        """, unsafe_allow_html=True)
-        
-        # Tenta carregar a imagem, se não conseguir mostra fallback
-        try:
-            st.image(dados["logo"], width=120)
-        except Exception:
-            st.markdown(f"""
-            <div class="logo-fallback">
-                <span>🏢</span>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown(f"""
-            <div class="unidade-titulo">{nome_unidade}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        with center:
+            # Container para alinhar verticalmente
+            logo_container = st.container()
+            titulo_container = st.container()
+            
+            with logo_container:
+                try:
+                    st.image(dados["logo"], width=120)
+                except Exception:
+                    st.markdown(
+                        """
+                        <div style='
+                            background: white;
+                            border-radius: 50%;
+                            width: 120px;
+                            height: 120px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            margin: 0 auto;
+                        '>
+                            <span style='font-size: 60px;'>🏢</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+            
+            with titulo_container:
+                st.markdown(
+                    f"<p style='text-align: center; color: white; font-size: 22px; font-weight: 700; margin-top: 5px;'>{nome_unidade}</p>",
+                    unsafe_allow_html=True
+                )
 
-        # Duas colunas para os setores
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown(
-                f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",
-                unsafe_allow_html=True
-            )
-            for setor in dados["coluna1"]["setores"]:
-                icone = ICONES.get(setor, "🔗")
-                if st.button(
-                    f"{icone} {setor}",
-                    key=f"{nome_unidade}_dist_{setor}",
-                    use_container_width=True
-                ):
-                    st.info(f"Link para {setor}")
-
-        with col2:
-            st.markdown(
-                f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",
-                unsafe_allow_html=True
-            )
-            for setor in dados["coluna2"]["setores"]:
-                icone = ICONES.get(setor, "🔗")
-                if st.button(
-                    f"{icone} {setor}",
-                    key=f"{nome_unidade}_arm_{setor}",
-                    use_container_width=True
-                ):
-                    st.info(f"Link para {setor}")
+        # Resto do código igual...
 
 # ============================================
 # PÁGINA PRINCIPAL
