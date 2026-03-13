@@ -1,9 +1,9 @@
 import streamlit as st
 
-# Configuração da página (DEVE VIR IMEDIATAMENTE APÓS O IMPORT)
+# Configuração da página
 st.set_page_config(page_title="Materiais de Integração", layout="wide")
 
-# CSS (AGORA SIM, APÓS A CONFIGURAÇÃO DA PÁGINA)
+# CSS
 st.markdown("""
 <style>
     .stApp {
@@ -26,23 +26,31 @@ st.markdown("""
         margin-bottom: 30px;
     }
     
-    /* CLASSE PARA LOGOS NORMAIS */
     .unidade-logo {
-        width: 120px !important;
-        height: 120px !important;
+        width: 120px;
+        height: 120px;
         object-fit: contain;
         margin-bottom: 15px;
+        transition: transform 0.3s ease;  /* Efeito hover suave */
     }
     
-    /* CLASSE PARA LOGOS GRANDES */
+    .unidade-logo:hover {
+        transform: scale(1.05);  /* Efeito de zoom ao passar o mouse */
+    }
+    
+    /* Classe especial para logos maiores */
     .unidade-logo-grande {
         width: 160px !important;
         height: 160px !important;
         object-fit: contain;
         margin-bottom: 15px;
+        transition: transform 0.3s ease;
     }
     
-    /* TÍTULO DA UNIDADE - CAIXA ALTA */
+    .unidade-logo-grande:hover {
+        transform: scale(1.05);
+    }
+    
     .unidade-titulo {
         text-align: center;
         color: white;
@@ -51,7 +59,9 @@ st.markdown("""
         margin: 0;
         padding: 0;
         margin-bottom: 25px;
-        text-transform: uppercase !important;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;  /* CAIXA ALTA */
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);  /* Sombra suave */
     }
 
     .titulo-coluna {
@@ -61,9 +71,12 @@ st.markdown("""
         font-size: 16px;
         text-align: center;
         width: 100%;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid #555555;  /* Linha decorativa abaixo do título */
+        padding-bottom: 8px;
     }
 
-    /* Card */
+    /* Card com visual parecido com o seu */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
@@ -72,42 +85,74 @@ st.markdown("""
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         border: 1px solid #555555;
         height: 100%;
-        min-height: 600px;
+        min-height: 600px;  /* Aumentado ligeiramente */
+        display: flex;
+        flex-direction: column;
+        transition: all 0.3s ease;
+    }
+    
+    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+        box-shadow: 0 15px 40px rgba(0,0,0,0.5);
+        border-color: #777777;
+        transform: translateY(-2px);
+    }
+    
+    /* Garante que o conteúdo interno use todo o espaço disponível */
+    div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
     }
 
     .stButton button {
         width: 100%;
-        background: #3A3A3A;
+        background: linear-gradient(135deg, #3A3A3A 0%, #454545 100%);  /* Gradiente suave */
         color: #FFFFFF;
         border: 1px solid #555555;
-        border-radius: 8px;
-        padding: 8px 12px;
+        border-radius: 10px;  /* Aumentado de 8px para 10px */
+        padding: 10px 12px;  /* Aumentado padding vertical */
         font-size: 14px;
         font-weight: 500;
         text-align: left;
-        margin: 3px 0;
+        margin: 4px 0;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
 
     .stButton button:hover {
-        background: #4A4A4A;
-        border: 1px solid #777777;
+        background: linear-gradient(135deg, #4A4A4A 0%, #555555 100%);
+        color: #FFFFFF;
+        border: 1px solid #888888;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 15px rgba(0,0,0,0.3);
+    }
+    
+    .stButton button:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
     
     /* Fallback para logo */
     .logo-fallback {
-        background: white;
+        background: linear-gradient(135deg, #FFFFFF 0%, #F0F0F0 100%);
         border-radius: 50%;
-        width: 120px !important;
-        height: 120px !important;
+        width: 120px;
+        height: 120px;
         display: flex;
         align-items: center;
         justify-content: center;
         margin: 0 auto 15px auto;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        transition: transform 0.3s ease;
     }
     
-    /* Fallback maior */
+    .logo-fallback:hover {
+        transform: scale(1.05);
+    }
+    
+    /* Fallback maior para unidades específicas */
     .logo-fallback-grande {
-        background: white;
+        background: linear-gradient(135deg, #FFFFFF 0%, #F0F0F0 100%);
         border-radius: 50%;
         width: 160px !important;
         height: 160px !important;
@@ -115,10 +160,58 @@ st.markdown("""
         align-items: center;
         justify-content: center;
         margin: 0 auto 15px auto;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        transition: transform 0.3s ease;
+    }
+    
+    .logo-fallback-grande:hover {
+        transform: scale(1.05);
     }
     
     .logo-fallback span, .logo-fallback-grande span {
         font-size: 70px;
+    }
+    
+    /* Ajuste para as colunas ficarem com altura consistente */
+    div[data-testid="column"] {
+        height: 100%;
+    }
+    
+    /* Container dos botões para distribuição uniforme */
+    .botoes-container {
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+    }
+    
+    /* Para cards com apenas uma coluna */
+    .coluna-unica {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+    }
+    
+    /* Barra de rolagem personalizada (opcional) */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: #2D2D2D;
+        border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: #555555;
+        border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: #777777;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -249,7 +342,7 @@ ICONES = {
     "OPERADOR": "🔧"
 }
 
-# Unidades que terão logo maior
+# Unidades que terão logo maior (adicionadas Londrina e Sao Cristovao)
 UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros", "Londrina", "Sao Cristovao"]
 
 # ============================================
@@ -263,6 +356,7 @@ def criar_card_unidade(nome_unidade, dados):
         logo_grande = nome_unidade in UNIDADES_LOGO_GRANDE
         
         # Define classes CSS baseado no tamanho da logo
+        logo_class = "unidade-logo-grande" if logo_grande else "unidade-logo"
         fallback_class = "logo-fallback-grande" if logo_grande else "logo-fallback"
         logo_width = 160 if logo_grande else 120
         
@@ -326,8 +420,9 @@ def criar_card_unidade(nome_unidade, dados):
                     ):
                         st.info(f"Link para {setor}")
         
-        # Se tiver apenas uma coluna ativa
+        # Se tiver apenas uma coluna ativa (Vidros ou Sao Cristovao)
         elif colunas_ativas == 1:
+            # Usa coluna centralizada
             col = st.columns([1, 2, 1])[1]
             
             with col:
