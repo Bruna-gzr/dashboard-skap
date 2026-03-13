@@ -201,21 +201,10 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Ponta Grossa Armazem": {
-        "logo": "logos/Ponta Grossa Armazem.png",
+    "Ponta Grossa": {  # Nome alterado de "Ponta Grossa Armazem" para "Ponta Grossa"
+        "logo": "logos/Ponta Grossa Armazem.png",  # Mantém o mesmo arquivo de logo
         "coluna1": {
-            "titulo": "🚛 DISTRIBUIÇÃO",
-            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
-        },
-        "coluna2": {
-            "titulo": "👷🏻‍♂️ ARMAZEM",
-            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
-        }
-    },
-    "Ponta Grossa Empurrada": {
-        "logo": "logos/Ponta Grossa Empurrada.png",
-        "coluna1": {
-            "titulo": "🚛 DISTRIBUIÇÃO",
+            "titulo": "🚛 EMPURRADA",  # Título alterado de DISTRIBUIÇÃO para EMPURRADA
             "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
         },
         "coluna2": {
@@ -226,25 +215,20 @@ UNIDADES = {
     "Sao Cristovao": {
         "logo": "logos/Sao Cristovao.png",
         "coluna1": {
-            "titulo": "🚛 DISTRIBUIÇÃO",
+            "titulo": "🚛 DISTRIBUIÇÃO",  # Apenas DISTRIBUIÇÃO
             "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
         },
-        "coluna2": {
-            "titulo": "👷🏻‍♂️ ARMAZEM",
-            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
-        }
+        "coluna2": None  # ARMAZEM removido
     },
     "Vidros": {
         "logo": "logos/Vidros.png",
-        "coluna1": {
-            "titulo": "🚛 DISTRIBUIÇÃO",
-            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
-        },
+        "coluna1": None,  # DISTRIBUIÇÃO removido
         "coluna2": {
-            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "titulo": "👷🏻‍♂️ ARMAZEM",  # Apenas ARMAZEM
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     }
+    # "Ponta Grossa Empurrada" foi removida
 }
 
 # Mapeamento de ícones
@@ -298,36 +282,78 @@ def criar_card_unidade(nome_unidade, dados):
         </div>
         """, unsafe_allow_html=True)
 
-        # Duas colunas para os setores
-        col1, col2 = st.columns(2)
+        # Verifica quantas colunas precisamos criar
+        colunas_ativas = 0
+        if dados["coluna1"] is not None:
+            colunas_ativas += 1
+        if dados["coluna2"] is not None:
+            colunas_ativas += 1
+        
+        # Se tiver duas colunas ativas
+        if colunas_ativas == 2:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(
+                    f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",
+                    unsafe_allow_html=True
+                )
+                for setor in dados["coluna1"]["setores"]:
+                    icone = ICONES.get(setor, "🔗")
+                    if st.button(
+                        f"{icone} {setor}",
+                        key=f"{nome_unidade}_dist_{setor}",
+                        use_container_width=True
+                    ):
+                        st.info(f"Link para {setor}")
 
-        with col1:
-            st.markdown(
-                f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",
-                unsafe_allow_html=True
-            )
-            for setor in dados["coluna1"]["setores"]:
-                icone = ICONES.get(setor, "🔗")
-                if st.button(
-                    f"{icone} {setor}",
-                    key=f"{nome_unidade}_dist_{setor}",
-                    use_container_width=True
-                ):
-                    st.info(f"Link para {setor}")
-
-        with col2:
-            st.markdown(
-                f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",
-                unsafe_allow_html=True
-            )
-            for setor in dados["coluna2"]["setores"]:
-                icone = ICONES.get(setor, "🔗")
-                if st.button(
-                    f"{icone} {setor}",
-                    key=f"{nome_unidade}_arm_{setor}",
-                    use_container_width=True
-                ):
-                    st.info(f"Link para {setor}")
+            with col2:
+                st.markdown(
+                    f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",
+                    unsafe_allow_html=True
+                )
+                for setor in dados["coluna2"]["setores"]:
+                    icone = ICONES.get(setor, "🔗")
+                    if st.button(
+                        f"{icone} {setor}",
+                        key=f"{nome_unidade}_arm_{setor}",
+                        use_container_width=True
+                    ):
+                        st.info(f"Link para {setor}")
+        
+        # Se tiver apenas uma coluna ativa (Vidros ou Sao Cristovao)
+        elif colunas_ativas == 1:
+            # Usa coluna centralizada
+            col = st.columns([1, 2, 1])[1]
+            
+            with col:
+                if dados["coluna1"] is not None:
+                    st.markdown(
+                        f"<div class='titulo-coluna' style='text-align: center;'>{dados['coluna1']['titulo']}</div>",
+                        unsafe_allow_html=True
+                    )
+                    for setor in dados["coluna1"]["setores"]:
+                        icone = ICONES.get(setor, "🔗")
+                        if st.button(
+                            f"{icone} {setor}",
+                            key=f"{nome_unidade}_dist_{setor}",
+                            use_container_width=True
+                        ):
+                            st.info(f"Link para {setor}")
+                
+                elif dados["coluna2"] is not None:
+                    st.markdown(
+                        f"<div class='titulo-coluna' style='text-align: center;'>{dados['coluna2']['titulo']}</div>",
+                        unsafe_allow_html=True
+                    )
+                    for setor in dados["coluna2"]["setores"]:
+                        icone = ICONES.get(setor, "🔗")
+                        if st.button(
+                            f"{icone} {setor}",
+                            key=f"{nome_unidade}_arm_{setor}",
+                            use_container_width=True
+                        ):
+                            st.info(f"Link para {setor}")
 
 # ============================================
 # PÁGINA PRINCIPAL
