@@ -133,7 +133,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Título
-st.markdown("<h1 class='page-title'>🧠 Materiais de Integração</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='page-title'>MATERIAIS DE INTEGRAÇÃO</h1>", unsafe_allow_html=True)
 
 # ============================================
 # DADOS DAS UNIDADES
