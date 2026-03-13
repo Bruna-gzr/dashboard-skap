@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 
 # Configuração da página
 st.set_page_config(page_title="Materiais de Integração", layout="wide")
@@ -17,28 +16,12 @@ st.markdown("""
         margin-bottom: 20px;
     }
 
-    /* Container do cabeçalho da unidade */
     .unidade-header {
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         margin-bottom: 30px;
-    }
-    
-    .unidade-logo {
-        width: 120px;
-        height: 120px;
-        object-fit: contain;
-        margin-bottom: 15px;
-    }
-    
-    /* Classe especial para logos maiores */
-    .unidade-logo-grande {
-        width: 160px !important;
-        height: 160px !important;
-        object-fit: contain;
-        margin-bottom: 15px;
     }
     
     .unidade-titulo {
@@ -61,7 +44,6 @@ st.markdown("""
         letter-spacing: 0.5px;
     }
 
-    /* Card */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
@@ -72,26 +54,16 @@ st.markdown("""
         height: fit-content;
     }
 
-    .stButton button {
-        width: 100%;
-        background: #3A3A3A;
-        color: #FFFFFF;
-        border: 1px solid #555555;
-        border-radius: 8px;
-        padding: 8px 12px;
-        font-size: 14px;
-        font-weight: 500;
-        text-align: left;
-        margin: 3px 0;
+    div[data-testid="stImage"] {
+        text-align: center;
     }
 
-    .stButton button:hover {
-        background: #4A4A4A;
-        color: #FFFFFF;
-        border: 1px solid #777777;
+    div[data-testid="stImage"] img {
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
     }
-    
-    /* Fallback para logo */
+
     .logo-fallback {
         background: white;
         border-radius: 50%;
@@ -103,7 +75,6 @@ st.markdown("""
         margin: 0 auto 15px auto;
     }
     
-    /* Fallback maior para Litoral e Vidros */
     .logo-fallback-grande {
         background: white;
         border-radius: 50%;
@@ -117,6 +88,46 @@ st.markdown("""
     
     .logo-fallback span, .logo-fallback-grande span {
         font-size: 60px;
+    }
+
+    .link-botao {
+        display: block;
+        width: 100%;
+        background: #3A3A3A;
+        color: #FFFFFF !important;
+        border: 1px solid #555555;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 14px;
+        font-weight: 500;
+        text-align: left;
+        text-decoration: none !important;
+        margin: 3px 0;
+        box-sizing: border-box;
+    }
+
+    .link-botao:hover {
+        background: #4A4A4A;
+        color: #FFFFFF !important;
+        border: 1px solid #777777;
+        text-decoration: none !important;
+    }
+
+    .link-botao-vazio {
+        display: block;
+        width: 100%;
+        background: #2A2A2A;
+        color: #999999 !important;
+        border: 1px dashed #555555;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 14px;
+        font-weight: 500;
+        text-align: left;
+        text-decoration: none !important;
+        margin: 3px 0;
+        box-sizing: border-box;
+        cursor: default;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -235,7 +246,6 @@ UNIDADES = {
     }
 }
 
-# Mapeamento de ícones
 ICONES = {
     "GENTE": "👥",
     "SEGURANÇA": "🛡️",
@@ -248,12 +258,7 @@ ICONES = {
     "OPERADOR": "🔧"
 }
 
-# Unidades que terão logo maior
 UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros"]
-
-# ============================================
-# LINKS
-# ============================================
 
 LINKS = {
     "Cascavel": {
@@ -404,21 +409,6 @@ LINKS = {
     }
 }
 
-# ============================================
-# FUNÇÕES
-# ============================================
-
-def abrir_link(link: str):
-    components.html(
-        f"""
-        <script>
-            window.open("{link}", "_blank");
-        </script>
-        """,
-        height=0,
-        width=0,
-    )
-
 def buscar_link(nome_unidade, titulo_coluna, setor):
     chave_coluna = (
         titulo_coluna.replace("🚛 ", "")
@@ -428,20 +418,25 @@ def buscar_link(nome_unidade, titulo_coluna, setor):
     )
     return LINKS.get(nome_unidade, {}).get(chave_coluna, {}).get(setor, "")
 
-# ============================================
-# FUNÇÃO PARA CRIAR O CARD DA UNIDADE
-# ============================================
+def render_link_botao(label, link):
+    if link:
+        st.markdown(
+            f'<a class="link-botao" href="{link}" target="_blank">{label}</a>',
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            f'<div class="link-botao-vazio">{label}</div>',
+            unsafe_allow_html=True
+        )
 
 def criar_card_unidade(nome_unidade, dados):
     with st.container(border=True):
-        
         logo_grande = nome_unidade in UNIDADES_LOGO_GRANDE
         fallback_class = "logo-fallback-grande" if logo_grande else "logo-fallback"
         logo_width = 160 if logo_grande else 120
         
-        st.markdown("""
-        <div class="unidade-header">
-        """, unsafe_allow_html=True)
+        st.markdown('<div class="unidade-header">', unsafe_allow_html=True)
         
         try:
             st.image(dados["logo"], width=logo_width)
@@ -474,16 +469,8 @@ def criar_card_unidade(nome_unidade, dados):
                 )
                 for setor in dados["coluna1"]["setores"]:
                     icone = ICONES.get(setor, "🔗")
-                    if st.button(
-                        f"{icone} {setor}",
-                        key=f"{nome_unidade}_dist_{setor}",
-                        use_container_width=True
-                    ):
-                        link = buscar_link(nome_unidade, titulo_coluna_1, setor)
-                        if link:
-                            abrir_link(link)
-                        else:
-                            st.warning("Link não cadastrado")
+                    link = buscar_link(nome_unidade, titulo_coluna_1, setor)
+                    render_link_botao(f"{icone} {setor}", link)
 
             with col2:
                 titulo_coluna_2 = dados["coluna2"]["titulo"]
@@ -493,16 +480,8 @@ def criar_card_unidade(nome_unidade, dados):
                 )
                 for setor in dados["coluna2"]["setores"]:
                     icone = ICONES.get(setor, "🔗")
-                    if st.button(
-                        f"{icone} {setor}",
-                        key=f"{nome_unidade}_arm_{setor}",
-                        use_container_width=True
-                    ):
-                        link = buscar_link(nome_unidade, titulo_coluna_2, setor)
-                        if link:
-                            abrir_link(link)
-                        else:
-                            st.warning("Link não cadastrado")
+                    link = buscar_link(nome_unidade, titulo_coluna_2, setor)
+                    render_link_botao(f"{icone} {setor}", link)
         
         elif colunas_ativas == 1:
             col = st.columns([1, 2, 1])[1]
@@ -516,16 +495,8 @@ def criar_card_unidade(nome_unidade, dados):
                     )
                     for setor in dados["coluna1"]["setores"]:
                         icone = ICONES.get(setor, "🔗")
-                        if st.button(
-                            f"{icone} {setor}",
-                            key=f"{nome_unidade}_dist_{setor}",
-                            use_container_width=True
-                        ):
-                            link = buscar_link(nome_unidade, titulo_coluna, setor)
-                            if link:
-                                abrir_link(link)
-                            else:
-                                st.warning("Link não cadastrado")
+                        link = buscar_link(nome_unidade, titulo_coluna, setor)
+                        render_link_botao(f"{icone} {setor}", link)
                 
                 elif dados["coluna2"] is not None:
                     titulo_coluna = dados["coluna2"]["titulo"]
@@ -535,20 +506,8 @@ def criar_card_unidade(nome_unidade, dados):
                     )
                     for setor in dados["coluna2"]["setores"]:
                         icone = ICONES.get(setor, "🔗")
-                        if st.button(
-                            f"{icone} {setor}",
-                            key=f"{nome_unidade}_arm_{setor}",
-                            use_container_width=True
-                        ):
-                            link = buscar_link(nome_unidade, titulo_coluna, setor)
-                            if link:
-                                abrir_link(link)
-                            else:
-                                st.warning("Link não cadastrado")
-
-# ============================================
-# PÁGINA PRINCIPAL
-# ============================================
+                        link = buscar_link(nome_unidade, titulo_coluna, setor)
+                        render_link_botao(f"{icone} {setor}", link)
 
 unidades_lista = list(UNIDADES.items())
 
