@@ -1,200 +1,424 @@
 import streamlit as st
 
+# Configuração da página
 st.set_page_config(page_title="Materiais de Integração", layout="wide")
 
+# CSS
 st.markdown("""
 <style>
+    .stApp {
+        background-color: #050816;
+    }
 
-.stApp{
-    background:#050816;
-}
+    .page-title {
+        text-align: center;
+        color: white;
+        margin-bottom: 20px;
+        font-size: 32px;
+    }
 
-.page-title{
-    text-align:center;
-    color:white;
-    font-size:32px;
-    margin-bottom:25px;
-}
+    /* colunas com mesma altura */
+    div[data-testid="column"] {
+        display: flex;
+        align-items: stretch;
+    }
 
-/* ===== FORÇA COLUNAS TEREM MESMA ALTURA ===== */
-div[data-testid="column"]{
-    display:flex;
-    align-items:stretch;
-}
+    div[data-testid="column"] > div {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+    }
 
-div[data-testid="column"] > div{
-    width:100%;
-    display:flex;
-}
+    /* card */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
+        border-radius: 20px;
+        padding: 25px 20px;
+        margin: 8px 0;
+        border: 1px solid #555555;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        min-height: 660px;
+        height: 660px;
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
 
-/* ===== CARD ===== */
-div[data-testid="stVerticalBlockBorderWrapper"]{
-    background:linear-gradient(135deg,#2D2D2D 0%,#404040 100%);
-    border-radius:20px;
-    padding:25px 20px;
-    margin:8px 0;
-    border:1px solid #555;
-    box-shadow:0 10px 30px rgba(0,0,0,0.3);
+    /* cabeçalho da unidade */
+    .unidade-header {
+        height: 235px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        flex-shrink: 0;
+        margin-bottom: 10px;
+    }
+    
+    /* imagens */
+    div[data-testid="stImage"] {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 160px;
+    }
 
-    height:660px;
-    width:100%;
-    display:flex;
-    flex-direction:column;
-    box-sizing:border-box;
-}
+    div[data-testid="stImage"] img {
+        display: block;
+        margin: 0 auto;
+        object-fit: contain;
+    }
 
-/* ===== TOPO DA UNIDADE (PADRONIZA ALTURA) ===== */
-.unidade-header{
-    height:240px;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:flex-start;
-}
+    /* título unidade */
+    .unidade-titulo {
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        color: white;
+        font-size: 26px;
+        font-weight: 700;
+        margin: 0;
+        padding: 0 8px;
+        text-transform: uppercase !important;
+    }
 
-/* área fixa da imagem */
-div[data-testid="stImage"]{
-    height:160px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-}
+    /* conteúdo do card */
+    .conteudo-card {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+    }
 
-div[data-testid="stImage"] img{
-    object-fit:contain;
-}
+    .scroll-card {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding-right: 4px;
+    }
 
-/* título fixo */
-.unidade-titulo{
-    min-height:40px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    color:white;
-    font-size:26px;
-    font-weight:700;
-    text-transform:uppercase;
-    margin-bottom:10px;
-}
+    .scroll-card::-webkit-scrollbar {
+        width: 6px;
+    }
 
-/* colunas */
-.titulo-coluna{
-    text-align:center;
-    color:#CCCCCC;
-    font-weight:bold;
-    margin-bottom:10px;
-}
+    .scroll-card::-webkit-scrollbar-thumb {
+        background: #666;
+        border-radius: 10px;
+    }
 
-/* botões */
-.stButton button{
-    width:100%;
-    background:#3A3A3A;
-    color:white;
-    border:1px solid #555;
-    border-radius:8px;
-    padding:8px 12px;
-    margin:3px 0;
-    text-align:left;
-}
+    .scroll-card::-webkit-scrollbar-track {
+        background: transparent;
+    }
 
-.stButton button:hover{
-    background:#4A4A4A;
-}
+    .titulo-coluna {
+        color: #CCCCCC;
+        font-weight: bold;
+        margin-bottom: 15px;
+        font-size: 16px;
+        text-align: center;
+        width: 100%;
+    }
 
-.logo-fallback{
-    background:white;
-    border-radius:50%;
-    width:120px;
-    height:120px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-}
+    .stButton button {
+        width: 100%;
+        background: #3A3A3A;
+        color: #FFFFFF;
+        border: 1px solid #555555;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 14px;
+        font-weight: 500;
+        text-align: left;
+        margin: 3px 0;
+        transition: 0.2s ease;
+    }
 
-.logo-fallback-grande{
-    background:white;
-    border-radius:50%;
-    width:160px;
-    height:160px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-}
-
+    .stButton button:hover {
+        background: #4A4A4A;
+        border: 1px solid #777777;
+        transform: translateY(-1px);
+    }
+    
+    /* fallback para logo */
+    .logo-fallback {
+        background: white;
+        border-radius: 50%;
+        width: 120px !important;
+        height: 120px !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 15px auto;
+    }
+    
+    .logo-fallback-grande {
+        background: white;
+        border-radius: 50%;
+        width: 160px !important;
+        height: 160px !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 15px auto;
+    }
+    
+    .logo-fallback span,
+    .logo-fallback-grande span {
+        font-size: 70px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
+# Título
 st.markdown("<h1 class='page-title'>🧠 Materiais de Integração</h1>", unsafe_allow_html=True)
 
+# ============================================
+# DADOS DAS UNIDADES
+# ============================================
+
 UNIDADES = {
-    "Cascavel":{"logo":"logos/Cascavel.png","coluna1":{"titulo":"🚛 DISTRIBUIÇÃO","setores":["GENTE","SEGURANÇA","ENTREGA","FINANCEIRO","FROTA"]},"coluna2":{"titulo":"👷🏻‍♂️ ARMAZEM","setores":["GESTÃO","GENTE","SEGURANÇA","AJUDANTE DE ARMAZEM","OPERADOR"]}},
-    "Diadema":{"logo":"logos/Diadema.png","coluna1":{"titulo":"🚛 DISTRIBUIÇÃO","setores":["GENTE","SEGURANÇA","ENTREGA","FINANCEIRO","FROTA"]},"coluna2":{"titulo":"👷🏻‍♂️ ARMAZEM","setores":["GESTÃO","GENTE","SEGURANÇA","AJUDANTE DE ARMAZEM","OPERADOR"]}},
-    "Fco Beltrao":{"logo":"logos/Fco Beltrao.png","coluna1":{"titulo":"🚛 DISTRIBUIÇÃO","setores":["GENTE","SEGURANÇA","ENTREGA","FINANCEIRO","FROTA"]},"coluna2":{"titulo":"👷🏻‍♂️ ARMAZEM","setores":["GESTÃO","GENTE","SEGURANÇA","AJUDANTE DE ARMAZEM","OPERADOR"]}},
-    "Foz do Iguacu":{"logo":"logos/Foz do Iguacu.png","coluna1":{"titulo":"🚛 DISTRIBUIÇÃO","setores":["GENTE","SEGURANÇA","ENTREGA","FINANCEIRO","FROTA"]},"coluna2":{"titulo":"👷🏻‍♂️ ARMAZEM","setores":["GESTÃO","GENTE","SEGURANÇA","AJUDANTE DE ARMAZEM","OPERADOR"]}},
-    "Litoral":{"logo":"logos/Litoral.png","coluna1":{"titulo":"🚛 DISTRIBUIÇÃO","setores":["GENTE","SEGURANÇA","ENTREGA","FINANCEIRO","FROTA"]},"coluna2":{"titulo":"👷🏻‍♂️ ARMAZEM","setores":["GESTÃO","GENTE","SEGURANÇA","AJUDANTE DE ARMAZEM","OPERADOR"]}},
-    "Londrina":{"logo":"logos/Londrina.png","coluna1":{"titulo":"🚛 DISTRIBUIÇÃO","setores":["GENTE","SEGURANÇA","ENTREGA","FINANCEIRO","FROTA"]},"coluna2":{"titulo":"👷🏻‍♂️ ARMAZEM","setores":["GESTÃO","GENTE","SEGURANÇA","AJUDANTE DE ARMAZEM","OPERADOR"]}},
-    "Petropolis":{"logo":"logos/Petropolis.png","coluna1":{"titulo":"🚛 DISTRIBUIÇÃO","setores":["GENTE","SEGURANÇA","ENTREGA","FINANCEIRO","FROTA"]},"coluna2":{"titulo":"👷🏻‍♂️ ARMAZEM","setores":["GESTÃO","GENTE","SEGURANÇA","AJUDANTE DE ARMAZEM","OPERADOR"]}},
-    "Ponta Grossa":{"logo":"logos/Ponta Grossa Armazem.png","coluna1":{"titulo":"🚛 EMPURRADA","setores":["GENTE","SEGURANÇA","ENTREGA","FINANCEIRO","FROTA"]},"coluna2":{"titulo":"👷🏻‍♂️ ARMAZEM","setores":["GESTÃO","GENTE","SEGURANÇA","AJUDANTE DE ARMAZEM","OPERADOR"]}},
-    "Sao Cristovao":{"logo":"logos/Sao Cristovao.png","coluna1":{"titulo":"🚛 DISTRIBUIÇÃO","setores":["GENTE","SEGURANÇA","ENTREGA","FINANCEIRO","FROTA"]},"coluna2":None},
-    "Vidros":{"logo":"logos/Vidros.png","coluna1":None,"coluna2":{"titulo":"👷🏻‍♂️ ARMAZEM","setores":["GESTÃO","GENTE","SEGURANÇA","AJUDANTE DE ARMAZEM","OPERADOR"]}}
+    "Cascavel": {
+        "logo": "logos/Cascavel.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Diadema": {
+        "logo": "logos/Diadema.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Fco Beltrao": {
+        "logo": "logos/Fco Beltrao.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Foz do Iguacu": {
+        "logo": "logos/Foz do Iguacu.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Litoral": {
+        "logo": "logos/Litoral.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Londrina": {
+        "logo": "logos/Londrina.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Petropolis": {
+        "logo": "logos/Petropolis.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Ponta Grossa": {
+        "logo": "logos/Ponta Grossa Armazem.png",
+        "coluna1": {
+            "titulo": "🚛 EMPURRADA",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Sao Cristovao": {
+        "logo": "logos/Sao Cristovao.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": None
+    },
+    "Vidros": {
+        "logo": "logos/Vidros.png",
+        "coluna1": None,
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    }
 }
 
-ICONES={"GENTE":"👥","SEGURANÇA":"🛡️","ENTREGA":"🚚","FINANCEIRO":"💰","FROTA":"🚛","GESTÃO":"📊","AJUDANTE DE ARMAZEM":"📦","OPERADOR":"🔧"}
+# Mapeamento de ícones
+ICONES = {
+    "GENTE": "👥",
+    "SEGURANÇA": "🛡️",
+    "ENTREGA": "🚚",
+    "FINANCEIRO": "💰",
+    "FROTA": "🚛",
+    "GESTÃO": "📊",
+    "AJUDANTE DE ARMAZEM": "📦",
+    "OPERADOR": "🔧"
+}
 
-UNIDADES_LOGO_GRANDE=["Litoral","Vidros","Londrina","Sao Cristovao"]
+# Unidades com logo maior
+UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros", "Londrina", "Sao Cristovao"]
 
-def criar_card_unidade(nome_unidade,dados):
+# ============================================
+# FUNÇÃO PARA CRIAR O CARD DA UNIDADE
+# ============================================
 
+def criar_card_unidade(nome_unidade, dados):
     with st.container(border=True):
-
+        
         logo_grande = nome_unidade in UNIDADES_LOGO_GRANDE
         fallback_class = "logo-fallback-grande" if logo_grande else "logo-fallback"
         logo_width = 160 if logo_grande else 120
 
-        st.markdown("<div class='unidade-header'>",unsafe_allow_html=True)
+        # cabeçalho
+        st.markdown("<div class='unidade-header'>", unsafe_allow_html=True)
 
         try:
-            st.image(dados["logo"],width=logo_width)
-        except:
-            st.markdown(f"<div class='{fallback_class}'><span>🏢</span></div>",unsafe_allow_html=True)
+            st.image(dados["logo"], width=logo_width)
+        except Exception:
+            st.markdown(f"""
+                <div class="{fallback_class}">
+                    <span>🏢</span>
+                </div>
+            """, unsafe_allow_html=True)
 
-        st.markdown(f"<div class='unidade-titulo'>{nome_unidade}</div>",unsafe_allow_html=True)
-        st.markdown("</div>",unsafe_allow_html=True)
+        st.markdown(f"""
+            <div class="unidade-titulo">{nome_unidade}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        colunas_ativas = (dados["coluna1"] is not None) + (dados["coluna2"] is not None)
+        # área de conteúdo com rolagem
+        st.markdown("<div class='conteudo-card'><div class='scroll-card'>", unsafe_allow_html=True)
+
+        colunas_ativas = 0
+        if dados["coluna1"] is not None:
+            colunas_ativas += 1
+        if dados["coluna2"] is not None:
+            colunas_ativas += 1
 
         if colunas_ativas == 2:
-            col1,col2 = st.columns(2)
-
+            col1, col2 = st.columns(2)
+            
             with col1:
-                st.markdown(f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",unsafe_allow_html=True)
-                for s in dados["coluna1"]["setores"]:
-                    st.button(f"{ICONES[s]} {s}",key=f"{nome_unidade}_d_{s}",use_container_width=True)
+                st.markdown(
+                    f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",
+                    unsafe_allow_html=True
+                )
+                for setor in dados["coluna1"]["setores"]:
+                    icone = ICONES.get(setor, "🔗")
+                    if st.button(
+                        f"{icone} {setor}",
+                        key=f"{nome_unidade}_dist_{setor}",
+                        use_container_width=True
+                    ):
+                        st.info(f"Link para {setor}")
 
             with col2:
-                st.markdown(f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",unsafe_allow_html=True)
-                for s in dados["coluna2"]["setores"]:
-                    st.button(f"{ICONES[s]} {s}",key=f"{nome_unidade}_a_{s}",use_container_width=True)
+                st.markdown(
+                    f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",
+                    unsafe_allow_html=True
+                )
+                for setor in dados["coluna2"]["setores"]:
+                    icone = ICONES.get(setor, "🔗")
+                    if st.button(
+                        f"{icone} {setor}",
+                        key=f"{nome_unidade}_arm_{setor}",
+                        use_container_width=True
+                    ):
+                        st.info(f"Link para {setor}")
 
         elif colunas_ativas == 1:
-            col = st.columns([1,2,1])[1]
-
+            col = st.columns([1, 2, 1])[1]
+            
             with col:
-                base = dados["coluna1"] if dados["coluna1"] else dados["coluna2"]
-                st.markdown(f"<div class='titulo-coluna'>{base['titulo']}</div>",unsafe_allow_html=True)
-                for s in base["setores"]:
-                    st.button(f"{ICONES[s]} {s}",key=f"{nome_unidade}_u_{s}",use_container_width=True)
+                if dados["coluna1"] is not None:
+                    st.markdown(
+                        f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",
+                        unsafe_allow_html=True
+                    )
+                    for setor in dados["coluna1"]["setores"]:
+                        icone = ICONES.get(setor, "🔗")
+                        if st.button(
+                            f"{icone} {setor}",
+                            key=f"{nome_unidade}_dist_{setor}",
+                            use_container_width=True
+                        ):
+                            st.info(f"Link para {setor}")
 
-lista=list(UNIDADES.items())
+                elif dados["coluna2"] is not None:
+                    st.markdown(
+                        f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",
+                        unsafe_allow_html=True
+                    )
+                    for setor in dados["coluna2"]["setores"]:
+                        icone = ICONES.get(setor, "🔗")
+                        if st.button(
+                            f"{icone} {setor}",
+                            key=f"{nome_unidade}_arm_{setor}",
+                            use_container_width=True
+                        ):
+                            st.info(f"Link para {setor}")
 
-for i in range(0,len(lista),2):
-    c1,c2 = st.columns(2,gap="large")
+        st.markdown("</div></div>", unsafe_allow_html=True)
 
-    with c1:
-        nome,dados = lista[i]
-        criar_card_unidade(nome,dados)
+# ============================================
+# PÁGINA PRINCIPAL
+# ============================================
 
-    if i+1 < len(lista):
-        with c2:
-            nome,dados = lista[i+1]
-            criar_card_unidade(nome,dados)
+unidades_lista = list(UNIDADES.items())
+
+for i in range(0, len(unidades_lista), 2):
+    cols = st.columns(2, gap="large")
+
+    with cols[0]:
+        if i < len(unidades_lista):
+            nome, dados = unidades_lista[i]
+            criar_card_unidade(nome, dados)
+
+    with cols[1]:
+        if i + 1 < len(unidades_lista):
+            nome, dados = unidades_lista[i + 1]
+            criar_card_unidade(nome, dados)
