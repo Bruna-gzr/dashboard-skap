@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
 # Configuração da página
 st.set_page_config(page_title="Materiais de Integração", layout="wide")
@@ -22,14 +23,14 @@ st.markdown("""
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        margin-bottom: 30px;  /* Aumentado de 20px para 30px */
+        margin-bottom: 30px;
     }
     
     .unidade-logo {
         width: 120px;
         height: 120px;
         object-fit: contain;
-        margin-bottom: 15px;  /* Aumentado de 10px para 15px */
+        margin-bottom: 15px;
     }
     
     /* Classe especial para logos maiores */
@@ -37,7 +38,7 @@ st.markdown("""
         width: 160px !important;
         height: 160px !important;
         object-fit: contain;
-        margin-bottom: 15px;  /* Aumentado de 10px para 15px */
+        margin-bottom: 15px;
     }
     
     .unidade-titulo {
@@ -47,24 +48,24 @@ st.markdown("""
         font-weight: 700;
         margin: 0;
         padding: 0;
-        margin-bottom: 25px;  /* NOVO: espaço extra após o título */
+        margin-bottom: 25px;
     }
 
     .titulo-coluna {
         color: #CCCCCC;
         font-weight: bold;
-        margin-bottom: 15px;  /* Aumentado de 8px para 15px */
-        font-size: 16px;  /* Aumentado de 14px para 16px */
-        text-align: center;  /* Centralizado */
+        margin-bottom: 15px;
+        font-size: 16px;
+        text-align: center;
         width: 100%;
         letter-spacing: 0.5px;
     }
 
-    /* Card com visual parecido com o seu */
+    /* Card */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
-        padding: 25px 20px 25px 20px;  /* Aumentado padding superior/inferior */
+        padding: 25px 20px 25px 20px;
         margin: 8px 0;
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         border: 1px solid #555555;
@@ -99,7 +100,7 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 15px auto;  /* Aumentado margin-bottom */
+        margin: 0 auto 15px auto;
     }
     
     /* Fallback maior para Litoral e Vidros */
@@ -111,7 +112,7 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 15px auto;  /* Aumentado margin-bottom */
+        margin: 0 auto 15px auto;
     }
     
     .logo-fallback span, .logo-fallback-grande span {
@@ -121,7 +122,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Título
-st.markdown("<h1 class='page-title'>MATERIAIS DE INTEGRAÇÃO</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='page-title'>🧠 Materiais de Integração</h1>", unsafe_allow_html=True)
 
 # ============================================
 # DADOS DAS UNIDADES
@@ -209,18 +210,18 @@ UNIDADES = {
         "logo": "logos/Ponta Grossa Armazem.png",
         "coluna1": {
             "titulo": "🚛 EMPURRADA",
-            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+            "setores": ["GENTE", "SEGURANÇA", "OPERAÇÃO"]
         },
         "coluna2": {
             "titulo": "👷🏻‍♂️ ARMAZEM",
-            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR", "FROTA"]
         }
     },
     "Sao Cristovao": {
         "logo": "logos/Sao Cristovao.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
-            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA", "GESTÃO"]
         },
         "coluna2": None
     },
@@ -239,6 +240,7 @@ ICONES = {
     "GENTE": "👥",
     "SEGURANÇA": "🛡️",
     "ENTREGA": "🚚",
+    "OPERAÇÃO": "⚙️",
     "FINANCEIRO": "💰",
     "FROTA": "🚛",
     "GESTÃO": "📊",
@@ -250,28 +252,198 @@ ICONES = {
 UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros"]
 
 # ============================================
+# LINKS
+# ============================================
+
+LINKS = {
+    "Cascavel": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-QmNebQ/8Kw0euGLNWLECVYFqsQdMQ/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDAaKz2M/OD4i20ecobAgfKMzXc6UWw/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDYC9E8A/XjP1QfpAly6vh5GMa4qHeg/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEdX3TZ8/NE2n7F8TJWoKSBAzJcN4uw/edit",
+            "FROTA": "https://www.canva.com/design/DAGSmyTxPe0/aQBjPT4Cl1eSKOy8syqS3w/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGU_LWGMcI/WfOjVdHq0Z0VXL2k5NU66g/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_B8yDeY/hFDGei0Kk4kB_yUU3FV-Ww/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVu5cZKg/pFcm4LK9x-bIzyVUbQ2dTA/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGVVxse6P8/ZK5IbaiyDiCiujblgzqrlA/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVrreB8k/pqquFJQh8iol8TFxUS4WeQ/edit",
+        }
+    },
+    "Fco Beltrao": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-XjNPLY/hA4xTLm0tTVWoId2Zo-C2g/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDKtWIs0/uxqPHW79vJFlhwalB1Oq4Q/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDc36cfM/IsTMyzrBlcij9_QwhDUkEg/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEd4XEG8/_ctUM32RwNdcxIUkSPs2HA/edit",
+            "FROTA": "https://www.canva.com/design/DAGS41NTZxw/4HrzgYFfkORPH2bzZQW5SA/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGU_HP0aYk/sA3bds7hG4thnclb9ZSgFg/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_FyMpic/VuGGBqWhcfO3FjN0HjY77A/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVo4nEFI/7sD5YovYS4Ju-bb_RDwN3g/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGVVwrAEIY/ehdx-uslpTN1PA31kBrH1w/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVsN6DnE/ISHJuq1sp9V13gxaOxPekQ/edit",
+        }
+    },
+    "Foz do Iguacu": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-YEvvSE/jJMcuVGw0ZdIqfQ8w0robg/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDJ_n-f8/49pIU2gWBObd1wsiajBxEw/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDTtzpIE/IIA1qsi03Q1RELHdVBQdvA/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEbX_oV4/kG1bjIY0o6AlhWqpqcfyEw/edit",
+            "FROTA": "https://www.canva.com/design/DAGS5F4ogA4/iUo8W7htTmWFfy59Tdo2FA/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGU_HWh1sA/U7wbr06VOK0iSGPuwL600Q/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_JRutl8/J4p8GTKblzYTa-7Je9e_UQ/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVp_9zt8/aenfN2xqFCeDhiO_kazEiQ/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGVV8zXKHY/dNDjOJuwBcQjiqYLA2CqJA/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVqiIATU/eXCgLPXefRAag1HkG2c0gg/edit",
+        }
+    },
+    "Londrina": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-QimPoo/AGLhPJDzCJeydJVc3yd0Uw/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGxwfnsKiU/Icny_PG98jJHP7FWLmVhwQ/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDRfGt_0/07WhSiMvJVpvvbi5hR1zoA/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEYvZH9I/dR645fh3d4yuRjLy0rYO7A/edit",
+            "FROTA": "https://www.canva.com/design/DAGS5OWwKZs/vMpW_RwRkZU8C8AJXyFl6g/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGU_C4UVDg/arhI8vC22LScNBOma3v9Dg/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_MugIS4/zbsmu8cr1xiEdBysOLLSCw/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVu_kGa0/__pCEmCPdzQTzupz1tQpgg/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGVV_9hm_g/QozEV7PX_sed9KRCvvvy7g/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVgd3aGY/P8dn9WB_DhgUUPWZ_Vy_jA/edit",
+        }
+    },
+    "Diadema": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-viAM-w/knESAP3LfoxcLYdzwf3RHQ/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDJTHnUI/w30aGKH-wifdczxsibtulg/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDVsIO_U/trnm_YPEDyIT2RJk5jAfSA/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVESit5Xo/pUWNe0NGO9D_ZADagWF17A/edit",
+            "FROTA": "https://www.canva.com/design/DAGHYolhfOU/K-VpsGPOIyE2o3tEQgLHxQ/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGU_OL2cqc/GcC9rskk1Ftyxgy-udH6Rg/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_EgSLXU/2mgHz7FfnJXMC3kHDk9wEw/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVp-v6RY/qL9cHSTnPQh17M3sX_Cj-A/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGUUNaGJb0/wdNaRTsmoOyo0yzqR8BbEQ/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVq9lo1I/ou8Zc2jRQyoFj2rJa12B0w/edit",
+        }
+    },
+    "Litoral": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-_M4PNs/DtCfh1gg32RxM7OrvCxPsA/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDK8SlYo/mHhTWjaswJ6bwPNdtZ_PNA/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDUU7vxc/tf6_fp5rfd5RIZhHlM_3DQ/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEf6lCn8/Xzj9ZW82UqXegUYR3Ddg7g/edit",
+            "FROTA": "https://www.canva.com/design/DAGS48PUqZg/cHO-63N_1MQsUi_9TQP1Gw/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGVDISJ7t8/eBxco-geG9dzcUscuN4Ajw/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_CP0NZM/ah6bOwQYckzPHhKyokgZCA/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVtuVYCg/3LiiUUZ3g7oFPob03F7Q_A/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGVV0Aki6Q/a3CzTux8yUK9Eu2rRDtzjQ/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVrEn0GU/n4litgTm7Wkd73GP_CDv9w/edit",
+        }
+    },
+    "Sao Cristovao": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-px67Ug/sg0N-xgn0mrTwEpS7vBGCA/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDCUZENQ/VsxePkCU4LSgVBXtucWUmA/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDRf3UEs/jfFvTjmW82rZbagUM84lWQ/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEWaYVHk/HUHW9SpcJ4dxu2xlGULANg/edit",
+            "FROTA": "https://www.canva.com/design/DAGS5PauqJw/06ATl-2-QoI9gkzLe6jf6A/edit",
+            "GESTÃO": "https://www.canva.com/design/DAGU_JUK-OU/PjBIdp1pSyk4WCS7hpW1eA/edit",
+        }
+    },
+    "Petropolis": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGrdKuUfKo/-i30IT8uP8vVVSyDw3QVew/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGrdLiDQEw/DZMkbDlZ0H3iFwBrhrgB_g/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGrdMgj6DA/KnEjbwN-4rl1CduhUO6lJg/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGrdEdcYN4/dymXcVB8yUZkVUJyyu5jZw/edit",
+            "FROTA": "https://www.canva.com/design/DAGrdIoLAjA/sR7gtw6yefGLh9-Yw30IpA/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGrdBYuwXw/aDV82dlEboasiO4S80r7WA/edit",
+            "GENTE": "https://www.canva.com/design/DAGrdJnnOyc/hYFCZOdwjt1zdNgS3tcFeg/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGrdG5JKAs/ooUa--ecof6rbjHUZzlbWg/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGrdAuS2kM/10_RN98QD1R7YtVw9RdgYw/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGrdPW5PYI/jV0Np_pbDfIzz54Th11e8Q/edit",
+        }
+    },
+    "Ponta Grossa": {
+        "EMPURRADA": {
+            "GENTE": "https://www.canva.com/design/DAG13LIpHqU/uyorO3CZAB4L5a5j-285KA/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGvfQn9TOM/KfTOeAQ0jykfbcOMuFitxQ/edit",
+            "OPERAÇÃO": "https://www.canva.com/design/DAG1yu-k6hE/OMLmz0AZg2TWe3ePQDQ4kw/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGzPso2Yvo/N-AeSPyW6kmpdGb1iGk_pw/edit",
+            "GENTE": "https://www.canva.com/design/DAGzPoLU4gk/Gu0nh6pvWZrHKxJWx5w9eg/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGzRb9QDkQ/scKlpyHBByhPlWjwDPIWPQ/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGzPsb89EU/5bOFnfZFvH8dpaqFnEewiA/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGzPtRpVhU/M2A2ILVZhDCrDkk_8sbgew/edit",
+            "FROTA": "https://www.canva.com/design/DAGzPhjh23c/Freun41VTIEhg0O3g_Ab2A/edit",
+        }
+    },
+    "Vidros": {
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGzPso2Yvo/N-AeSPyW6kmpdGb1iGk_pw/edit",
+            "GENTE": "https://www.canva.com/design/DAGzwHPQ1dw/cgSARPRHdtYGjc2MkGm0Vg/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGWAUbDBuw/ZuogV5Rf5zh2eqxIhd11nw/edit",
+            "AJUDANTE DE ARMAZEM": "",
+            "OPERADOR": "",
+        }
+    }
+}
+
+# ============================================
+# FUNÇÕES
+# ============================================
+
+def abrir_link(link: str):
+    components.html(
+        f"""
+        <script>
+            window.open("{link}", "_blank");
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+
+def buscar_link(nome_unidade, titulo_coluna, setor):
+    chave_coluna = (
+        titulo_coluna.replace("🚛 ", "")
+        .replace("👷🏻‍♂️ ", "")
+        .replace("👷 ", "")
+        .strip()
+    )
+    return LINKS.get(nome_unidade, {}).get(chave_coluna, {}).get(setor, "")
+
+# ============================================
 # FUNÇÃO PARA CRIAR O CARD DA UNIDADE
 # ============================================
 
 def criar_card_unidade(nome_unidade, dados):
     with st.container(border=True):
         
-        # Verifica se a unidade deve ter logo maior
         logo_grande = nome_unidade in UNIDADES_LOGO_GRANDE
-        
-        # Define classes CSS baseado no tamanho da logo
-        logo_class = "unidade-logo-grande" if logo_grande else "unidade-logo"
         fallback_class = "logo-fallback-grande" if logo_grande else "logo-fallback"
         logo_width = 160 if logo_grande else 120
         
-        # Cabeçalho com logo e título alinhados
-        st.markdown(f"""
+        st.markdown("""
         <div class="unidade-header">
         """, unsafe_allow_html=True)
         
-        # Tenta carregar a imagem, se não conseguir mostra fallback
         try:
-            # Para imagens, usamos o parâmetro width do st.image
             st.image(dados["logo"], width=logo_width)
         except Exception:
             st.markdown(f"""
@@ -285,20 +457,19 @@ def criar_card_unidade(nome_unidade, dados):
         </div>
         """, unsafe_allow_html=True)
 
-        # Verifica quantas colunas precisamos criar
         colunas_ativas = 0
         if dados["coluna1"] is not None:
             colunas_ativas += 1
         if dados["coluna2"] is not None:
             colunas_ativas += 1
         
-        # Se tiver duas colunas ativas
         if colunas_ativas == 2:
             col1, col2 = st.columns(2)
             
             with col1:
+                titulo_coluna_1 = dados["coluna1"]["titulo"]
                 st.markdown(
-                    f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",
+                    f"<div class='titulo-coluna'>{titulo_coluna_1}</div>",
                     unsafe_allow_html=True
                 )
                 for setor in dados["coluna1"]["setores"]:
@@ -308,11 +479,16 @@ def criar_card_unidade(nome_unidade, dados):
                         key=f"{nome_unidade}_dist_{setor}",
                         use_container_width=True
                     ):
-                        st.info(f"Link para {setor}")
+                        link = buscar_link(nome_unidade, titulo_coluna_1, setor)
+                        if link:
+                            abrir_link(link)
+                        else:
+                            st.warning("Link não cadastrado")
 
             with col2:
+                titulo_coluna_2 = dados["coluna2"]["titulo"]
                 st.markdown(
-                    f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",
+                    f"<div class='titulo-coluna'>{titulo_coluna_2}</div>",
                     unsafe_allow_html=True
                 )
                 for setor in dados["coluna2"]["setores"]:
@@ -322,17 +498,20 @@ def criar_card_unidade(nome_unidade, dados):
                         key=f"{nome_unidade}_arm_{setor}",
                         use_container_width=True
                     ):
-                        st.info(f"Link para {setor}")
+                        link = buscar_link(nome_unidade, titulo_coluna_2, setor)
+                        if link:
+                            abrir_link(link)
+                        else:
+                            st.warning("Link não cadastrado")
         
-        # Se tiver apenas uma coluna ativa (Vidros ou Sao Cristovao)
         elif colunas_ativas == 1:
-            # Usa coluna centralizada
             col = st.columns([1, 2, 1])[1]
             
             with col:
                 if dados["coluna1"] is not None:
+                    titulo_coluna = dados["coluna1"]["titulo"]
                     st.markdown(
-                        f"<div class='titulo-coluna'>{dados['coluna1']['titulo']}</div>",
+                        f"<div class='titulo-coluna'>{titulo_coluna}</div>",
                         unsafe_allow_html=True
                     )
                     for setor in dados["coluna1"]["setores"]:
@@ -342,11 +521,16 @@ def criar_card_unidade(nome_unidade, dados):
                             key=f"{nome_unidade}_dist_{setor}",
                             use_container_width=True
                         ):
-                            st.info(f"Link para {setor}")
+                            link = buscar_link(nome_unidade, titulo_coluna, setor)
+                            if link:
+                                abrir_link(link)
+                            else:
+                                st.warning("Link não cadastrado")
                 
                 elif dados["coluna2"] is not None:
+                    titulo_coluna = dados["coluna2"]["titulo"]
                     st.markdown(
-                        f"<div class='titulo-coluna'>{dados['coluna2']['titulo']}</div>",
+                        f"<div class='titulo-coluna'>{titulo_coluna}</div>",
                         unsafe_allow_html=True
                     )
                     for setor in dados["coluna2"]["setores"]:
@@ -356,7 +540,11 @@ def criar_card_unidade(nome_unidade, dados):
                             key=f"{nome_unidade}_arm_{setor}",
                             use_container_width=True
                         ):
-                            st.info(f"Link para {setor}")
+                            link = buscar_link(nome_unidade, titulo_coluna, setor)
+                            if link:
+                                abrir_link(link)
+                            else:
+                                st.warning("Link não cadastrado")
 
 # ============================================
 # PÁGINA PRINCIPAL
