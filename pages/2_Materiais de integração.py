@@ -31,6 +31,11 @@ st.markdown("""
         height: 120px;
         object-fit: contain;
         margin-bottom: 15px;
+        transition: transform 0.3s ease;  /* Efeito hover suave */
+    }
+    
+    .unidade-logo:hover {
+        transform: scale(1.05);  /* Efeito de zoom ao passar o mouse */
     }
     
     /* Classe especial para logos maiores */
@@ -39,17 +44,24 @@ st.markdown("""
         height: 160px !important;
         object-fit: contain;
         margin-bottom: 15px;
+        transition: transform 0.3s ease;
+    }
+    
+    .unidade-logo-grande:hover {
+        transform: scale(1.05);
     }
     
     .unidade-titulo {
         text-align: center;
         color: white;
-        font-size: 26px;  /* Aumentado de 22px para 26px */
+        font-size: 26px;
         font-weight: 700;
         margin: 0;
         padding: 0;
         margin-bottom: 25px;
         letter-spacing: 0.5px;
+        text-transform: uppercase;  /* CAIXA ALTA */
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);  /* Sombra suave */
     }
 
     .titulo-coluna {
@@ -60,9 +72,11 @@ st.markdown("""
         text-align: center;
         width: 100%;
         letter-spacing: 0.5px;
+        border-bottom: 2px solid #555555;  /* Linha decorativa abaixo do título */
+        padding-bottom: 8px;
     }
 
-    /* Card com visual parecido com o seu - AGORA COM ALTURA MÍNIMA FIXA */
+    /* Card com visual parecido com o seu */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
@@ -70,10 +84,17 @@ st.markdown("""
         margin: 8px 0;
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         border: 1px solid #555555;
-        height: 100%;  /* Altura relativa ao container */
-        min-height: 580px;  /* Altura mínima fixa para todos os cards */
+        height: 100%;
+        min-height: 600px;  /* Aumentado ligeiramente */
         display: flex;
         flex-direction: column;
+        transition: all 0.3s ease;
+    }
+    
+    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+        box-shadow: 0 15px 40px rgba(0,0,0,0.5);
+        border-color: #777777;
+        transform: translateY(-2px);
     }
     
     /* Garante que o conteúdo interno use todo o espaço disponível */
@@ -85,29 +106,35 @@ st.markdown("""
 
     .stButton button {
         width: 100%;
-        background: #3A3A3A;
+        background: linear-gradient(135deg, #3A3A3A 0%, #454545 100%);  /* Gradiente suave */
         color: #FFFFFF;
         border: 1px solid #555555;
-        border-radius: 8px;
-        padding: 8px 12px;
+        border-radius: 10px;  /* Aumentado de 8px para 10px */
+        padding: 10px 12px;  /* Aumentado padding vertical */
         font-size: 14px;
         font-weight: 500;
         text-align: left;
-        margin: 3px 0;
+        margin: 4px 0;
         transition: all 0.2s ease;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
 
     .stButton button:hover {
-        background: #4A4A4A;
+        background: linear-gradient(135deg, #4A4A4A 0%, #555555 100%);
         color: #FFFFFF;
-        border: 1px solid #777777;
+        border: 1px solid #888888;
         transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        box-shadow: 0 8px 15px rgba(0,0,0,0.3);
+    }
+    
+    .stButton button:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
     
     /* Fallback para logo */
     .logo-fallback {
-        background: white;
+        background: linear-gradient(135deg, #FFFFFF 0%, #F0F0F0 100%);
         border-radius: 50%;
         width: 120px;
         height: 120px;
@@ -115,11 +142,17 @@ st.markdown("""
         align-items: center;
         justify-content: center;
         margin: 0 auto 15px auto;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        transition: transform 0.3s ease;
     }
     
-    /* Fallback maior para Litoral e Vidros */
+    .logo-fallback:hover {
+        transform: scale(1.05);
+    }
+    
+    /* Fallback maior para unidades específicas */
     .logo-fallback-grande {
-        background: white;
+        background: linear-gradient(135deg, #FFFFFF 0%, #F0F0F0 100%);
         border-radius: 50%;
         width: 160px !important;
         height: 160px !important;
@@ -127,10 +160,16 @@ st.markdown("""
         align-items: center;
         justify-content: center;
         margin: 0 auto 15px auto;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        transition: transform 0.3s ease;
+    }
+    
+    .logo-fallback-grande:hover {
+        transform: scale(1.05);
     }
     
     .logo-fallback span, .logo-fallback-grande span {
-        font-size: 70px;  /* Aumentado de 60px para 70px */
+        font-size: 70px;
     }
     
     /* Ajuste para as colunas ficarem com altura consistente */
@@ -154,6 +193,26 @@ st.markdown("""
         width: 100%;
         height: 100%;
     }
+    
+    /* Barra de rolagem personalizada (opcional) */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: #2D2D2D;
+        border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: #555555;
+        border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: #777777;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -165,7 +224,7 @@ st.markdown("<h1 class='page-title'>🧠 Materiais de Integração</h1>", unsafe
 # ============================================
 
 UNIDADES = {
-    "CASCAVEL": {
+    "Cascavel": {
         "logo": "logos/Cascavel.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -176,7 +235,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "DIADEMA": {
+    "Diadema": {
         "logo": "logos/Diadema.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -187,7 +246,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "FCO BELTRAO": {
+    "Fco Beltrao": {
         "logo": "logos/Fco Beltrao.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -198,7 +257,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "FOZ DO IGUAÇU": {
+    "Foz do Iguacu": {
         "logo": "logos/Foz do Iguacu.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -209,7 +268,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "LITORAL": {
+    "Litoral": {
         "logo": "logos/Litoral.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -220,7 +279,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "LONDRINA": {
+    "Londrina": {
         "logo": "logos/Londrina.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -231,7 +290,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "PETROPOLIS": {
+    "Petropolis": {
         "logo": "logos/Petropolis.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -242,7 +301,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "PONTA GROSSA": {
+    "Ponta Grossa": {
         "logo": "logos/Ponta Grossa Armazem.png",
         "coluna1": {
             "titulo": "🚛 EMPURRADA",
@@ -253,7 +312,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "SAO CRISTOVAO": {
+    "Sao Cristovao": {
         "logo": "logos/Sao Cristovao.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -261,7 +320,7 @@ UNIDADES = {
         },
         "coluna2": None
     },
-    "VIDROS": {
+    "Vidros": {
         "logo": "logos/Vidros.png",
         "coluna1": None,
         "coluna2": {
@@ -283,8 +342,8 @@ ICONES = {
     "OPERADOR": "🔧"
 }
 
-# Unidades que terão logo maior
-UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros"]
+# Unidades que terão logo maior (adicionadas Londrina e Sao Cristovao)
+UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros", "Londrina", "Sao Cristovao"]
 
 # ============================================
 # FUNÇÃO PARA CRIAR O CARD DA UNIDADE
