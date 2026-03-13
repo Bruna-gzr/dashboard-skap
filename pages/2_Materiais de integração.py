@@ -31,7 +31,6 @@ st.markdown("""
         font-size: 14px;
     }
 
-    /* Card com visual parecido com o seu */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
@@ -60,7 +59,6 @@ st.markdown("""
         border: 1px solid #777777;
     }
 
-    /* força a imagem a ficar realmente no centro */
     div[data-testid="stImage"] {
         text-align: center;
     }
@@ -73,12 +71,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Título
 st.markdown("<h1 class='page-title'>🧠 Materiais de Integração</h1>", unsafe_allow_html=True)
-
-# ============================================
-# DADOS DAS UNIDADES
-# ============================================
 
 UNIDADES = {
     "Cascavel": {
@@ -204,7 +197,6 @@ UNIDADES = {
     }
 }
 
-# Mapeamento de ícones
 ICONES = {
     "GENTE": "👥",
     "SEGURANÇA": "🛡️",
@@ -216,14 +208,8 @@ ICONES = {
     "OPERADOR": "🔧"
 }
 
-# ============================================
-# FUNÇÃO PARA CRIAR O CARD DA UNIDADE
-# ============================================
-
 def criar_card_unidade(nome_unidade, dados):
     with st.container(border=True):
-
-        # logo + título no mesmo eixo
         _, centro, _ = st.columns([1, 2, 1])
 
         with centro:
@@ -253,7 +239,6 @@ def criar_card_unidade(nome_unidade, dados):
                 unsafe_allow_html=True
             )
 
-        # Duas colunas para os setores
         col1, col2 = st.columns(2)
 
         with col1:
@@ -283,10 +268,6 @@ def criar_card_unidade(nome_unidade, dados):
                     use_container_width=True
                 ):
                     st.info(f"Link para {setor}")
-
-# ============================================
-# PÁGINA PRINCIPAL
-# ============================================
 
 unidades_lista = list(UNIDADES.items())
 
