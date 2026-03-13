@@ -1,4 +1,10 @@
 import streamlit as st
 
-st.set_page_config(page_title="TESTE FINAL", layout="wide")
-st.error("SE VOCÊ ESTÁ VENDO ISSO, O APP ATUALIZOU")
+st.set_page_config(
+    page_title="Painel Gente & Gestão",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.title("🏠 Home – Painel Gente & Gestão")
+st.write("Use o menu lateral para navegar entre os módulos.")
