@@ -1,9 +1,9 @@
 import streamlit as st
 
-# Configuração da página
+# Configuração da página (DEVE VIR IMEDIATAMENTE APÓS O IMPORT)
 st.set_page_config(page_title="Materiais de Integração", layout="wide")
 
-# CSS - VERSÃO SIMPLIFICADA PARA GARANTIR QUE FUNCIONE
+# CSS (AGORA SIM, APÓS A CONFIGURAÇÃO DA PÁGINA)
 st.markdown("""
 <style>
     .stApp {
@@ -51,7 +51,7 @@ st.markdown("""
         margin: 0;
         padding: 0;
         margin-bottom: 25px;
-        text-transform: uppercase !important; /* FORÇA CAIXA ALTA */
+        text-transform: uppercase !important;
     }
 
     .titulo-coluna {
@@ -249,7 +249,7 @@ ICONES = {
     "OPERADOR": "🔧"
 }
 
-# Unidades que terão logo maior - ATUALIZADO
+# Unidades que terão logo maior
 UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros", "Londrina", "Sao Cristovao"]
 
 # ============================================
