@@ -165,7 +165,7 @@ st.markdown("<h1 class='page-title'>🧠 Materiais de Integração</h1>", unsafe
 # ============================================
 
 UNIDADES = {
-    "Cascavel": {
+    "CASCAVEL": {
         "logo": "logos/Cascavel.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -176,7 +176,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Diadema": {
+    "DIADEMA": {
         "logo": "logos/Diadema.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -187,7 +187,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Fco Beltrao": {
+    "FCO BELTRAO": {
         "logo": "logos/Fco Beltrao.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -198,7 +198,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Foz do Iguacu": {
+    "FOZ DO IGUAÇU": {
         "logo": "logos/Foz do Iguacu.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -209,7 +209,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Litoral": {
+    "LITORAL": {
         "logo": "logos/Litoral.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -220,7 +220,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Londrina": {
+    "LONDRINA": {
         "logo": "logos/Londrina.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -231,7 +231,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Petropolis": {
+    "PETROPOLIS": {
         "logo": "logos/Petropolis.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -242,7 +242,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Ponta Grossa": {
+    "PONTA GROSSA": {
         "logo": "logos/Ponta Grossa Armazem.png",
         "coluna1": {
             "titulo": "🚛 EMPURRADA",
@@ -253,7 +253,7 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
-    "Sao Cristovao": {
+    "SAO CRISTOVAO": {
         "logo": "logos/Sao Cristovao.png",
         "coluna1": {
             "titulo": "🚛 DISTRIBUIÇÃO",
@@ -261,7 +261,7 @@ UNIDADES = {
         },
         "coluna2": None
     },
-    "Vidros": {
+    "VIDROS": {
         "logo": "logos/Vidros.png",
         "coluna1": None,
         "coluna2": {
