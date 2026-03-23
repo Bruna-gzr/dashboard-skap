@@ -810,9 +810,8 @@ st.download_button(
 st.divider()
 
 # =========================
-# 🌡️Farol da Skap > Termômetro de Gente
+# 🌡️ Farol da Skap > Termômetro de Gente (AJUSTADO PARA 2 MESES)
 # =========================
-st.subheader("🌡️Farol da Skap > Termômetro de Gente")
 
 farol_base = base_f.copy()
 
@@ -820,146 +819,107 @@ farol_base["HABILIDADES TECNICAS"] = pd.to_numeric(
     farol_base["HABILIDADES TECNICAS"], errors="coerce"
 ).fillna(0)
 
-farol_6m = farol_base[farol_base["TEMPO DE CASA"] > 180].copy()
-farol_6m["ADERENTE_TEC"] = farol_6m["HABILIDADES TECNICAS"] >= 1
+# 🔴 NOVO CRITÉRIO → +2 meses = 60 dias
+farol_2m = farol_base[farol_base["TEMPO DE CASA"] > 60].copy()
 
-pendentes_6m = farol_6m[farol_6m["HABILIDADES TECNICAS"] < 1].copy()
+farol_2m["ADERENTE_TEC"] = farol_2m["HABILIDADES TECNICAS"] >= 1
 
-card_total_pend_6m = len(pendentes_6m)
+pendentes_2m = farol_2m[farol_2m["HABILIDADES TECNICAS"] < 1].copy()
+
+card_total_pend_2m = len(pendentes_2m)
 
 c_farol_1, c_farol_2 = st.columns([1, 3])
+
 with c_farol_1:
     st.metric(
-        "👥 +6 meses com Técnicas < 100%",
-        card_total_pend_6m
+        "👥 +2 meses com Técnicas < 100%",
+        card_total_pend_2m
     )
 
 # -------------------------
-# Gráfico de aderência por unidade
+# Gráfico aderência por unidade
 # -------------------------
+
 aderencia_unidade = (
-    farol_6m.groupby("OPERACAO", dropna=False)
+    farol_2m.groupby("OPERACAO", dropna=False)
     .agg(
-        TOTAL_6M=("COLABORADOR", "count"),
+        TOTAL_2M=("COLABORADOR", "count"),
         ADERENTES=("ADERENTE_TEC", "sum")
     )
     .reset_index()
 )
 
-if not aderencia_unidade.empty:
+aderencia_unidade["ADERENCIA"] = np.where(
+    aderencia_unidade["TOTAL_2M"] > 0,
+    aderencia_unidade["ADERENTES"] / aderencia_unidade["TOTAL_2M"],
+    0
+)
 
-    aderencia_unidade["ADERENCIA"] = np.where(
-        aderencia_unidade["TOTAL_6M"] > 0,
-        aderencia_unidade["ADERENTES"] / aderencia_unidade["TOTAL_6M"],
-        0
-    )
+aderencia_unidade["ADERENCIA_TXT"] = aderencia_unidade["ADERENCIA"].map(lambda x: f"{x:.0%}")
 
-    aderencia_unidade["ADERENCIA_TXT"] = aderencia_unidade["ADERENCIA"].map(lambda x: f"{x:.0%}")
+st.markdown("**📈 Aderência de Habilidades Técnicas por Unidade (+2 meses de casa)**")
 
-    aderencia_unidade["COR_FAROL"] = np.select(
-        [
-            aderencia_unidade["ADERENCIA"] >= 0.9,
-            aderencia_unidade["ADERENCIA"] >= 0.8
-        ],
-        [
-            "🟢 Adequado",
-            "🟡 Atenção"
-        ],
-        default="🔴 Crítico"
-    )
+fig_farol = px.bar(
+    aderencia_unidade.sort_values("ADERENCIA"),
+    x="ADERENCIA",
+    y="OPERACAO",
+    orientation="h",
+    text="ADERENCIA_TXT",
+    color="ADERENCIA",
+    color_continuous_scale=["#e74c3c", "#f1c40f", "#2ecc71"]
+)
 
-    st.markdown("**📈 Aderência de Habilidades Técnicas por Unidade (+6 meses de casa)**")
-
-    fig_farol = px.bar(
-        aderencia_unidade.sort_values("ADERENCIA", ascending=False),
-        x="OPERACAO",
-        y="ADERENCIA",
-        text="ADERENCIA_TXT",
-        color="COR_FAROL",
-        color_discrete_map={
-            "🟢 Adequado": "#2ecc71",
-            "🟡 Atenção": "#f1c40f",
-            "🔴 Crítico": "#e74c3c"
-        },
-        hover_data={
-            "TOTAL_6M": True,
-            "ADERENTES": True,
-            "ADERENCIA": ':.1%'
-        }
-    )
-
-    fig_farol.update_layout(
-        yaxis_tickformat=".0%",
-        xaxis_title="Unidade",
-        yaxis_title="Aderência",
-        showlegend=False
-    )
-
-    fig_farol.add_hline(
-        y=0.9,
-        line_dash="dash",
-        line_color="white",
-        annotation_text="Meta 90%",
-        annotation_position="top left"
-    )
-
-    fig_farol.update_traces(textposition="inside")
-
-    st.plotly_chart(fig_farol, use_container_width=True)
-
-else:
-    st.info("Não há colaboradores com mais de 6 meses de casa nos filtros atuais para calcular a aderência por unidade.")
+st.plotly_chart(fig_farol, use_container_width=True)
 
 # -------------------------
 # Tabela de pendências
 # -------------------------
-st.markdown("**📋 Pessoas com mais de 6 meses de casa e Habilidades Técnicas < 100%**")
 
-cols_pend_6m = [
+st.markdown("**📋 Pessoas com mais de 2 meses de casa e Habilidades Técnicas < 100%**")
+
+cols_pend_2m = [
     "COLABORADOR",
     "CARGO",
     "OPERACAO",
     "ATIVIDADE",
     "LIDERANCA",
-    "DATA ADMISSAO",
     "TEMPO DE CASA",
     "HABILIDADES TECNICAS",
     "PRAZO TECNICAS",
     "STATUS TECNICAS",
 ]
 
-cols_pend_6m = [c for c in cols_pend_6m if c in pendentes_6m.columns]
+cols_pend_2m = [c for c in cols_pend_2m if c in pendentes_2m.columns]
 
-tabela_pend_6m_raw = pendentes_6m[cols_pend_6m].copy()
+tabela_pend_2m_raw = pendentes_2m[cols_pend_2m].copy()
 
-tabela_pend_6m = tabela_pend_6m_raw.copy()
-if "HABILIDADES TECNICAS" in tabela_pend_6m.columns:
-    tabela_pend_6m["HABILIDADES TECNICAS"] = pd.to_numeric(
-        tabela_pend_6m["HABILIDADES TECNICAS"], errors="coerce"
+tabela_pend_2m = tabela_pend_2m_raw.copy()
+
+if "HABILIDADES TECNICAS" in tabela_pend_2m.columns:
+    tabela_pend_2m["HABILIDADES TECNICAS"] = pd.to_numeric(
+        tabela_pend_2m["HABILIDADES TECNICAS"], errors="coerce"
     ).fillna(0).map(lambda x: f"{x:.0%}")
 
-if "STATUS TECNICAS" in tabela_pend_6m.columns:
-    tabela_pend_6m["STATUS TECNICAS"] = tabela_pend_6m["STATUS TECNICAS"].astype(str).map(
+if "STATUS TECNICAS" in tabela_pend_2m.columns:
+    tabela_pend_2m["STATUS TECNICAS"] = tabela_pend_2m["STATUS TECNICAS"].astype(str).map(
         lambda s: "🔴 Não realizado" if s == "Não realizado"
-        else "🟢 Realizado" if s == "Realizado"
         else "🟡 No prazo" if s == "No prazo"
         else s
     )
 
-if tabela_pend_6m.empty:
-    st.success("Nenhuma pendência encontrada para colaboradores com mais de 6 meses de casa.")
+if tabela_pend_2m.empty:
+    st.success("Nenhuma pendência encontrada para colaboradores com mais de 2 meses de casa.")
 else:
-    st.dataframe(centralizar_tabela(tabela_pend_6m), use_container_width=True)
+    st.dataframe(centralizar_tabela(tabela_pend_2m), use_container_width=True)
 
-    excel_pend_6m = preparar_excel_para_download(
-        tabela_pend_6m_raw,
+    excel_pend_2m = preparar_excel_para_download(
+        tabela_pend_2m_raw,
         sheet_name="Farol_Termometro_Gente"
     )
 
     st.download_button(
-        label="⬇️ Baixar Excel (Farol da Skap - Termômetro de Gente)",
-        data=excel_pend_6m,
+        "⬇️ Baixar Excel (Farol da Skap - Termômetro de Gente)",
+        data=excel_pend_2m,
         file_name="farol_skap_termometro_gente.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
