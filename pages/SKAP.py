@@ -299,6 +299,8 @@ mask_sem_cargo = base["CARGO"].isna() | (base["CARGO"].astype(str).str.strip() =
 
 if mask_sem_cargo.any():
     base_sem_match = base.loc[mask_sem_cargo, ["CHAVE_COLABORADOR"]].copy()
+    base_sem_match["_IDX_BASE"] = base.loc[mask_sem_cargo].index
+
     base_sem_match["CHAVE_APROX"] = base_sem_match["CHAVE_COLABORADOR"].apply(
         lambda x: melhor_chave_aproximada(x, candidatos_ativos, cutoff=0.92)
     )
@@ -311,10 +313,13 @@ if mask_sem_cargo.any():
         how="left"
     )
 
+    base_sem_match = base_sem_match.set_index("_IDX_BASE")
+
     for col in ["CARGO", "LIDERANCA", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
         if col in base_sem_match.columns:
-            valores_atuais = base.loc[mask_sem_cargo, col].replace("", pd.NA)
-            base.loc[mask_sem_cargo, col] = valores_atuais.fillna(base_sem_match[col].values)
+            valores_atuais = base.loc[base_sem_match.index, col].replace("", pd.NA)
+            valores_aprox = base_sem_match[col].replace("", pd.NA)
+            base.loc[base_sem_match.index, col] = valores_atuais.combine_first(valores_aprox)
 
 # =========================
 # Tratamento dos campos vindos da base ativos
