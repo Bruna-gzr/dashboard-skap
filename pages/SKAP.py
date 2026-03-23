@@ -860,17 +860,21 @@ aderencia_unidade["ADERENCIA_TXT"] = aderencia_unidade["ADERENCIA"].map(lambda x
 st.markdown("**📈 Aderência de Habilidades Técnicas por Unidade (+2 meses de casa)**")
 
 fig_farol = px.bar(
-    aderencia_unidade.sort_values("ADERENCIA"),
-    x="ADERENCIA",
-    y="OPERACAO",
-    orientation="h",
+    aderencia_unidade.sort_values("ADERENCIA", ascending=False),
+    x="OPERACAO",
+    y="ADERENCIA",
     text="ADERENCIA_TXT",
     color="ADERENCIA",
     color_continuous_scale=["#e74c3c", "#f1c40f", "#2ecc71"]
 )
 
-st.plotly_chart(fig_farol, use_container_width=True)
+fig_farol.update_layout(
+    xaxis_title="Unidade",
+    yaxis_title="Aderência",
+    yaxis_tickformat=".0%"
+)
 
+st.plotly_chart(fig_farol, use_container_width=True)
 # -------------------------
 # Tabela de pendências
 # -------------------------
