@@ -182,6 +182,9 @@ def fmt_hms_from_minutes(v):
 def fmt_pct(v):
     return "" if pd.isna(v) else f"{v:.2f}%"
 
+def fmt_pct_or_na(v):
+    return "N/A" if pd.isna(v) else f"{v:.2f}%"
+
 def norm_operacao(op: str) -> str:
     return normalizar_nome(op)
 
@@ -347,21 +350,6 @@ def get_last_mtime():
     return max(mtimes) if mtimes else None
 
 last_mtime = get_last_mtime()
-
-try:
-    if last_mtime is not None:
-        dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
-        st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
-    else:
-        st.caption("🕒 Última atualização: não disponível")
-except Exception:
-    st.caption("🕒 Última atualização: não disponível")
-
-c_refresh, _ = st.columns([1, 5])
-with c_refresh:
-    if st.button("🔄 Atualizar dados agora", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
 
 # =========================================================
 # FUNÇÕES
@@ -976,7 +964,7 @@ def calc_pontos_row(row) -> dict:
         funcao = str(row.get("FUNCAO", ""))
 
         jll_val = row.get("JLL_PG", np.nan)
-        if pd.notna(jll_val) and float(jll_val) >= 80:
+        if pd.isna(jll_val) or float(jll_val) >= 80:
             res["PTS_JL"] = 2
 
         if int(row.get("ABS", 0) or 0) == 0:
@@ -987,11 +975,11 @@ def calc_pontos_row(row) -> dict:
 
         if is_func_operador(funcao):
             ad_val = row.get("AD_CHECKLIST", np.nan)
-            if pd.notna(ad_val) and float(ad_val) >= 80:
+            if pd.isna(ad_val) or float(ad_val) >= 80:
                 res["PTS_AD_CHECKLIST"] = 10
 
             logon_val = row.get("LOGON", np.nan)
-            if pd.notna(logon_val) and float(logon_val) >= 80:
+            if pd.isna(logon_val) or float(logon_val) >= 80:
                 res["PTS_LOGON"] = 10
 
             if int(row.get("QUEDAS", 0) or 0) == 0:
@@ -999,7 +987,7 @@ def calc_pontos_row(row) -> dict:
 
         elif is_func_ajud_armazem(funcao):
             logon_val = row.get("LOGON", np.nan)
-            if pd.notna(logon_val) and float(logon_val) >= 80:
+            if pd.isna(logon_val) or float(logon_val) >= 80:
                 res["PTS_LOGON"] = 15
 
         res["TOTAL_PTS"] = (
@@ -1216,6 +1204,20 @@ def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
     st.sidebar.markdown(f"**Total de pontos possíveis:** **{total}**")
 
 render_regras_sidebar(f_oper, f_func, f_ativ)
+
+st.sidebar.markdown("---")
+try:
+    if last_mtime is not None:
+        dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
+        st.sidebar.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
+    else:
+        st.sidebar.caption("🕒 Última atualização: não disponível")
+except Exception:
+    st.sidebar.caption("🕒 Última atualização: não disponível")
+
+if st.sidebar.button("🔄 Atualizar dados agora", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
 
 # =========================================================
 # FILTROS NO DF
@@ -1458,10 +1460,7 @@ with right:
         )
 
     with st.container(border=True):
-        cA, cB, cC, cD = st.columns(4)
-
-        with cA:
-            st.metric("SKAP - Níveis", (ref_last_colab["NIVEIS"] if ref_last_colab is not None and str(ref_last_colab.get("NIVEIS","")).strip() != "" else "-"))
+        cB, cC, cD = st.columns(3)
 
         with cB:
             v = ref_last_colab.get("PRONT_PONDERADA", np.nan) if ref_last_colab is not None else np.nan
@@ -1515,9 +1514,9 @@ with right:
         t["BEES"] = t["BEES"].apply(fmt_pct)
         t["TML"] = t["TML_MIN"].apply(fmt_hms_from_minutes)
         t["JL"] = t.get("JL", np.nan).apply(fmt_pct)
-        t["JLL_PG_FMT"] = t.get("JLL_PG", np.nan).apply(fmt_pct)
-        t["AD_CHECKLIST_FMT"] = t.get("AD_CHECKLIST", np.nan).apply(fmt_pct)
-        t["LOGON_FMT"] = t.get("LOGON", np.nan).apply(fmt_pct)
+        t["JLL_PG_FMT"] = t.get("JLL_PG", np.nan).apply(fmt_pct_or_na)
+        t["AD_CHECKLIST_FMT"] = t.get("AD_CHECKLIST", np.nan).apply(fmt_pct_or_na)
+        t["LOGON_FMT"] = t.get("LOGON", np.nan).apply(fmt_pct_or_na)
         t["MÉDIA RV"] = t.get("PCT_RV", np.nan).apply(fmt_pct)
         t["RECARGAS_TXT"] = t.get("RECARGAS", 0).fillna(0).astype(int).astype(str)
 
@@ -1538,7 +1537,6 @@ with right:
             ("MÊS",""): t["MÊS"],
             ("COLABORADOR",""): t["COLABORADOR"],
             ("CARGO",""): t["FUNCAO"],
-            ("STATUS",""): t["STATUS_EXIB"],
             ("RISCO DE TO?",""): t["RISCO DE TO"],
             ("TOTAL",""): t["TOTAL_PTS"],
         }
