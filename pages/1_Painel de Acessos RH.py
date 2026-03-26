@@ -4,7 +4,7 @@ import streamlit as st
 # Configuração da página
 st.set_page_config(page_title="Materiais de Gestão RH", layout="wide")
 
-# CSS (mesmo estilo da página original)
+# CSS (mesmo estilo da página original com ajustes)
 st.markdown("""
 <style>
     .stApp {
@@ -22,23 +22,23 @@ st.markdown("""
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        margin-bottom: 30px;
+        margin-bottom: 20px;
     }
     
     .unidade-titulo {
         text-align: center;
         color: white;
-        font-size: 22px;
+        font-size: 18px;
         font-weight: 700;
         margin: 0;
         padding: 0;
-        margin-bottom: 25px;
+        margin-bottom: 20px;
     }
 
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
         border-radius: 20px;
-        padding: 25px 20px 25px 20px;
+        padding: 20px 15px 20px 15px;
         margin: 8px 0;
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         border: 1px solid #555555;
@@ -58,8 +58,8 @@ st.markdown("""
     .logo-fallback {
         background: white;
         border-radius: 50%;
-        width: 120px;
-        height: 120px;
+        width: 100px;
+        height: 100px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -69,8 +69,8 @@ st.markdown("""
     .logo-fallback-grande {
         background: white;
         border-radius: 50%;
-        width: 160px !important;
-        height: 160px !important;
+        width: 120px !important;
+        height: 120px !important;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -78,7 +78,7 @@ st.markdown("""
     }
     
     .logo-fallback span, .logo-fallback-grande span {
-        font-size: 60px;
+        font-size: 50px;
     }
 
     .link-botao {
@@ -88,13 +88,16 @@ st.markdown("""
         color: #FFFFFF !important;
         border: 1px solid #555555;
         border-radius: 8px;
-        padding: 10px 12px;
-        font-size: 14px;
+        padding: 8px 10px;
+        font-size: 12px;
         font-weight: 500;
         text-align: left;
         text-decoration: none !important;
-        margin: 6px 0;
+        margin: 5px 0;
         box-sizing: border-box;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .link-botao:hover {
@@ -111,14 +114,27 @@ st.markdown("""
         color: #999999 !important;
         border: 1px dashed #555555;
         border-radius: 8px;
-        padding: 10px 12px;
-        font-size: 14px;
+        padding: 8px 10px;
+        font-size: 12px;
         font-weight: 500;
         text-align: left;
         text-decoration: none !important;
-        margin: 6px 0;
+        margin: 5px 0;
         box-sizing: border-box;
         cursor: default;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    /* Ajuste responsivo para telas menores */
+    @media (max-width: 1200px) {
+        .link-botao, .link-botao-vazio {
+            font-size: 11px;
+            padding: 6px 8px;
+            white-space: normal;
+            word-break: break-word;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -279,7 +295,7 @@ def criar_card_unidade(nome_unidade, dados):
     with st.container(border=True):
         logo_grande = nome_unidade in UNIDADES_LOGO_GRANDE
         fallback_class = "logo-fallback-grande" if logo_grande else "logo-fallback"
-        logo_width = 160 if logo_grande else 120
+        logo_width = 120 if logo_grande else 100
         
         st.markdown('<div class="unidade-header">', unsafe_allow_html=True)
         
@@ -303,17 +319,20 @@ def criar_card_unidade(nome_unidade, dados):
             link = LINKS.get(nome_unidade, {}).get(botao, "")
             render_link_botao(f"{icone} {botao}", link)
 
+# Layout com 4 colunas para telas grandes, 3 para médias, 2 para pequenas
 unidades_lista = list(UNIDADES.items())
 
-for i in range(0, len(unidades_lista), 2):
-    cols = st.columns(2, gap="large")
+# Define número de colunas baseado no total de unidades
+# Para 10 unidades, 4 colunas dá 3 linhas (4+4+2)
+NUM_COLUNAS = 4
 
-    with cols[0]:
-        if i < len(unidades_lista):
-            nome, dados = unidades_lista[i]
-            criar_card_unidade(nome, dados)
-
-    with cols[1]:
-        if i + 1 < len(unidades_lista):
-            nome, dados = unidades_lista[i + 1]
-            criar_card_unidade(nome, dados)
+for i in range(0, len(unidades_lista), NUM_COLUNAS):
+    # Cria as colunas dinamicamente
+    cols = st.columns(NUM_COLUNAS, gap="medium")
+    
+    for j in range(NUM_COLUNAS):
+        idx = i + j
+        if idx < len(unidades_lista):
+            with cols[j]:
+                nome, dados = unidades_lista[idx]
+                criar_card_unidade(nome, dados)
