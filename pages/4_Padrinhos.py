@@ -1560,8 +1560,13 @@ filtro_status = st.sidebar.multiselect(
 
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Última atualização: {ultima_atualizacao_txt}")
+st.sidebar.caption("Uso interno / administrativo")
 
-if st.sidebar.button("🔄 Atualizar dados", key="btn_refresh_sidebar", width="stretch"):
+if st.sidebar.button(
+    "⚙️ Recarregar cache (uso administrativo)",
+    key="btn_refresh_sidebar",
+    width="stretch"
+):
     st.cache_data.clear()
     st.rerun()
 
