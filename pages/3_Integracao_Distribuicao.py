@@ -31,6 +31,17 @@ ARQ_IDS = DATA_DIR / "Base IDs Logon.xlsx"
 ARQ_RESPOSTAS = DATA_DIR / "Respostas Logon.xlsx"
 ARQ_ADMITIDOS = DATA_DIR / "Admitidos.xlsx"
 
+# =========================
+# Última atualização dos dados
+# =========================
+try:
+    arquivos = [ARQ_ATIVOS, ARQ_IDS, ARQ_RESPOSTAS, ARQ_ADMITIDOS]
+    last_mtime = max(a.stat().st_mtime for a in arquivos if a.exists())
+    dt_last_update = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
+    ultima_atualizacao_txt = dt_last_update.strftime("%d/%m/%Y %H:%M")
+except Exception:
+    last_mtime = None
+    ultima_atualizacao_txt = "não disponível"
 
 # =========================
 # Utils
@@ -248,7 +259,7 @@ IGNORAR_NOMES = [
     "CLEITON VINICIUS CESARIO DE CARVALHO",
     "ALEXANDER DE SOUZA GOMES",
     "RIVALDO BERNABE DE MELO",
-    "NELSON JOSE FELICIO JUNIOR",  # ✅ novo (ignorar no dash)
+    "NELSON JOSE FELICIO JUNIOR",
 ]
 ignorar_up = set(normalizar_texto(x) for x in IGNORAR_NOMES)
 base = base[~base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ignorar_up)]
@@ -372,7 +383,6 @@ if pd.isna(min_adm) or pd.isna(max_adm):
     min_adm = pd.to_datetime("2024-09-01")
     max_adm = pd.to_datetime(datetime.today().date()).normalize()
 
-# ✅ período completo disponível, mas default 01/01/2025 até o último admitido
 default_ini = pd.to_datetime("2025-01-01")
 if default_ini < min_adm:
     default_ini = min_adm
@@ -414,12 +424,25 @@ f_status = st.sidebar.multiselect(
     ["Pendente em atraso", "Pendente mas no prazo", "Concluido em atraso", "Concluido adiantado", "Conforme esperado"]
 )
 
-# ✅ disponível todos, mas default só Ativo
 f_status_colab = st.sidebar.multiselect(
     "Status do colaborador",
     ["Ativo", "Inativo"],
     default=["Ativo"]
 )
+
+# =========================
+# Área administrativa (cache)
+# =========================
+st.sidebar.markdown("---")
+st.sidebar.caption(f"🕒 Última atualização: {ultima_atualizacao_txt}")
+st.sidebar.caption("Uso interno / administrativo")
+
+if st.sidebar.button(
+    "⚙️ Recarregar cache (uso administrativo)",
+    use_container_width=True
+):
+    st.cache_data.clear()
+    st.rerun()
 
 df_f = etapas_df.copy()
 if f_operacao:
@@ -437,28 +460,6 @@ df_f = df_f[
     (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date >= data_ini) &
     (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date <= data_fim)
 ]
-
-# =========================
-# Área administrativa (cache)
-# =========================
-st.sidebar.markdown("---")
-
-try:
-    arquivos = [ARQ_ATIVOS, ARQ_IDS, ARQ_RESPOSTAS, ARQ_ADMITIDOS]
-    last_mtime = max(a.stat().st_mtime for a in arquivos if a.exists())
-    dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
-    st.sidebar.caption(f"🕒 Última atualização: {dt.strftime('%d/%m/%Y %H:%M')}")
-except Exception:
-    st.sidebar.caption("🕒 Última atualização: não disponível")
-
-st.sidebar.caption("Uso interno / administrativo")
-
-if st.sidebar.button(
-    "⚙️ Recarregar cache (uso administrativo)",
-    use_container_width=True
-):
-    st.cache_data.clear()
-    st.rerun()
 
 # =========================
 # Ordenação geral por ADMISSAO (crescente)
