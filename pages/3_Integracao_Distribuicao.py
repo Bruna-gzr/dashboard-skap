@@ -31,23 +31,6 @@ ARQ_IDS = DATA_DIR / "Base IDs Logon.xlsx"
 ARQ_RESPOSTAS = DATA_DIR / "Respostas Logon.xlsx"
 ARQ_ADMITIDOS = DATA_DIR / "Admitidos.xlsx"
 
-# =========================
-# Última atualização dos dados + botão refresh
-# =========================
-try:
-    arquivos = [ARQ_ATIVOS, ARQ_IDS, ARQ_RESPOSTAS, ARQ_ADMITIDOS]
-    last_mtime = max(a.stat().st_mtime for a in arquivos if a.exists())
-    dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
-    st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
-except Exception:
-    last_mtime = None
-    st.caption("🕒 Última atualização: não disponível")
-
-c_refresh, _ = st.columns([1, 5])
-with c_refresh:
-    if st.button("🔄 Atualizar dados agora", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
 
 # =========================
 # Utils
@@ -454,6 +437,28 @@ df_f = df_f[
     (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date >= data_ini) &
     (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date <= data_fim)
 ]
+
+# =========================
+# Área administrativa (cache)
+# =========================
+st.sidebar.markdown("---")
+
+try:
+    arquivos = [ARQ_ATIVOS, ARQ_IDS, ARQ_RESPOSTAS, ARQ_ADMITIDOS]
+    last_mtime = max(a.stat().st_mtime for a in arquivos if a.exists())
+    dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
+    st.sidebar.caption(f"🕒 Última atualização: {dt.strftime('%d/%m/%Y %H:%M')}")
+except Exception:
+    st.sidebar.caption("🕒 Última atualização: não disponível")
+
+st.sidebar.caption("Uso interno / administrativo")
+
+if st.sidebar.button(
+    "⚙️ Recarregar cache (uso administrativo)",
+    use_container_width=True
+):
+    st.cache_data.clear()
+    st.rerun()
 
 # =========================
 # Ordenação geral por ADMISSAO (crescente)
