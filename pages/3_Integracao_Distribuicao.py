@@ -435,10 +435,9 @@ f_status_colab = st.sidebar.multiselect(
 # =========================
 st.sidebar.markdown("---")
 st.sidebar.caption(f"🕒 Última atualização: {ultima_atualizacao_txt}")
-st.sidebar.caption("Uso interno / administrativo")
 
 if st.sidebar.button(
-    "⚙️ Recarregar cache (uso administrativo)",
+    "⚙️ Recarregar cache (uso corporativo)",
     use_container_width=True
 ):
     st.cache_data.clear()
