@@ -395,7 +395,7 @@ LINKS = {
             "SEGURANÇA": "https://www.canva.com/design/DAGzRb9QDkQ/scKlpyHBByhPlWjwDPIWPQ/edit",
             "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGzPsb89EU/5bOFnfZFvH8dpaqFnEewiA/edit",
             "OPERADOR": "https://www.canva.com/design/DAGzPtRpVhU/M2A2ILVZhDCrDkk_8sbgew/edit",
-            "FROTA": "https://www.canva.com/design/DAGzPhjh23c/Freun41VTIEhg0O3g_Ab2A/edit",
+            "FROTA": "https://www.canva.com/design/DAG98JSzhlI/4iLdO9qcpFNeovogVYsqXQ/edit",
         }
     },
     "Vidros": {
