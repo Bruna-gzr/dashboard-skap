@@ -170,8 +170,11 @@ ICONES = {
     "Defesa DPO/VPO": "🛡️"
 }
 
-# LISTA DOS BOTÕES NA ORDEM DESEJADA
-BOTOES = ["Comitê de Gente", "RPS de gente", "Café com Gerente", "Pipeline", "Matriz de Habilidades", "Check List DPO/VPO", "Defesa DPO/VPO"]
+# Botões padrão para todas as unidades (6 botões)
+BOTOES_PADRAO = ["Comitê de Gente", "RPS de gente", "Café com Gerente", "Pipeline", "Check List DPO/VPO", "Defesa DPO/VPO"]
+
+# Botões extras apenas para Ponta Grossa
+BOTOES_PONTA_GROSSA = ["Comitê de Gente", "RPS de gente", "Café com Gerente", "Pipeline", "Matriz de Habilidades", "Check List DPO/VPO", "Defesa DPO/VPO"]
 
 UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros"]
 
@@ -185,7 +188,6 @@ LINKS = {
         "RPS de gente": "https://docs.google.com/spreadsheets/d/1cnUILTRAHvMkJcqoFqgi4tA3kcx1c_0vjYg4t8mngV4/edit?gid=1903627627#gid=1903627627",
         "Café com Gerente": "https://docs.google.com/spreadsheets/d/1lpNNIX54Cqz3H6wfOor5MjsA3iy1Rfqw7Ia7dSAVAM4/edit?gid=365657887#gid=365657887",
         "Pipeline": "https://docs.google.com/spreadsheets/d/1i0bnEazziVStCcSM71eoXMAPDrOiZhQEq9OVsrcsttM/edit?gid=499267061#gid=499267061",
-        "Matriz de Habilidades": "",
         "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1n7-Y0Fo5GpWSLeTGYuG5cfLkAN83hyygy0FAmlUb9fU/edit?gid=335667020#gid=335667020",
         "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1LklxIqqIIs0RnvWWyLCFLM6N9WhdweJlXFFIgRIm2M0/edit?gid=1108610351#gid=1108610351"
     },
@@ -194,7 +196,6 @@ LINKS = {
         "RPS de gente": "https://docs.google.com/spreadsheets/d/1d_qaye5LN7sQ_V3fYwHBGcDxTdyHk88_PL94NrJre5w/edit?gid=1903627627#gid=1903627627",
         "Café com Gerente": "https://docs.google.com/spreadsheets/d/1rbQWzLP0DsHftjthjczuEjRevnIvukI7kXTlGBYKrMU/edit?gid=365657887#gid=365657887",
         "Pipeline": "https://docs.google.com/spreadsheets/d/15R9xHMHruMXKon0lcU167pMHwSYO6brWJX6XocjRxzA/edit?gid=978593831#gid=978593831",
-        "Matriz de Habilidades": "",
         "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1adzXsFK3Ua3XBCOutg1qTA-wNES3bNpdJE-eANrv5GA/edit?gid=436320416#gid=436320416",
         "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1w6Qakawbi44nLobZrZ-sk6Ms-1GBYJKInTccabtO8G0/edit?gid=1108610351#gid=1108610351"
     },
@@ -203,7 +204,6 @@ LINKS = {
         "RPS de gente": "https://docs.google.com/spreadsheets/d/1zdjilZtvJ3icWk37xMmyN6QcCMWtD_LDadlKIeREhGM/edit?gid=1903627627#gid=1903627627",
         "Café com Gerente": "https://docs.google.com/spreadsheets/d/13Vq_tWhx8UDin3_r7bsb3BkY8flMyMgJ-j0qnRcc_Dw/edit?gid=365657887#gid=365657887",
         "Pipeline": "https://docs.google.com/spreadsheets/d/1j2hE5xM-MBocSpMnHZ2R_zdlqch5oGAE44IvY4KZyyk/edit?gid=978593831#gid=978593831",
-        "Matriz de Habilidades": "",
         "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1G4ocfhmWK3qeZ-HLjUEyd_0zvoLfCxn9vzcdxtqZ9Rc/edit?gid=875758865#gid=875758865",
         "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1-Uv6WkuagTHL45U3Llnxm5CJ4IWtsEkmB0ZutN8pAnI/edit?gid=605770282#gid=605770282"
     },
@@ -212,7 +212,6 @@ LINKS = {
         "RPS de gente": "https://docs.google.com/spreadsheets/d/1ulcKxVCxiabEt534Kmbf0r6lGop4gJmh2Vpnhto7KpQ/edit?gid=1903627627#gid=1903627627",
         "Café com Gerente": "https://docs.google.com/spreadsheets/d/1JQ5WsjRd4DK5nj2fD2g3bNrpRF6mMus8iZX6wwze4-w/edit?gid=365657887#gid=365657887",
         "Pipeline": "https://docs.google.com/spreadsheets/d/1R02IYjnJJ86ZOOElNxXg6ac-6R55I22FMsZqofruo10/edit?gid=978593831#gid=978593831",
-        "Matriz de Habilidades": "",
         "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1TX9stGKqbvZGcbswfhGWw_Bg4JZuDmosCGkOJdoJytc/edit?gid=1810158702#gid=1810158702",
         "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/15rbwRTqvqsAtKVqBu2dL3Xg7tjwzkwjkpAqHVBu5WKQ/edit?gid=1108610351#gid=1108610351"
     },
@@ -221,7 +220,6 @@ LINKS = {
         "RPS de gente": "https://docs.google.com/spreadsheets/d/1gKYYXkjmXxn0vkzp0F8AiutdDkUgY5E-9T37JeCi8V8/edit?gid=1903627627#gid=1903627627",
         "Café com Gerente": "https://docs.google.com/spreadsheets/d/10o7xI9ZMXu8mkwC0zmD4x8Tnm4z97ku60PVTswpAsGw/edit?gid=365657887#gid=365657887",
         "Pipeline": "https://docs.google.com/spreadsheets/d/1n0TC6PybFOLpOqXr8r5CfOGap59eLTfbfhmaotpu0Vc/edit?gid=978593831#gid=978593831",
-        "Matriz de Habilidades": "",
         "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/16aa1EjeAlmYZieK6aq83wu04pjM_ppaK6retFz13cgM/edit?gid=107931427#gid=107931427",
         "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1UG8xvVXwFKmzFrr_tXwJm-PBJ2U-n8jrpVCvKIZayEY/edit?gid=1108610351#gid=1108610351"
     },
@@ -230,7 +228,6 @@ LINKS = {
         "RPS de gente": "https://docs.google.com/spreadsheets/d/1WwydxBRUypVi2oAdvGU0PWrTyzBAC4y8vIqtfG6VsAc/edit?gid=1903627627#gid=1903627627",
         "Café com Gerente": "https://docs.google.com/spreadsheets/d/1zNagp5N38uThopnDCp_lBTEO7bXjj8CfR_kcx0geUMQ/edit?gid=365657887#gid=365657887",
         "Pipeline": "https://docs.google.com/spreadsheets/d/1o6Bkp8lCr41BXzo8wPUm6M3XNj2mp170vRhODN2EUO8/edit?gid=910918069#gid=910918069",
-        "Matriz de Habilidades": "",
         "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1Ucb1KmZSu3tH3IT5tNqkSIFnZqbsaLJypEppccMnTTA/edit?gid=875758865#gid=875758865",
         "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1eNfFwwMKC9oYu0USeVb6-zSFHS1q79K2wU0aBTw9SVU/edit?gid=1108610351#gid=1108610351"
     },
@@ -239,7 +236,6 @@ LINKS = {
         "RPS de gente": "https://docs.google.com/spreadsheets/d/1NN6HPaDF3FTvbEq4GKOpm8FfOGVCrDAWKVsOwyoj61g/edit?gid=1903627627#gid=1903627627",
         "Café com Gerente": "https://docs.google.com/spreadsheets/d/1smVz8t0DjCVoi76OwJnCr7GnFsdjuJZ6KD62aVNxUEo/edit?gid=365657887#gid=365657887",
         "Pipeline": "https://docs.google.com/spreadsheets/d/1X3MWXRLCAUt9unenwxmIGZhdBwZoP1v4EDLBKMQIAoI/edit?gid=978593831#gid=978593831",
-        "Matriz de Habilidades": "",
         "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1JIYQpmkWJt77xGmIm3R5oqOI2YPIHsR0BbmWr4QH6y4/edit?gid=1523475353#gid=1523475353",
         "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1MbIMt9FiZJBjU6VlgijsQeqLB7YFfc-nlsFK1P78uCs/edit?gid=1108610351#gid=1108610351"
     },
@@ -248,7 +244,6 @@ LINKS = {
         "RPS de gente": "https://docs.google.com/spreadsheets/d/1UG5OINGR6ftx52dJAy_sLHfI_AhDxOMaiClLCi6wWbc/edit?gid=1903627627#gid=1903627627",
         "Café com Gerente": "https://docs.google.com/spreadsheets/d/1bEPBZiYinm8DRFwg3YiHbxxqSpavBZCyu6K_cXTKQag/edit?gid=365657887#gid=365657887",
         "Pipeline": "https://docs.google.com/spreadsheets/d/1nbmkzFAV9fuq6N0LmlThncsLhUxJU6QacAKu0OPj840/edit?gid=910918069#gid=910918069",
-        "Matriz de Habilidades": "",
         "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1Q29I79L2yiF_u9D9xODPV818P-pxV-PLblT5FzzjVBs/edit",
         "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1XbcX3L-eQcr8mhyqW9kHgwye3yzU4iu2Vab7to5afC0/edit?gid=1108610351#gid=1108610351"
     },
@@ -275,7 +270,6 @@ LINKS = {
         "RPS de gente": "https://docs.google.com/spreadsheets/d/1TYzUjg6HJttW9pUCjn0WkfvuT1UYre7QwHJJE_R8EYY/edit?gid=1903627627#gid=1903627627",
         "Café com Gerente": "https://docs.google.com/spreadsheets/d/1Jr43BKk5jR9oX8l8Vv1Tx3aa8PHLvepq_NCfqo9U29o/edit?gid=365657887#gid=365657887",
         "Pipeline": "https://docs.google.com/spreadsheets/d/1-9vF4G5NMjM-pfdQg9wXempoEwRsxqAvz8irJwvyZjw/edit?gid=499267061#gid=499267061",
-        "Matriz de Habilidades": "",
         "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1PJYyMTY_aO1vSbOlrXNKDnRix7b_n0haQ5zCuGI-38k/edit?gid=335667020#gid=335667020",
         "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1r8QRVSHYM86RoOQoKblhLLeYmaUiGQrw1LwJAOp73aU/edit?gid=1108610351#gid=1108610351"
     }
@@ -315,7 +309,13 @@ def criar_card_unidade(nome_unidade, dados):
         </div>
         """, unsafe_allow_html=True)
 
-        for botao in BOTOES:
+        # Define quais botões usar baseado na unidade
+        if nome_unidade in ["Ponta Grossa Empurrada", "Ponta Grossa Armazem"]:
+            botoes = BOTOES_PONTA_GROSSA
+        else:
+            botoes = BOTOES_PADRAO
+        
+        for botao in botoes:
             icone = ICONES.get(botao, "🔗")
             link = LINKS.get(nome_unidade, {}).get(botao, "")
             render_link_botao(f"{icone} {botao}", link)
