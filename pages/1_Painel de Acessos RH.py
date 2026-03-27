@@ -254,7 +254,7 @@ LINKS = {
         "Pipeline": "https://docs.google.com/spreadsheets/d/1nlWF_HwtK-7uz_bd3O_pYmImm5ZTn7ay3k7Rz0gqIkU/edit?gid=1754165725#gid=1754165725",
         "Matriz de Habilidades": "https://docs.google.com/spreadsheets/d/1LMQQTJyZVazt-8qQwecd_QAjZ-l4lqDXIl9k6uBbHAE/edit?gid=613075840#gid=613075840",
         "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1SmalAzLMKEO_6CjapqYjGQbo-So2LRfl3DT77HnKZpc/edit?gid=1146159521#gid=1146159521",
-        "Defesa DPO/VPO": ""
+        "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/169N0avHeBWROuaozVHzACBJZ1REjDlI1jLFIlrxC10E/edit?gid=1108610351#gid=1108610351"
     },
     "Ponta Grossa Armazem": {
         "Comitê de Gente": "https://docs.google.com/spreadsheets/d/1IHFuQGoPp4OfPGBl5KWtPFHDr6Gl_fRjORx00pcmaY4/edit?gid=915035701#gid=915035701",
