@@ -405,10 +405,12 @@ METAS = {
     "CD LITORAL": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
     "CD SAO CRISTOVAO": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
     "CD FRANCISCO BELTRAO": {"PDV": {"meta": 2.84}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 89.0}},
+    "CD PETROPOLIS": {"PDV": {"meta": 3.05}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
 }
 METAS = {norm_operacao(k): v for k, v in METAS.items()}
 
 OP_LONDRINA_KEY = norm_operacao("CD LONDRINA")
+OP_PETROPOLIS_KEY = norm_operacao("CD PETROPOLIS")
 
 # pontos padrão (RV não pontua)
 PONTOS_DISTRIB_PADRAO = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}  # 30
@@ -416,13 +418,24 @@ PONTOS_DISTRIB_PADRAO = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALE
 # ✅ CD LONDRINA: desconsidera BEES e TML vira 3 (mantém total 30)
 PONTOS_DISTRIB_LONDRINA = {"PDV": 5, "TML": 3, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}  # 30
 
+# ✅ CD PETROPOLIS: usa pontuação padrão (inclui BEES)
+PONTOS_DISTRIB_PETROPOLIS = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}  # 30
+
 PONTOS_ARMAZEM = {"ABS": 10, "ACIDENTE": 10, "DTO": 10}  # 30
 
 def pontos_distrib_por_operacao(op_key: str) -> dict:
-    return PONTOS_DISTRIB_LONDRINA if op_key == OP_LONDRINA_KEY else PONTOS_DISTRIB_PADRAO
+    if op_key == OP_LONDRINA_KEY:
+        return PONTOS_DISTRIB_LONDRINA
+    elif op_key == OP_PETROPOLIS_KEY:
+        return PONTOS_DISTRIB_PETROPOLIS
+    return PONTOS_DISTRIB_PADRAO
 
 def operacao_sem_bees(op_key: str) -> bool:
     return op_key == OP_LONDRINA_KEY
+
+def operacao_com_corte_2026(op_key: str) -> bool:
+    """Retorna True para operações que devem ter corte a partir de 01/01/2026"""
+    return op_key == OP_PETROPOLIS_KEY
 
 OP_PONTA_GROSSA_KEY = norm_operacao("PONTA GROSSA")
 OP_CD_PONTA_GROSSA_KEY = norm_operacao("CD PONTA GROSSA")
@@ -939,6 +952,14 @@ grid["MÊS"] = grid["MES"].apply(month_label)
 mask_pg_apoio = grid.apply(lambda r: is_ponta_grossa_apoio(r.get("OPERACAO", ""), r.get("ATIVIDADE", "")), axis=1)
 grid_pg_apoio = grid["MES"].ge("2026-01")
 grid = grid[(~mask_pg_apoio) | (grid_pg_apoio)].copy()
+
+# =========================================================
+# CORTE ESPECIAL CD PETRÓPOLIS (a partir de 01/01/2026)
+# =========================================================
+if f_oper == "CD PETRÓPOLIS" or ("OPERACAO" in grid.columns and (grid["OPERACAO"] == "CD PETRÓPOLIS").any()):
+    mask_petropolis = grid["OPERACAO"] == "CD PETRÓPOLIS"
+    grid_petropolis_corte = grid["MES"].ge("2026-01")
+    grid = grid[(~mask_petropolis) | (grid_petropolis_corte)].copy()
 
 # =========================================================
 # PONTUAÇÃO
