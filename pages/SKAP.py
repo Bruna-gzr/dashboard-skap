@@ -810,7 +810,7 @@ st.download_button(
 st.divider()
 
 # =========================
-# 🌡️ Farol da Skap > Termômetro de Gente (AJUSTADO PARA 2 MESES)
+# 🌡️ Farol Skap > Termômetro de Gente (ATÉ 2 MESES)
 # =========================
 
 farol_base = base_f.copy()
@@ -819,11 +819,12 @@ farol_base["HABILIDADES TECNICAS"] = pd.to_numeric(
     farol_base["HABILIDADES TECNICAS"], errors="coerce"
 ).fillna(0)
 
-# 🔴 NOVO CRITÉRIO → +2 meses = 60 dias
-farol_2m = farol_base[farol_base["TEMPO DE CASA"] > 60].copy()
+# 🟢 NOVO CRITÉRIO → até 2 meses = 60 dias
+farol_2m = farol_base[farol_base["TEMPO DE CASA"] <= 60].copy()
 
 farol_2m["ADERENTE_TEC"] = farol_2m["HABILIDADES TECNICAS"] >= 1
 
+# Pessoas até 2 meses que ainda não tiveram 100% concluído
 pendentes_2m = farol_2m[farol_2m["HABILIDADES TECNICAS"] < 1].copy()
 
 card_total_pend_2m = len(pendentes_2m)
@@ -832,8 +833,22 @@ c_farol_1, c_farol_2 = st.columns([1, 3])
 
 with c_farol_1:
     st.metric(
-        "👥 +2 meses com Técnicas < 100%",
+        "👥 Até 2 meses com Técnicas < 100%",
         card_total_pend_2m
+    )
+
+with c_farol_2:
+    st.dataframe(
+        pendentes_2m[
+            [
+                "NOME",
+                "FUNCAO",
+                "UNIDADE",
+                "TEMPO DE CASA",
+                "HABILIDADES TECNICAS"
+            ]
+        ],
+        hide_index=True
     )
 
 # -------------------------
