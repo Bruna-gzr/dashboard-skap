@@ -810,10 +810,10 @@ st.download_button(
 st.divider()
 
 # =========================
-# 🌡️ Farol Skap > Termômetro de Gente
+# 🌡️ Farol Skap Termômetro de Gente
 # =========================
 
-st.subheader("🌡️ Farol Skap > Termômetro de Gente")
+st.subheader("🌡️ Farol Skap Termômetro de Gente")
 
 farol_base = base_f.copy()
 
@@ -881,7 +881,7 @@ aderencia_unidade["ADERENCIA"] = np.where(
 
 aderencia_unidade["ADERENCIA_TXT"] = aderencia_unidade["ADERENCIA"].map(lambda x: f"{x:.0%}")
 
-st.markdown("**📈 Aderência de Habilidades Técnicas por Unidade (+2 meses de casa)**")
+st.markdown("**📈 Aderência de Habilidades Técnicas por Unidade (< 2 meses de casa)**")
 
 fig_farol = px.bar(
     aderencia_unidade.sort_values("ADERENCIA", ascending=False),
@@ -903,7 +903,7 @@ st.plotly_chart(fig_farol, use_container_width=True)
 # Tabela de pendências
 # -------------------------
 
-st.markdown("**📋 Pessoas com mais de 2 meses de casa e Habilidades Técnicas < 100%**")
+st.markdown("**📋 Pessoas com menos de 2 meses de casa e Habilidades Técnicas < 100%**")
 
 cols_pend_2m = [
     "COLABORADOR",
