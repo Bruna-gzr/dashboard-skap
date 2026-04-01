@@ -954,14 +954,6 @@ grid_pg_apoio = grid["MES"].ge("2026-01")
 grid = grid[(~mask_pg_apoio) | (grid_pg_apoio)].copy()
 
 # =========================================================
-# CORTE ESPECIAL CD PETRÓPOLIS (a partir de 01/01/2026)
-# =========================================================
-if f_oper == "CD PETRÓPOLIS" or ("OPERACAO" in grid.columns and (grid["OPERACAO"] == "CD PETRÓPOLIS").any()):
-    mask_petropolis = grid["OPERACAO"] == "CD PETRÓPOLIS"
-    grid_petropolis_corte = grid["MES"].ge("2026-01")
-    grid = grid[(~mask_petropolis) | (grid_petropolis_corte)].copy()
-
-# =========================================================
 # PONTUAÇÃO
 # =========================================================
 def calc_pontos_row(row) -> dict:
@@ -1263,6 +1255,13 @@ if f_mes != "Todos":
 if f_colab != "Todos":
     nome_key = normalizar_nome(f_colab)
     df = df[df["NOME_KEY"] == nome_key]
+
+# CORTE ESPECIAL CD PETRÓPOLIS (a partir de 01/01/2026)
+# Este bloco foi movido para depois da definição dos filtros
+if f_oper == "CD PETRÓPOLIS" or ("OPERACAO" in df.columns and (df["OPERACAO"] == "CD PETRÓPOLIS").any()):
+    mask_petropolis = df["OPERACAO"] == "CD PETRÓPOLIS"
+    df_petropolis_corte = df["MES"].ge("2026-01")
+    df = df[(~mask_petropolis) | (df_petropolis_corte)].copy()
 
 if f_oper != "Todos" and f_ativ != "Todos" and is_ponta_grossa_apoio(f_oper, f_ativ):
     df = df[df["MES"] >= "2026-01"]
