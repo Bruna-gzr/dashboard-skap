@@ -857,9 +857,9 @@ with c_farol_2:
                     "HABILIDADES TECNICAS",
                     "STATUS TECNICAS",
                 ]
-            ].sort_values("TEMPO DE CASA")
+            ].sort_values("TEMPO DE CASA"),
+            hide_index=True
         )
-
 # -------------------------
 # Gráfico aderência por unidade
 # -------------------------
