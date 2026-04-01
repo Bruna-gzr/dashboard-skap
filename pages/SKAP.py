@@ -810,21 +810,25 @@ st.download_button(
 st.divider()
 
 # =========================
-# 🌡️ Farol Skap > Termômetro de Gente (ATÉ 2 MESES)
+# 🌡️ Farol Skap > Termômetro de Gente
 # =========================
+
+st.subheader("🌡️ Farol Skap > Termômetro de Gente")
 
 farol_base = base_f.copy()
 
+# Garantir tipo numérico
 farol_base["HABILIDADES TECNICAS"] = pd.to_numeric(
     farol_base["HABILIDADES TECNICAS"], errors="coerce"
 ).fillna(0)
 
-# 🟢 NOVO CRITÉRIO → até 2 meses = 60 dias
+# NOVO CRITÉRIO → Considerar APENAS colaboradores COM 2 MESES OU MENOS (≤ 60 dias)
 farol_2m = farol_base[farol_base["TEMPO DE CASA"] <= 60].copy()
 
+# Aderente = quem já possui Técnicas registradas
 farol_2m["ADERENTE_TEC"] = farol_2m["HABILIDADES TECNICAS"] >= 1
 
-# Pessoas até 2 meses que ainda não tiveram 100% concluído
+# PENDENTES = quem ainda não registrou Técnicas
 pendentes_2m = farol_2m[farol_2m["HABILIDADES TECNICAS"] < 1].copy()
 
 card_total_pend_2m = len(pendentes_2m)
@@ -838,18 +842,23 @@ with c_farol_1:
     )
 
 with c_farol_2:
-    st.dataframe(
-        pendentes_2m[
-            [
-                "NOME",
-                "FUNCAO",
-                "UNIDADE",
-                "TEMPO DE CASA",
-                "HABILIDADES TECNICAS"
-            ]
-        ],
-        hide_index=True
-    )
+    if card_total_pend_2m == 0:
+        st.success("🎉 Nenhum colaborador pendente dentro dos 2 primeiros meses!")
+    else:
+        st.dataframe(
+            pendentes_2m[
+                [
+                    "COLABORADOR",
+                    "CARGO",
+                    "OPERACAO",
+                    "ATIVIDADE",
+                    "LIDERANCA",
+                    "TEMPO DE CASA",
+                    "HABILIDADES TECNICAS",
+                    "STATUS TECNICAS",
+                ]
+            ].sort_values("TEMPO DE CASA")
+        )
 
 # -------------------------
 # Gráfico aderência por unidade
