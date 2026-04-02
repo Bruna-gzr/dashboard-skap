@@ -49,17 +49,39 @@ def fuzzy_match(row, df_target):
 
     return best_row if best_score >= 0.65 else None
 
-def calcular_estatisticas_respostas(df_mod, perguntas, respostas_validas):
+def calcular_estatisticas_respostas(df_mod, perguntas_gabarito, respostas_validas):
     """Calcula estatísticas de acertos por pergunta"""
     estatisticas = []
     
-    for idx, (pergunta, resposta_correta) in enumerate(zip(perguntas, respostas_validas)):
+    # Obter as colunas do DataFrame (removendo Colaborador e CPF)
+    colunas_df = [col for col in df_mod.columns if col not in ['Colaborador', 'CPF']]
+    
+    # Para cada pergunta do gabarito, encontrar a coluna correspondente no DataFrame
+    for idx, (pergunta_gabarito, resposta_correta) in enumerate(zip(perguntas_gabarito, respostas_validas)):
+        # Tentar encontrar a coluna que mais se parece com a pergunta do gabarito
+        coluna_encontrada = None
+        melhor_similaridade = 0
+        
+        for coluna_df in colunas_df:
+            similaridade = similar(pergunta_gabarito, coluna_df)
+            if similaridade > melhor_similaridade and similaridade > 0.6:
+                melhor_similaridade = similaridade
+                coluna_encontrada = coluna_df
+        
+        if coluna_encontrada is None:
+            # Se não encontrar, usar a primeira coluna disponível (fallback)
+            if idx < len(colunas_df):
+                coluna_encontrada = colunas_df[idx]
+            else:
+                continue
+        
+        # Calcular acertos e erros
         acertos = 0
         total = 0
         
         for _, row in df_mod.iterrows():
-            resposta_usuario = str(row[pergunta]).strip().lower()
-            if resposta_usuario and resposta_usuario != 'nan':
+            resposta_usuario = str(row[coluna_encontrada]).strip().lower()
+            if resposta_usuario and resposta_usuario != 'nan' and resposta_usuario != '':
                 total += 1
                 if resposta_usuario == resposta_correta.strip().lower():
                     acertos += 1
@@ -72,10 +94,11 @@ def calcular_estatisticas_respostas(df_mod, perguntas, respostas_validas):
             percentual_erro = 0
             
         estatisticas.append({
-            'Pergunta': pergunta,
+            'Pergunta': pergunta_gabarito,
             'Acertos (%)': round(percentual_acerto, 2),
             'Erros (%)': round(percentual_erro, 2),
-            'Total_Respostas': total
+            'Total_Respostas': total,
+            'Coluna_Utilizada': coluna_encontrada
         })
     
     return estatisticas
@@ -287,7 +310,7 @@ st.markdown("---")
 # =========================
 st.header("📝 Análise Respostas Check de Retenção")
 
-# Gabaritos ATUALIZADOS com as respostas corretas
+# Gabaritos com as perguntas e respostas corretas
 gabaritos = {
     "M1": {
         "pontuacao": 90,
@@ -386,11 +409,25 @@ for idx, modulo in enumerate(modulos_lista):
         st.subheader(f"Análise de Respostas - {modulo}")
         
         df_mod = integracao[modulo]
+        
+        # Verificar se o módulo existe no gabarito
+        if modulo not in gabaritos:
+            st.warning(f"Gabarito não encontrado para o módulo {modulo}")
+            continue
+            
         respostas_validas = gabaritos[modulo]['respostas']
-        perguntas = gabaritos[modulo]['perguntas']
+        perguntas_gabarito = gabaritos[modulo]['perguntas']
+        
+        # Mostrar as colunas disponíveis para debug (opcional, pode remover depois)
+        with st.expander("🔍 Informações de depuração", expanded=False):
+            st.write(f"Colunas disponíveis no módulo {modulo}:")
+            colunas_df = [col for col in df_mod.columns if col not in ['Colaborador', 'CPF']]
+            st.write(colunas_df)
+            st.write(f"Número de perguntas no gabarito: {len(perguntas_gabarito)}")
+            st.write(f"Número de colunas no DataFrame: {len(colunas_df)}")
         
         # Calcular estatísticas por pergunta
-        estatisticas = calcular_estatisticas_respostas(df_mod, perguntas, respostas_validas)
+        estatisticas = calcular_estatisticas_respostas(df_mod, perguntas_gabarito, respostas_validas)
         
         # Criar gráficos para cada pergunta
         for i, pergunta_data in enumerate(estatisticas, 1):
@@ -401,7 +438,7 @@ for idx, modulo in enumerate(modulos_lista):
                     'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
                 })
                 
-                # Gráfico de barras verticais com key única
+                # Gráfico de barras verticais
                 fig = px.bar(
                     df_pergunta,
                     x='Status',
@@ -422,7 +459,7 @@ for idx, modulo in enumerate(modulos_lista):
                 )
                 
                 # Usar key única para cada gráfico
-                chart_key = f"chart_{modulo}_{i}"
+                chart_key = f"chart_{modulo}_{i}_{datetime.now().timestamp()}"
                 st.plotly_chart(fig, use_container_width=True, key=chart_key)
                 
                 # Mostrar métricas adicionais
@@ -433,6 +470,8 @@ for idx, modulo in enumerate(modulos_lista):
                     st.metric("❌ Erros", f"{pergunta_data['Erros (%)']:.1f}%")
                 
                 st.caption(f"📊 Total de respostas analisadas: {pergunta_data['Total_Respostas']}")
+                if 'Coluna_Utilizada' in pergunta_data:
+                    st.caption(f"🔍 Coluna correspondente: {pergunta_data['Coluna_Utilizada']}")
                 st.markdown("---")
 
 st.markdown("### 📌 Legenda")
