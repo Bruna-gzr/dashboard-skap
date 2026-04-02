@@ -287,10 +287,21 @@ st.markdown("---")
 # =========================
 st.header("📝 Análise Respostas Check de Retenção")
 
-# Gabaritos
+# Gabaritos ATUALIZADOS com as respostas corretas
 gabaritos = {
     "M1": {
         "pontuacao": 90,
+        "perguntas": [
+            "Selecione o EPI que NÃO é obrigatório durante o processo de montagem de paletes",
+            "Selecione a opção CORRETA sobre o manuseio de barris de chopp",
+            "Selecione a opção sobre o procedimento CORRETO",
+            "Antes de iniciar o processo de montagem, DEVE-SE:",
+            "Sobre o manuseio de Market Place, selecione a opção CORRETA",
+            "Selecione a opção CORRETA sobre a organização do local",
+            "De que forma conseguimos garantir a execução do FEFO?",
+            "Sobre a operação do repack, selecione a opção INCORRETA:",
+            "Sobre a operação de descarga de veículos, selecione a opção CORRETA:"
+        ],
         "respostas": [
             "Cinto paraquedista anti queda",
             "Todo barril deve ser movimentado por duas pessoas utilizando os EPIs corretos",
@@ -300,11 +311,17 @@ gabaritos = {
             "Deve-se garantir que o local está limpo e sem a presença de nenhum obstáculo que atrapalhe a movimentação dos produtos",
             "Os produtos com data curta devem estar disponíveis antes das datas longas, desde que estejam dentro do prazo comercial",
             "Podemos realizar a reembalagem de produtos com diferentes datas de validade",
-            "A chave do caminhão nunca pode estar na ignição",
+            "A chave do caminhão nunca pode estar na ignição"
         ]
     },
     "M2": {
         "pontuacao": 40,
+        "perguntas": [
+            "Selecione a melhor alternativa que resuma a curva ABC",
+            "Selecione a opção CORRETA sobre ordem correta de paletização (OCP)",
+            "Selecione a opção que MELHOR caracteriza o Picking",
+            "Selecione a alternativa CORRETA sobre o layout do Picking"
+        ],
         "respostas": [
             "Curva A: \"Alto giro\"; Curva B: \"Médio giro\"; Curva C: \"Baixo giro\"",
             "Todas as alternativas estão corretas",
@@ -314,6 +331,12 @@ gabaritos = {
     },
     "M3": {
         "pontuacao": 40,
+        "perguntas": [
+            "Selecione a alternativa CORRETA sobre montagem de paletes",
+            "Selecione a opção que considera os principais elementos de um palete",
+            "Selecione a opção CORRETA sobre montagem de lastros",
+            "Selecione a opção CORRETA sobre o processo de montagem"
+        ],
         "respostas": [
             "Os produtos mistos devem ser colocados nas laterais do palete para facilitar a conferência",
             "Palete de madeira, lastro e elemento divisório (chapatex e folha separadora)",
@@ -323,6 +346,12 @@ gabaritos = {
     },
     "M4": {
         "pontuacao": 40,
+        "perguntas": [
+            "Selecione a opção CORRETA sobre o WMS",
+            "Selecione a opção INCORRETA sobre o módulo de Separação do WMS",
+            "Selecione a opção CORRETA sobre o processo de separação no WMS",
+            "Selecione as etapas CORRETAS do processo de separação"
+        ],
         "respostas": [
             "Caso tenha problemas com meu usuário devo utilizar a função \"Esqueci a senha\" ou procurar suporte do conferente",
             "Não é mostrada a quantidade correta do produto na tela do WMS",
@@ -332,13 +361,19 @@ gabaritos = {
     },
     "M5": {
         "pontuacao": 40,
+        "perguntas": [
+            "Selecione a opção CORRETA sobre pontuação",
+            "Selecione a opção CORRETA sobre remuneração variável",
+            "Selecione os PRINCIPAIS indicadores de produtividade",
+            "Selecione a opção que NÃO se trata de erro de montagem"
+        ],
         "respostas": [
             "Há uma memória de cálculo para classificar a complexidade dos paletes",
             "Quanto mais montar, maior a remuneração variável",
             "Ponto laboral, PPS (Ponto por segundo) e EFM (Eficiência de Montagem)",
             "Separar a quantidade correta, do produto correto e em boas condições"
         ]
-    },
+    }
 }
 
 # Criar abas para cada módulo
@@ -352,50 +387,59 @@ for idx, modulo in enumerate(modulos_lista):
         
         df_mod = integracao[modulo]
         respostas_validas = gabaritos[modulo]['respostas']
-        perguntas = [c for c in df_mod.columns if c not in ['Colaborador', 'CPF']]
+        perguntas = gabaritos[modulo]['perguntas']
         
         # Calcular estatísticas por pergunta
         estatisticas = calcular_estatisticas_respostas(df_mod, perguntas, respostas_validas)
         
         # Criar gráficos para cada pergunta
         for i, pergunta_data in enumerate(estatisticas, 1):
-            st.markdown(f"### {i}. {pergunta_data['Pergunta']}")
-            
-            # Criar dataframe para o gráfico
-            df_pergunta = pd.DataFrame({
-                'Status': ['Acertos', 'Erros'],
-                'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
-            })
-            
-            # Gráfico de barras verticais com key única
-            fig = px.bar(
-                df_pergunta,
-                x='Status',
-                y='Percentual',
-                text='Percentual',
-                color='Status',
-                color_discrete_map={'Acertos': '#28a745', 'Erros': '#dc3545'},
-                labels={'Percentual': 'Percentual (%)', 'Status': ''}
-            )
-            
-            fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-            fig.update_layout(
-                yaxis_range=[0, 100],
-                height=400,
-                showlegend=False,
-                xaxis_title="",
-                yaxis_title="Percentual (%)"
-            )
-            
-            # Usar key única para cada gráfico
-            chart_key = f"chart_{modulo}_{i}"
-            st.plotly_chart(fig, use_container_width=True, key=chart_key)
-            st.markdown(f"**Total de respostas:** {pergunta_data['Total_Respostas']}")
-            st.markdown("---")
+            with st.expander(f"📌 {i}. {pergunta_data['Pergunta']}", expanded=True):
+                # Criar dataframe para o gráfico
+                df_pergunta = pd.DataFrame({
+                    'Status': ['Acertos', 'Erros'],
+                    'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
+                })
+                
+                # Gráfico de barras verticais com key única
+                fig = px.bar(
+                    df_pergunta,
+                    x='Status',
+                    y='Percentual',
+                    text='Percentual',
+                    color='Status',
+                    color_discrete_map={'Acertos': '#28a745', 'Erros': '#dc3545'},
+                    labels={'Percentual': 'Percentual (%)', 'Status': ''}
+                )
+                
+                fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+                fig.update_layout(
+                    yaxis_range=[0, 100],
+                    height=400,
+                    showlegend=False,
+                    xaxis_title="",
+                    yaxis_title="Percentual (%)"
+                )
+                
+                # Usar key única para cada gráfico
+                chart_key = f"chart_{modulo}_{i}"
+                st.plotly_chart(fig, use_container_width=True, key=chart_key)
+                
+                # Mostrar métricas adicionais
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("✅ Acertos", f"{pergunta_data['Acertos (%)']:.1f}%")
+                with col2:
+                    st.metric("❌ Erros", f"{pergunta_data['Erros (%)']:.1f}%")
+                
+                st.caption(f"📊 Total de respostas analisadas: {pergunta_data['Total_Respostas']}")
+                st.markdown("---")
 
 st.markdown("### 📌 Legenda")
-col_leg1, col_leg2 = st.columns(2)
+col_leg1, col_leg2, col_leg3 = st.columns(3)
 with col_leg1:
     st.markdown("🟩 **Acertos** - Respostas corretas")
 with col_leg2:
     st.markdown("🟥 **Erros** - Respostas incorretas")
+with col_leg3:
+    st.markdown("📊 **Total** - Quantidade de respostas analisadas")
