@@ -25,24 +25,6 @@ st.markdown("""
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-    .success-box {
-        background-color: #d4edda;
-        padding: 20px;
-        border-radius: 10px;
-        border-left: 5px solid #28a745;
-    }
-    .warning-box {
-        background-color: #fff3cd;
-        padding: 20px;
-        border-radius: 10px;
-        border-left: 5px solid #ffc107;
-    }
-    .danger-box {
-        background-color: #f8d7da;
-        padding: 20px;
-        border-radius: 10px;
-        border-left: 5px solid #dc3545;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -283,7 +265,8 @@ if len(resultado_modulos) > 0:
         tabela_filtrada = resultado_modulos[resultado_modulos['Módulo'] == filtro_modulo_detalhe]
     
     # Formatar data para formato reduzido
-    tabela_filtrada['Data'] = pd.to_datetime(tabela_filtrada['Data']).dt.strftime('%d/%m/%Y')
+    if 'Data' in tabela_filtrada.columns:
+        tabela_filtrada['Data'] = pd.to_datetime(tabela_filtrada['Data']).dt.strftime('%d/%m/%Y')
     
     # Tabela com cores
     def color_status(val):
@@ -359,12 +342,15 @@ gabaritos = {
 }
 
 # Criar abas para cada módulo
-tabs = st.tabs([f"📘 {modulo}" for modulo in integracao.keys()])
+modulos_lista = list(integracao.keys())
+tabs = st.tabs([f"📘 {modulo}" for modulo in modulos_lista])
 
-for tab_idx, (modulo, df_mod) in enumerate(zip(tabs, integracao.items())):
-    with tab_idx:
+# Iterar corretamente sobre as abas
+for idx, modulo in enumerate(modulos_lista):
+    with tabs[idx]:
         st.subheader(f"Análise de Respostas - {modulo}")
         
+        df_mod = integracao[modulo]
         respostas_validas = gabaritos[modulo]['respostas']
         perguntas = [c for c in df_mod.columns if c not in ['Colaborador', 'CPF']]
         
