@@ -64,6 +64,16 @@ st.markdown("""
         word-wrap: break-word;
         white-space: normal;
     }
+    /* Estilo para o título do gráfico */
+    .grafico-titulo {
+        background-color: #2c2c2c;
+        color: white;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        font-weight: bold;
+        text-align: center;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -150,13 +160,23 @@ def calcular_estatisticas_respostas(df_mod, perguntas_gabarito, respostas_valida
 def load_data():
     admitidos = pd.read_excel("data/Admitidos.xlsx")
     integracao = {m: pd.read_excel("data/Integracao Armazem.xlsx", sheet_name=m) for m in ["M1", "M2", "M3", "M4", "M5"]}
-    return admitidos, integracao
+    
+    # Carregar base de colaboradores ativos (assumindo que existe uma planilha)
+    try:
+        colaboradores_ativos = pd.read_excel("data/Base_Colaboradores_Ativos.xlsx")
+        colaboradores_ativos_lista = colaboradores_ativos['Colaborador'].tolist()
+    except:
+        # Se não existir, criar uma lista vazia ou usar os admitidos como ativos
+        st.warning("Arquivo 'Base_Colaboradores_Ativos.xlsx' não encontrado. Considerando todos como ativos.")
+        colaboradores_ativos_lista = admitidos['Colaborador'].tolist()
+    
+    return admitidos, integracao, colaboradores_ativos_lista
 
 # =========================
 # Carregamento dos dados
 # =========================
 with st.spinner('Carregando dados...'):
-    admitidos, integracao = load_data()
+    admitidos, integracao, colaboradores_ativos_lista = load_data()
 
 # =========================
 # Processamento inicial
@@ -164,6 +184,11 @@ with st.spinner('Carregando dados...'):
 admitidos = admitidos[admitidos['Cargo'] == "Ajudante Armazém"]
 admitidos = admitidos[~admitidos['Operação'].isin(["VIDROS PR", "PONTA GROSSA"])]
 admitidos['Data'] = pd.to_datetime(admitidos['Data'], errors='coerce')
+
+# Adicionar coluna de status (Ativo/Inativo)
+admitidos['Status'] = admitidos['Colaborador'].apply(
+    lambda x: 'Ativo' if x in colaboradores_ativos_lista else 'Inativo'
+)
 
 # Regras específicas por unidade
 data_corte_petropolis = datetime(2025, 10, 1)
@@ -196,6 +221,14 @@ with st.sidebar:
         "🏭 Operação", 
         ["Todas"] + operacoes,
         help="Selecione uma operação específica"
+    )
+    
+    # Filtro de status (Ativo/Inativo) - padrão somente Ativos
+    filtro_status = st.multiselect(
+        "👥 Status do Colaborador",
+        options=["Ativo", "Inativo"],
+        default=["Ativo"],
+        help="Filtrar colaboradores por status"
     )
     
     # Datas separadas (início e fim) - formato português
@@ -237,6 +270,10 @@ admitidos_filtrado = admitidos.copy()
 if filtro_operacao != "Todas":
     admitidos_filtrado = admitidos_filtrado[admitidos_filtrado['Operação'] == filtro_operacao]
 
+# Filtro de status
+if filtro_status:
+    admitidos_filtrado = admitidos_filtrado[admitidos_filtrado['Status'].isin(filtro_status)]
+
 # Filtro de data
 admitidos_filtrado = admitidos_filtrado[
     (admitidos_filtrado['Data'] >= pd.to_datetime(data_inicio)) & 
@@ -263,6 +300,7 @@ for modulo, df_mod in integracao.items():
         results_list.append({
             "Operação": row['Operação'],
             "Colaborador": row['Colaborador'],
+            "Status_Colaborador": row['Status'],
             "Data": row['Data'],
             "Módulo": modulo,
             "Status": status
@@ -327,7 +365,9 @@ st.subheader("📄 Detalhamento por Colaborador")
 
 if len(resultado_modulos) > 0:
     # Lista suspensa para filtro de módulo (com todos selecionados por padrão)
-    modulos_disponiveis = ["M1", "M2", "M3", "M4", "M5"]
+    modulos_disponiveis = ["Módulo 1", "Módulo 2", "Módulo 3", "Módulo 4", "Módulo 5"]
+    modulo_map = {"Módulo 1": "M1", "Módulo 2": "M2", "Módulo 3": "M3", "Módulo 4": "M4", "Módulo 5": "M5"}
+    
     filtro_modulo_detalhe = st.selectbox(
         "Filtrar por módulo",
         options=["Todos"] + modulos_disponiveis,
@@ -338,7 +378,8 @@ if len(resultado_modulos) > 0:
     if filtro_modulo_detalhe == "Todos":
         tabela_filtrada = resultado_modulos.copy()
     else:
-        tabela_filtrada = resultado_modulos[resultado_modulos['Módulo'] == filtro_modulo_detalhe]
+        modulo_selecionado = modulo_map[filtro_modulo_detalhe]
+        tabela_filtrada = resultado_modulos[resultado_modulos['Módulo'] == modulo_selecionado]
     
     # Formatar data para formato reduzido
     if 'Data' in tabela_filtrada.columns:
@@ -369,18 +410,21 @@ if colaborador_selecionado:
     if not dados_colaborador.empty:
         data_admissao = dados_colaborador.iloc[0]['Data'].strftime('%d/%m/%Y')
         operacao_colaborador = dados_colaborador.iloc[0]['Operação']
+        status_colaborador = dados_colaborador.iloc[0]['Status']
         
         st.markdown(f"""
         <div class="info-colaborador">
             <strong>👤 Colaborador:</strong> {colaborador_selecionado}<br>
             <strong>📅 Data de Admissão:</strong> {data_admissao}<br>
-            <strong>🏭 Operação:</strong> {operacao_colaborador}
+            <strong>🏭 Operação:</strong> {operacao_colaborador}<br>
+            <strong>📌 Status:</strong> {status_colaborador}
         </div>
         """, unsafe_allow_html=True)
 
 # Gabaritos com as perguntas e respostas corretas
 gabaritos = {
     "M1": {
+        "nome": "Módulo 1",
         "pontuacao": 90,
         "perguntas": [
             "Selecione o EPI que NÃO é obrigatório durante o processo de montagem de paletes",
@@ -406,6 +450,7 @@ gabaritos = {
         ]
     },
     "M2": {
+        "nome": "Módulo 2",
         "pontuacao": 40,
         "perguntas": [
             "Selecione a melhor alternativa que resuma a curva ABC",
@@ -421,6 +466,7 @@ gabaritos = {
         ]
     },
     "M3": {
+        "nome": "Módulo 3",
         "pontuacao": 40,
         "perguntas": [
             "Selecione a alternativa CORRETA sobre montagem de paletes",
@@ -436,6 +482,7 @@ gabaritos = {
         ]
     },
     "M4": {
+        "nome": "Módulo 4",
         "pontuacao": 40,
         "perguntas": [
             "Selecione a opção CORRETA sobre o WMS",
@@ -451,6 +498,7 @@ gabaritos = {
         ]
     },
     "M5": {
+        "nome": "Módulo 5",
         "pontuacao": 40,
         "perguntas": [
             "Selecione a opção CORRETA sobre pontuação",
@@ -467,14 +515,14 @@ gabaritos = {
     }
 }
 
-# Criar abas para cada módulo
+# Criar abas para cada módulo com os novos nomes
 modulos_lista = list(integracao.keys())
-tabs = st.tabs([f"📘 {modulo}" for modulo in modulos_lista])
+tabs = st.tabs([f"📘 {gabaritos[modulo]['nome']}" for modulo in modulos_lista])
 
 # Iterar corretamente sobre as abas
 for idx, modulo in enumerate(modulos_lista):
     with tabs[idx]:
-        st.subheader(f"Análise de Respostas - {modulo}")
+        st.subheader(f"Análise de Respostas - {gabaritos[modulo]['nome']}")
         
         df_mod = integracao[modulo]
         
@@ -496,14 +544,15 @@ for idx, modulo in enumerate(modulos_lista):
             # Primeiro gráfico da linha
             if i < len(estatisticas):
                 with cols[0]:
-                    pergunta_data = estatisticas[i]
+                    # Título do gráfico com fundo escuro
+                    st.markdown(f'<div class="grafico-titulo">📊 Pergunta {i+1}</div>', unsafe_allow_html=True)
                     # Mostrar pergunta completa
-                    st.markdown(f'<div class="pergunta-texto">📌 {i+1}. {pergunta_data["Pergunta"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="pergunta-texto">{i+1}. {estatisticas[i]["Pergunta"]}</div>', unsafe_allow_html=True)
                     
                     # Criar dataframe para o gráfico
                     df_pergunta = pd.DataFrame({
                         'Status': ['Acertos', 'Erros'],
-                        'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
+                        'Percentual': [estatisticas[i]['Acertos (%)'], estatisticas[i]['Erros (%)']]
                     })
                     
                     # Gráfico de barras verticais
@@ -533,24 +582,25 @@ for idx, modulo in enumerate(modulos_lista):
                     # Mostrar métricas
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.metric("✅ Acertos", f"{pergunta_data['Acertos (%)']:.1f}%")
+                        st.metric("✅ Acertos", f"{estatisticas[i]['Acertos (%)']:.1f}%")
                     with col2:
-                        st.metric("❌ Erros", f"{pergunta_data['Erros (%)']:.1f}%")
+                        st.metric("❌ Erros", f"{estatisticas[i]['Erros (%)']:.1f}%")
                     
-                    st.caption(f"📊 Total: {pergunta_data['Total_Respostas']} respostas")
+                    st.caption(f"📊 Total: {estatisticas[i]['Total_Respostas']} respostas")
                     st.markdown("---")
             
             # Segundo gráfico da linha
             if i + 1 < len(estatisticas):
                 with cols[1]:
-                    pergunta_data = estatisticas[i+1]
+                    # Título do gráfico com fundo escuro
+                    st.markdown(f'<div class="grafico-titulo">📊 Pergunta {i+2}</div>', unsafe_allow_html=True)
                     # Mostrar pergunta completa
-                    st.markdown(f'<div class="pergunta-texto">📌 {i+2}. {pergunta_data["Pergunta"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="pergunta-texto">{i+2}. {estatisticas[i+1]["Pergunta"]}</div>', unsafe_allow_html=True)
                     
                     # Criar dataframe para o gráfico
                     df_pergunta = pd.DataFrame({
                         'Status': ['Acertos', 'Erros'],
-                        'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
+                        'Percentual': [estatisticas[i+1]['Acertos (%)'], estatisticas[i+1]['Erros (%)']]
                     })
                     
                     # Gráfico de barras verticais
@@ -580,11 +630,11 @@ for idx, modulo in enumerate(modulos_lista):
                     # Mostrar métricas
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.metric("✅ Acertos", f"{pergunta_data['Acertos (%)']:.1f}%")
+                        st.metric("✅ Acertos", f"{estatisticas[i+1]['Acertos (%)']:.1f}%")
                     with col2:
-                        st.metric("❌ Erros", f"{pergunta_data['Erros (%)']:.1f}%")
+                        st.metric("❌ Erros", f"{estatisticas[i+1]['Erros (%)']:.1f}%")
                     
-                    st.caption(f"📊 Total: {pergunta_data['Total_Respostas']} respostas")
+                    st.caption(f"📊 Total: {estatisticas[i+1]['Total_Respostas']} respostas")
                     st.markdown("---")
 
 st.markdown("### 📌 Legenda")
