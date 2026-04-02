@@ -5,6 +5,16 @@ from datetime import datetime
 from difflib import SequenceMatcher
 import plotly.express as px
 import plotly.graph_objects as go
+import locale
+
+# Tentar configurar locale para português
+try:
+    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_TIME, 'portuguese')
+    except:
+        pass
 
 # =========================
 # Configuração da página
@@ -45,6 +55,14 @@ st.markdown("""
         border-radius: 10px;
         margin-bottom: 20px;
         border-left: 5px solid #1f77b4;
+    }
+    /* Estilo para o texto das perguntas */
+    .pergunta-texto {
+        font-size: 14px;
+        font-weight: bold;
+        margin-bottom: 10px;
+        word-wrap: break-word;
+        white-space: normal;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -180,7 +198,7 @@ with st.sidebar:
         help="Selecione uma operação específica"
     )
     
-    # Datas separadas (início e fim)
+    # Datas separadas (início e fim) - formato português
     min_date = admitidos['Data'].min().date()
     max_date = admitidos['Data'].max().date()
     
@@ -190,14 +208,16 @@ with st.sidebar:
             "📅 Data inicial", 
             value=min_date,
             min_value=min_date,
-            max_value=max_date
+            max_value=max_date,
+            format="DD/MM/YYYY"
         )
     with col2:
         data_fim = st.date_input(
             "📅 Data final", 
             value=max_date,
             min_value=min_date,
-            max_value=max_date
+            max_value=max_date,
+            format="DD/MM/YYYY"
         )
     
     # Lista suspensa para Colaborador
@@ -275,13 +295,20 @@ if len(resultado_modulos) > 0:
         color_continuous_scale=['red', 'yellow', 'green'],
         range_color=[0, 100]
     )
-    fig_aderencia.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+    # Garantir que o rótulo apareça em todas as barras
+    fig_aderencia.update_traces(
+        texttemplate='%{text:.1f}%', 
+        textposition='outside',
+        textfont=dict(size=12, color='black')
+    )
     fig_aderencia.update_layout(
         xaxis_title="Operação",
         yaxis_title="Aderência (%)",
         yaxis_range=[0, 100],
         height=500,
-        showlegend=False
+        showlegend=False,
+        uniformtext_minsize=10,
+        uniformtext_mode='hide'
     )
     st.plotly_chart(fig_aderencia, use_container_width=True, key="aderencia_geral")
     
@@ -470,89 +497,95 @@ for idx, modulo in enumerate(modulos_lista):
             if i < len(estatisticas):
                 with cols[0]:
                     pergunta_data = estatisticas[i]
-                    with st.expander(f"📌 {i+1}. {pergunta_data['Pergunta'][:50]}...", expanded=True):
-                        # Criar dataframe para o gráfico
-                        df_pergunta = pd.DataFrame({
-                            'Status': ['Acertos', 'Erros'],
-                            'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
-                        })
-                        
-                        # Gráfico de barras verticais
-                        fig = px.bar(
-                            df_pergunta,
-                            x='Status',
-                            y='Percentual',
-                            text='Percentual',
-                            color='Status',
-                            color_discrete_map={'Acertos': '#28a745', 'Erros': '#dc3545'},
-                            labels={'Percentual': 'Percentual (%)', 'Status': ''}
-                        )
-                        
-                        fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-                        fig.update_layout(
-                            yaxis_range=[0, 100],
-                            height=350,
-                            showlegend=False,
-                            xaxis_title="",
-                            yaxis_title="Percentual (%)"
-                        )
-                        
-                        # Usar key única para cada gráfico
-                        chart_key = f"chart_{modulo}_{i}_{datetime.now().timestamp()}"
-                        st.plotly_chart(fig, use_container_width=True, key=chart_key)
-                        
-                        # Mostrar métricas
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("✅ Acertos", f"{pergunta_data['Acertos (%)']:.1f}%")
-                        with col2:
-                            st.metric("❌ Erros", f"{pergunta_data['Erros (%)']:.1f}%")
-                        
-                        st.caption(f"📊 Total: {pergunta_data['Total_Respostas']} respostas")
+                    # Mostrar pergunta completa
+                    st.markdown(f'<div class="pergunta-texto">📌 {i+1}. {pergunta_data["Pergunta"]}</div>', unsafe_allow_html=True)
+                    
+                    # Criar dataframe para o gráfico
+                    df_pergunta = pd.DataFrame({
+                        'Status': ['Acertos', 'Erros'],
+                        'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
+                    })
+                    
+                    # Gráfico de barras verticais
+                    fig = px.bar(
+                        df_pergunta,
+                        x='Status',
+                        y='Percentual',
+                        text='Percentual',
+                        color='Status',
+                        color_discrete_map={'Acertos': '#28a745', 'Erros': '#dc3545'},
+                        labels={'Percentual': 'Percentual (%)', 'Status': ''}
+                    )
+                    
+                    fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+                    fig.update_layout(
+                        yaxis_range=[0, 100],
+                        height=350,
+                        showlegend=False,
+                        xaxis_title="",
+                        yaxis_title="Percentual (%)"
+                    )
+                    
+                    # Usar key única para cada gráfico
+                    chart_key = f"chart_{modulo}_{i}_{datetime.now().timestamp()}"
+                    st.plotly_chart(fig, use_container_width=True, key=chart_key)
+                    
+                    # Mostrar métricas
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("✅ Acertos", f"{pergunta_data['Acertos (%)']:.1f}%")
+                    with col2:
+                        st.metric("❌ Erros", f"{pergunta_data['Erros (%)']:.1f}%")
+                    
+                    st.caption(f"📊 Total: {pergunta_data['Total_Respostas']} respostas")
+                    st.markdown("---")
             
             # Segundo gráfico da linha
             if i + 1 < len(estatisticas):
                 with cols[1]:
                     pergunta_data = estatisticas[i+1]
-                    with st.expander(f"📌 {i+2}. {pergunta_data['Pergunta'][:50]}...", expanded=True):
-                        # Criar dataframe para o gráfico
-                        df_pergunta = pd.DataFrame({
-                            'Status': ['Acertos', 'Erros'],
-                            'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
-                        })
-                        
-                        # Gráfico de barras verticais
-                        fig = px.bar(
-                            df_pergunta,
-                            x='Status',
-                            y='Percentual',
-                            text='Percentual',
-                            color='Status',
-                            color_discrete_map={'Acertos': '#28a745', 'Erros': '#dc3545'},
-                            labels={'Percentual': 'Percentual (%)', 'Status': ''}
-                        )
-                        
-                        fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-                        fig.update_layout(
-                            yaxis_range=[0, 100],
-                            height=350,
-                            showlegend=False,
-                            xaxis_title="",
-                            yaxis_title="Percentual (%)"
-                        )
-                        
-                        # Usar key única para cada gráfico
-                        chart_key = f"chart_{modulo}_{i+1}_{datetime.now().timestamp()}"
-                        st.plotly_chart(fig, use_container_width=True, key=chart_key)
-                        
-                        # Mostrar métricas
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("✅ Acertos", f"{pergunta_data['Acertos (%)']:.1f}%")
-                        with col2:
-                            st.metric("❌ Erros", f"{pergunta_data['Erros (%)']:.1f}%")
-                        
-                        st.caption(f"📊 Total: {pergunta_data['Total_Respostas']} respostas")
+                    # Mostrar pergunta completa
+                    st.markdown(f'<div class="pergunta-texto">📌 {i+2}. {pergunta_data["Pergunta"]}</div>', unsafe_allow_html=True)
+                    
+                    # Criar dataframe para o gráfico
+                    df_pergunta = pd.DataFrame({
+                        'Status': ['Acertos', 'Erros'],
+                        'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
+                    })
+                    
+                    # Gráfico de barras verticais
+                    fig = px.bar(
+                        df_pergunta,
+                        x='Status',
+                        y='Percentual',
+                        text='Percentual',
+                        color='Status',
+                        color_discrete_map={'Acertos': '#28a745', 'Erros': '#dc3545'},
+                        labels={'Percentual': 'Percentual (%)', 'Status': ''}
+                    )
+                    
+                    fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+                    fig.update_layout(
+                        yaxis_range=[0, 100],
+                        height=350,
+                        showlegend=False,
+                        xaxis_title="",
+                        yaxis_title="Percentual (%)"
+                    )
+                    
+                    # Usar key única para cada gráfico
+                    chart_key = f"chart_{modulo}_{i+1}_{datetime.now().timestamp()}"
+                    st.plotly_chart(fig, use_container_width=True, key=chart_key)
+                    
+                    # Mostrar métricas
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("✅ Acertos", f"{pergunta_data['Acertos (%)']:.1f}%")
+                    with col2:
+                        st.metric("❌ Erros", f"{pergunta_data['Erros (%)']:.1f}%")
+                    
+                    st.caption(f"📊 Total: {pergunta_data['Total_Respostas']} respostas")
+                    st.markdown("---")
 
 st.markdown("### 📌 Legenda")
 col_leg1, col_leg2, col_leg3 = st.columns(3)
