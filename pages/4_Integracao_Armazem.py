@@ -40,8 +40,8 @@ st.title("📦 Integração Armazém - Acompanhamento de Módulos")
 
 @st.cache_data
 def load_data():
-    admitidos = pd.read_excel("Admitidos.xlsx")
-    integracao = {m: pd.read_excel("Integracao Armazem.xlsx", sheet_name=m) for m in ["M1", "M2", "M3", "M4", "M5"]}
+    admitidos = pd.read_excel("data/Admitidos.xlsx")
+    integracao = {m: pd.read_excel("data/Integracao Armazem.xlsx", sheet_name=m) for m in ["M1", "M2", "M3", "M4", "M5"]}
     return admitidos, integracao
 
 admitidos, integracao = load_data()
