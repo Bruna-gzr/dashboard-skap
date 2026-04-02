@@ -25,6 +25,27 @@ st.markdown("""
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
+    /* Estilo para os cards de métricas */
+    div[data-testid="stMetric"] {
+        background-color: #2c2c2c !important;
+        border-radius: 10px;
+        padding: 15px;
+    }
+    div[data-testid="stMetric"] label {
+        color: white !important;
+        font-weight: bold !important;
+    }
+    div[data-testid="stMetric"] div {
+        color: white !important;
+    }
+    /* Informações do colaborador */
+    .info-colaborador {
+        background-color: #f0f2f6;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        border-left: 5px solid #1f77b4;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -203,10 +224,12 @@ admitidos_filtrado = admitidos_filtrado[
 ]
 
 # Filtro de colaborador
+colaborador_selecionado = None
 if filtro_colaborador != "Todos":
     admitidos_filtrado = admitidos_filtrado[
         admitidos_filtrado['Colaborador'] == filtro_colaborador
     ]
+    colaborador_selecionado = filtro_colaborador
 
 # =========================
 # Fuzzy Match
@@ -232,12 +255,15 @@ resultado_modulos = pd.DataFrame(results_list)
 # =========================
 st.title("📦 Dashboard de Integração Armazém")
 
-# Gráfico de aderência geral por operação
+# Gráfico de aderência geral por operação (ordenado do maior para o menor)
 if len(resultado_modulos) > 0:
     aderencia_geral = resultado_modulos.groupby('Operação')['Status'].apply(
         lambda x: (x == "Realizado").mean() * 100
     ).reset_index()
     aderencia_geral.columns = ['Operação', 'Aderência (%)']
+    
+    # Ordenar do maior para o menor
+    aderencia_geral = aderencia_geral.sort_values('Aderência (%)', ascending=False)
     
     fig_aderencia = px.bar(
         aderencia_geral,
@@ -309,6 +335,21 @@ st.markdown("---")
 # Análise de Respostas Check de Retenção
 # =========================
 st.header("📝 Análise Respostas Check de Retenção")
+
+# Mostrar informações do colaborador selecionado
+if colaborador_selecionado:
+    dados_colaborador = admitidos_filtrado[admitidos_filtrado['Colaborador'] == colaborador_selecionado]
+    if not dados_colaborador.empty:
+        data_admissao = dados_colaborador.iloc[0]['Data'].strftime('%d/%m/%Y')
+        operacao_colaborador = dados_colaborador.iloc[0]['Operação']
+        
+        st.markdown(f"""
+        <div class="info-colaborador">
+            <strong>👤 Colaborador:</strong> {colaborador_selecionado}<br>
+            <strong>📅 Data de Admissão:</strong> {data_admissao}<br>
+            <strong>🏭 Operação:</strong> {operacao_colaborador}
+        </div>
+        """, unsafe_allow_html=True)
 
 # Gabaritos com as perguntas e respostas corretas
 gabaritos = {
@@ -418,61 +459,100 @@ for idx, modulo in enumerate(modulos_lista):
         respostas_validas = gabaritos[modulo]['respostas']
         perguntas_gabarito = gabaritos[modulo]['perguntas']
         
-        # Mostrar as colunas disponíveis para debug (opcional, pode remover depois)
-        with st.expander("🔍 Informações de depuração", expanded=False):
-            st.write(f"Colunas disponíveis no módulo {modulo}:")
-            colunas_df = [col for col in df_mod.columns if col not in ['Colaborador', 'CPF']]
-            st.write(colunas_df)
-            st.write(f"Número de perguntas no gabarito: {len(perguntas_gabarito)}")
-            st.write(f"Número de colunas no DataFrame: {len(colunas_df)}")
-        
         # Calcular estatísticas por pergunta
         estatisticas = calcular_estatisticas_respostas(df_mod, perguntas_gabarito, respostas_validas)
         
-        # Criar gráficos para cada pergunta
-        for i, pergunta_data in enumerate(estatisticas, 1):
-            with st.expander(f"📌 {i}. {pergunta_data['Pergunta']}", expanded=True):
-                # Criar dataframe para o gráfico
-                df_pergunta = pd.DataFrame({
-                    'Status': ['Acertos', 'Erros'],
-                    'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
-                })
-                
-                # Gráfico de barras verticais
-                fig = px.bar(
-                    df_pergunta,
-                    x='Status',
-                    y='Percentual',
-                    text='Percentual',
-                    color='Status',
-                    color_discrete_map={'Acertos': '#28a745', 'Erros': '#dc3545'},
-                    labels={'Percentual': 'Percentual (%)', 'Status': ''}
-                )
-                
-                fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-                fig.update_layout(
-                    yaxis_range=[0, 100],
-                    height=400,
-                    showlegend=False,
-                    xaxis_title="",
-                    yaxis_title="Percentual (%)"
-                )
-                
-                # Usar key única para cada gráfico
-                chart_key = f"chart_{modulo}_{i}_{datetime.now().timestamp()}"
-                st.plotly_chart(fig, use_container_width=True, key=chart_key)
-                
-                # Mostrar métricas adicionais
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("✅ Acertos", f"{pergunta_data['Acertos (%)']:.1f}%")
-                with col2:
-                    st.metric("❌ Erros", f"{pergunta_data['Erros (%)']:.1f}%")
-                
-                st.caption(f"📊 Total de respostas analisadas: {pergunta_data['Total_Respostas']}")
-                if 'Coluna_Utilizada' in pergunta_data:
-                    st.caption(f"🔍 Coluna correspondente: {pergunta_data['Coluna_Utilizada']}")
-                st.markdown("---")
+        # Criar gráficos em grupos de 2 por linha
+        for i in range(0, len(estatisticas), 2):
+            cols = st.columns(2)
+            
+            # Primeiro gráfico da linha
+            if i < len(estatisticas):
+                with cols[0]:
+                    pergunta_data = estatisticas[i]
+                    with st.expander(f"📌 {i+1}. {pergunta_data['Pergunta'][:50]}...", expanded=True):
+                        # Criar dataframe para o gráfico
+                        df_pergunta = pd.DataFrame({
+                            'Status': ['Acertos', 'Erros'],
+                            'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
+                        })
+                        
+                        # Gráfico de barras verticais
+                        fig = px.bar(
+                            df_pergunta,
+                            x='Status',
+                            y='Percentual',
+                            text='Percentual',
+                            color='Status',
+                            color_discrete_map={'Acertos': '#28a745', 'Erros': '#dc3545'},
+                            labels={'Percentual': 'Percentual (%)', 'Status': ''}
+                        )
+                        
+                        fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+                        fig.update_layout(
+                            yaxis_range=[0, 100],
+                            height=350,
+                            showlegend=False,
+                            xaxis_title="",
+                            yaxis_title="Percentual (%)"
+                        )
+                        
+                        # Usar key única para cada gráfico
+                        chart_key = f"chart_{modulo}_{i}_{datetime.now().timestamp()}"
+                        st.plotly_chart(fig, use_container_width=True, key=chart_key)
+                        
+                        # Mostrar métricas
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("✅ Acertos", f"{pergunta_data['Acertos (%)']:.1f}%")
+                        with col2:
+                            st.metric("❌ Erros", f"{pergunta_data['Erros (%)']:.1f}%")
+                        
+                        st.caption(f"📊 Total: {pergunta_data['Total_Respostas']} respostas")
+            
+            # Segundo gráfico da linha
+            if i + 1 < len(estatisticas):
+                with cols[1]:
+                    pergunta_data = estatisticas[i+1]
+                    with st.expander(f"📌 {i+2}. {pergunta_data['Pergunta'][:50]}...", expanded=True):
+                        # Criar dataframe para o gráfico
+                        df_pergunta = pd.DataFrame({
+                            'Status': ['Acertos', 'Erros'],
+                            'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
+                        })
+                        
+                        # Gráfico de barras verticais
+                        fig = px.bar(
+                            df_pergunta,
+                            x='Status',
+                            y='Percentual',
+                            text='Percentual',
+                            color='Status',
+                            color_discrete_map={'Acertos': '#28a745', 'Erros': '#dc3545'},
+                            labels={'Percentual': 'Percentual (%)', 'Status': ''}
+                        )
+                        
+                        fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+                        fig.update_layout(
+                            yaxis_range=[0, 100],
+                            height=350,
+                            showlegend=False,
+                            xaxis_title="",
+                            yaxis_title="Percentual (%)"
+                        )
+                        
+                        # Usar key única para cada gráfico
+                        chart_key = f"chart_{modulo}_{i+1}_{datetime.now().timestamp()}"
+                        st.plotly_chart(fig, use_container_width=True, key=chart_key)
+                        
+                        # Mostrar métricas
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("✅ Acertos", f"{pergunta_data['Acertos (%)']:.1f}%")
+                        with col2:
+                            st.metric("❌ Erros", f"{pergunta_data['Erros (%)']:.1f}%")
+                        
+                        st.caption(f"📊 Total: {pergunta_data['Total_Respostas']} respostas")
 
 st.markdown("### 📌 Legenda")
 col_leg1, col_leg2, col_leg3 = st.columns(3)
