@@ -6,6 +6,7 @@ from difflib import SequenceMatcher
 import plotly.express as px
 import plotly.graph_objects as go
 import locale
+import os
 
 # Tentar configurar locale para português
 try:
@@ -73,6 +74,10 @@ st.markdown("""
         margin-bottom: 15px;
         font-weight: bold;
         text-align: center;
+    }
+    /* Botão de recarregar cache */
+    .recarregar-btn {
+        margin-bottom: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -153,30 +158,77 @@ def calcular_estatisticas_respostas(df_mod, perguntas_gabarito, respostas_valida
     return estatisticas
 
 # =========================
-# Cache de dados
+# Cache de dados com botão de recarregar
 # =========================
 
-@st.cache_data
+@st.cache_data(ttl=3600)  # Cache expira após 1 hora
 def load_data():
+    """Carrega os dados das planilhas"""
+    # Tentar diferentes caminhos para o arquivo
+    possiveis_caminhos = [
+        "data/Base_Colaboradores_Ativos.xlsx",
+        "Base_Colaboradores_Ativos.xlsx",
+        "../data/Base_Colaboradores_Ativos.xlsx",
+        "./data/Base_Colaboradores_Ativos.xlsx"
+    ]
+    
     admitidos = pd.read_excel("data/Admitidos.xlsx")
     integracao = {m: pd.read_excel("data/Integracao Armazem.xlsx", sheet_name=m) for m in ["M1", "M2", "M3", "M4", "M5"]}
     
-    # Carregar base de colaboradores ativos (assumindo que existe uma planilha)
-    try:
-        colaboradores_ativos = pd.read_excel("data/Base_Colaboradores_Ativos.xlsx")
-        colaboradores_ativos_lista = colaboradores_ativos['Colaborador'].tolist()
-    except:
-        # Se não existir, criar uma lista vazia ou usar os admitidos como ativos
-        st.warning("Arquivo 'Base_Colaboradores_Ativos.xlsx' não encontrado. Considerando todos como ativos.")
+    # Carregar base de colaboradores ativos
+    colaboradores_ativos_lista = []
+    arquivo_encontrado = False
+    caminho_utilizado = None
+    
+    for caminho in possiveis_caminhos:
+        if os.path.exists(caminho):
+            try:
+                colaboradores_ativos = pd.read_excel(caminho)
+                # Verificar se a coluna 'Colaborador' existe
+                if 'Colaborador' in colaboradores_ativos.columns:
+                    colaboradores_ativos_lista = colaboradores_ativos['Colaborador'].tolist()
+                    arquivo_encontrado = True
+                    caminho_utilizado = caminho
+                    break
+                else:
+                    st.warning(f"⚠️ Arquivo {caminho} não tem a coluna 'Colaborador'")
+            except Exception as e:
+                st.warning(f"⚠️ Erro ao ler {caminho}: {str(e)}")
+    
+    if not arquivo_encontrado:
+        # Usar os colaboradores da planilha Admitidos como ativos (fallback)
         colaboradores_ativos_lista = admitidos['Colaborador'].tolist()
     
-    return admitidos, integracao, colaboradores_ativos_lista
+    return admitidos, integracao, colaboradores_ativos_lista, caminho_utilizado
+
+# =========================
+# Função para recarregar cache
+# =========================
+def recarregar_cache():
+    st.cache_data.clear()
+    st.success("✅ Cache recarregado com sucesso!")
+    st.rerun()
 
 # =========================
 # Carregamento dos dados
 # =========================
+
+# Botão de recarregar cache na sidebar
+with st.sidebar:
+    st.markdown("### 🔄 Controle de Dados")
+    if st.button("🔄 Recarregar Cache", use_container_width=True, help="Clique para recarregar todas as bases de dados"):
+        recarregar_cache()
+    
+    st.markdown("---")
+
 with st.spinner('Carregando dados...'):
-    admitidos, integracao, colaboradores_ativos_lista = load_data()
+    admitidos, integracao, colaboradores_ativos_lista, caminho_base_ativos = load_data()
+    
+    # Mostrar informações sobre a base de ativos
+    if caminho_base_ativos:
+        st.sidebar.success(f"✅ Base ativos: {len(colaboradores_ativos_lista)} colaboradores")
+    else:
+        st.sidebar.warning("⚠️ Usando fallback: todos colaboradores como ativos")
 
 # =========================
 # Processamento inicial
@@ -260,6 +312,11 @@ with st.sidebar:
         ["Todos"] + colaboradores,
         help="Selecione um colaborador específico"
     )
+    
+    # Informações de atualização
+    st.markdown("---")
+    st.markdown("### ℹ️ Informações")
+    st.caption(f"📅 Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
 # =========================
 # Aplicando filtros
