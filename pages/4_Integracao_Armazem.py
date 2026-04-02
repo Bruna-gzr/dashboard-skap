@@ -144,7 +144,6 @@ if datetime.now() <= hoje_corte:
 # Sidebar - Filtros
 # =========================
 with st.sidebar:
-    st.image("https://via.placeholder.com/300x100?text=Logo", use_column_width=True)
     st.markdown("## 🎛️ Filtros")
     
     # Lista suspensa para Operação
@@ -229,34 +228,37 @@ resultado_modulos = pd.DataFrame(results_list)
 st.title("📦 Dashboard de Integração Armazém")
 
 # Gráfico de aderência geral por operação
-aderencia_geral = resultado_modulos.groupby('Operação')['Status'].apply(
-    lambda x: (x == "Realizado").mean() * 100
-).reset_index()
-aderencia_geral.columns = ['Operação', 'Aderência (%)']
-
-fig_aderencia = px.bar(
-    aderencia_geral,
-    x='Operação',
-    y='Aderência (%)',
-    title='Aderência Geral por Operação',
-    text='Aderência (%)',
-    color='Aderência (%)',
-    color_continuous_scale=['red', 'yellow', 'green'],
-    range_color=[0, 100]
-)
-fig_aderencia.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-fig_aderencia.update_layout(
-    xaxis_title="Operação",
-    yaxis_title="Aderência (%)",
-    yaxis_range=[0, 100],
-    height=500,
-    showlegend=False
-)
-st.plotly_chart(fig_aderencia, use_container_width=True)
-
-# Card de quantidade de realizados
-total_realizados = len(resultado_modulos[resultado_modulos['Status'] == 'Realizado'].drop_duplicates(subset=['Colaborador', 'Módulo']))
-st.metric("✅ Qtde Realizados", total_realizados)
+if len(resultado_modulos) > 0:
+    aderencia_geral = resultado_modulos.groupby('Operação')['Status'].apply(
+        lambda x: (x == "Realizado").mean() * 100
+    ).reset_index()
+    aderencia_geral.columns = ['Operação', 'Aderência (%)']
+    
+    fig_aderencia = px.bar(
+        aderencia_geral,
+        x='Operação',
+        y='Aderência (%)',
+        title='Aderência Geral por Operação',
+        text='Aderência (%)',
+        color='Aderência (%)',
+        color_continuous_scale=['red', 'yellow', 'green'],
+        range_color=[0, 100]
+    )
+    fig_aderencia.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+    fig_aderencia.update_layout(
+        xaxis_title="Operação",
+        yaxis_title="Aderência (%)",
+        yaxis_range=[0, 100],
+        height=500,
+        showlegend=False
+    )
+    st.plotly_chart(fig_aderencia, use_container_width=True, key="aderencia_geral")
+    
+    # Card de quantidade de realizados
+    total_realizados = len(resultado_modulos[resultado_modulos['Status'] == 'Realizado'].drop_duplicates(subset=['Colaborador', 'Módulo']))
+    st.metric("✅ Qtde Realizados", total_realizados)
+else:
+    st.warning("Nenhum dado encontrado com os filtros selecionados.")
 
 st.markdown("---")
 
@@ -265,31 +267,35 @@ st.markdown("---")
 # =========================
 st.subheader("📄 Detalhamento por Colaborador")
 
-# Lista suspensa para filtro de módulo (com todos selecionados por padrão)
-modulos_disponiveis = ["M1", "M2", "M3", "M4", "M5"]
-filtro_modulo_detalhe = st.selectbox(
-    "Filtrar por módulo",
-    options=["Todos"] + modulos_disponiveis,
-    index=0
-)
-
-if filtro_modulo_detalhe == "Todos":
-    tabela_filtrada = resultado_modulos.copy()
-else:
-    tabela_filtrada = resultado_modulos[resultado_modulos['Módulo'] == filtro_modulo_detalhe]
-
-# Formatar data para formato reduzido
-tabela_filtrada['Data'] = pd.to_datetime(tabela_filtrada['Data']).dt.strftime('%d/%m/%Y')
-
-# Tabela com cores
-def color_status(val):
-    if val == 'Realizado':
-        return 'background-color: #28a745; color: white'
+if len(resultado_modulos) > 0:
+    # Lista suspensa para filtro de módulo (com todos selecionados por padrão)
+    modulos_disponiveis = ["M1", "M2", "M3", "M4", "M5"]
+    filtro_modulo_detalhe = st.selectbox(
+        "Filtrar por módulo",
+        options=["Todos"] + modulos_disponiveis,
+        index=0,
+        key="filtro_modulo"
+    )
+    
+    if filtro_modulo_detalhe == "Todos":
+        tabela_filtrada = resultado_modulos.copy()
     else:
-        return 'background-color: #dc3545; color: white'
-
-styled_table = tabela_filtrada.style.applymap(color_status, subset=['Status'])
-st.dataframe(styled_table, use_container_width=True, height=400)
+        tabela_filtrada = resultado_modulos[resultado_modulos['Módulo'] == filtro_modulo_detalhe]
+    
+    # Formatar data para formato reduzido
+    tabela_filtrada['Data'] = pd.to_datetime(tabela_filtrada['Data']).dt.strftime('%d/%m/%Y')
+    
+    # Tabela com cores
+    def color_status(val):
+        if val == 'Realizado':
+            return 'background-color: #28a745; color: white'
+        else:
+            return 'background-color: #dc3545; color: white'
+    
+    styled_table = tabela_filtrada.style.applymap(color_status, subset=['Status'])
+    st.dataframe(styled_table, use_container_width=True, height=400)
+else:
+    st.info("Nenhum dado para exibir na tabela detalhada.")
 
 st.markdown("---")
 
@@ -355,8 +361,8 @@ gabaritos = {
 # Criar abas para cada módulo
 tabs = st.tabs([f"📘 {modulo}" for modulo in integracao.keys()])
 
-for tab, (modulo, df_mod) in zip(tabs, integracao.items()):
-    with tab:
+for tab_idx, (modulo, df_mod) in enumerate(zip(tabs, integracao.items())):
+    with tab_idx:
         st.subheader(f"Análise de Respostas - {modulo}")
         
         respostas_validas = gabaritos[modulo]['respostas']
@@ -375,7 +381,7 @@ for tab, (modulo, df_mod) in zip(tabs, integracao.items()):
                 'Percentual': [pergunta_data['Acertos (%)'], pergunta_data['Erros (%)']]
             })
             
-            # Gráfico de barras verticais
+            # Gráfico de barras verticais com key única
             fig = px.bar(
                 df_pergunta,
                 x='Status',
@@ -395,7 +401,9 @@ for tab, (modulo, df_mod) in zip(tabs, integracao.items()):
                 yaxis_title="Percentual (%)"
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            # Usar key única para cada gráfico
+            chart_key = f"chart_{modulo}_{i}"
+            st.plotly_chart(fig, use_container_width=True, key=chart_key)
             st.markdown(f"**Total de respostas:** {pergunta_data['Total_Respostas']}")
             st.markdown("---")
 
