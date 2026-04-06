@@ -48,19 +48,10 @@ def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def normalizar_nome(s: str) -> str:
-    """
-    Normalização mais forte:
-    - remove acentos/pontuação
-    - colapsa espaços
-    - corrige confusões comuns (0->O, 1->I)
-    """
     s = "" if s is None else str(s)
     s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("utf-8")
     s = s.upper().strip()
-
-    # ✅ correções comuns em bases (ex.: 0LIVEIRA -> OLIVEIRA)
     s = s.replace("0", "O").replace("1", "I")
-
     s = re.sub(r"[^\w\s]", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
@@ -81,10 +72,8 @@ def first_last_key(key: str) -> str:
 
 def tratar_data_segura(series: pd.Series) -> pd.Series:
     dt_txt = pd.to_datetime(series, errors="coerce", dayfirst=True)
-
     num = pd.to_numeric(series, errors="coerce").replace([np.inf, -np.inf], np.nan)
     mask = num.notna() & np.isfinite(num) & (num >= 20000) & (num <= 80000)
-
     dt_excel = pd.Series(pd.NaT, index=series.index)
     if mask.any():
         dt_excel.loc[mask] = pd.to_datetime(
@@ -129,28 +118,18 @@ def parse_percent(x):
 def parse_time_mmss(x):
     if pd.isna(x):
         return np.nan
-
     s = str(x).strip()
     if s == "":
         return np.nan
-
     s = s.replace("0 days ", "").replace("0 day ", "")
-
-    # ✅ número do Excel (fração do dia)
     s_num = s.replace(",", ".")
     v = pd.to_numeric(s_num, errors="coerce")
-
     if not pd.isna(v) and re.fullmatch(r"[-+]?\d+(\.\d+)?", s_num):
         v = float(v)
-
         if 0 <= v < 1:
             return v * 24 * 60
-
         return v
-
-    # ✅ texto HH:MM:SS
     parts = [p.strip() for p in s.split(":") if p.strip() != ""]
-
     if len(parts) == 2:
         mm, ss = parts
         mm = pd.to_numeric(mm, errors="coerce")
@@ -158,7 +137,6 @@ def parse_time_mmss(x):
         if pd.isna(mm) or pd.isna(ss):
             return np.nan
         return float(mm) + float(ss) / 60
-
     if len(parts) == 3:
         hh, mm, ss = parts
         hh = pd.to_numeric(hh, errors="coerce")
@@ -167,7 +145,6 @@ def parse_time_mmss(x):
         if pd.isna(hh) or pd.isna(mm) or pd.isna(ss):
             return np.nan
         return float(hh) * 60 + float(mm) + float(ss) / 60
-
     return np.nan
 
 def fmt_hms_from_minutes(v):
@@ -202,55 +179,35 @@ def safe_float(x):
 # MATCHER (similaridade de nomes) - baseado em ATIVOS
 # =========================================================
 def build_name_matcher(target_df: pd.DataFrame):
-    """
-    Retorna uma função que converte nomes "crus" de qualquer base -> NOME_KEY do target_df,
-    tentando:
-      1) match exato NOME_KEY
-      2) match por NOME_SIMPLE
-      3) match por FIRST_LAST
-      4) fallback fuzzy leve (SequenceMatcher) com filtro por primeiro nome
-    """
     t = target_df.copy()
-
-    # garante COLABORADOR
     if "COLABORADOR" not in t.columns:
-        # se vier só uma coluna sem nome, tenta pegar a primeira
         if len(t.columns) >= 1:
             t = t.rename(columns={t.columns[0]: "COLABORADOR"})
         else:
             t["COLABORADOR"] = ""
-
     t["NOME_KEY"] = t["COLABORADOR"].astype(str).map(normalizar_nome)
     t["NOME_SIMPLE"] = t["NOME_KEY"].map(nome_simple_from_key)
     t["FIRST_LAST"] = t["NOME_KEY"].map(first_last_key)
-
-    # dicionários diretos
-    # ✅ aqui é o ajuste do KeyError: não dá pra pegar ["NOME_KEY"] depois do set_index
     keys = t["NOME_KEY"].dropna().astype(str)
     d_key = {k: k for k in keys.unique().tolist()}
-
     d_simple = (
         t.dropna(subset=["NOME_SIMPLE", "NOME_KEY"])
          .drop_duplicates("NOME_SIMPLE")
          .set_index("NOME_SIMPLE")["NOME_KEY"]
          .to_dict()
     )
-
     d_fl = (
         t.dropna(subset=["FIRST_LAST", "NOME_KEY"])
          .drop_duplicates("FIRST_LAST")
          .set_index("FIRST_LAST")["NOME_KEY"]
          .to_dict()
     )
-
-    # índice por primeiro token (reduz candidatos do fuzzy)
     by_first = {}
     for nk in keys.unique().tolist():
         toks = nk.split()
         if not toks:
             continue
         by_first.setdefault(toks[0], []).append(nk)
-
     def token_score(a: str, b: str) -> float:
         ta = set(a.split())
         tb = set(b.split())
@@ -258,20 +215,16 @@ def build_name_matcher(target_df: pd.DataFrame):
             return 0.0
         inter = len(ta & tb)
         return inter / max(1, min(len(ta), len(tb)))
-
     def best_fuzzy(nk: str) -> str | None:
         if not nk:
             return None
-
         toks = nk.split()
         first = toks[0] if toks else ""
         cands = by_first.get(first, [])
         if not cands:
             return None
-
         best_score = 0.0
         best_cand = None
-
         for cand in cands:
             r = SequenceMatcher(None, nk, cand).ratio()
             ts = token_score(nk, cand)
@@ -279,32 +232,24 @@ def build_name_matcher(target_df: pd.DataFrame):
             if score > best_score:
                 best_score = score
                 best_cand = cand
-
-        # threshold conservador
         if best_score >= 0.86:
             return best_cand
         return None
-
     def map_series(series: pd.Series) -> pd.Series:
         raw_key = series.astype(str).map(normalizar_nome)
         mapped = raw_key.map(d_key)
-
         miss = mapped.isna()
         if miss.any():
             simp = raw_key[miss].map(nome_simple_from_key)
             mapped.loc[miss] = simp.map(d_simple)
-
         miss = mapped.isna()
         if miss.any():
             fl = raw_key[miss].map(first_last_key)
             mapped.loc[miss] = fl.map(d_fl)
-
         miss = mapped.isna()
         if miss.any():
             mapped.loc[miss] = raw_key[miss].apply(best_fuzzy)
-
         return mapped
-
     return map_series
 
 # =========================================================
@@ -312,14 +257,11 @@ def build_name_matcher(target_df: pd.DataFrame):
 # =========================================================
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 ARQ_SKAP   = DATA_DIR / "Skap.xlsx"
-
-# AUTO-DETECTAR PRONTUÁRIO
 ARQ_PRONT = None
 for f in DATA_DIR.glob("*.xlsx"):
     if "PRONT" in normalizar_nome(f.name):
         ARQ_PRONT = f
         break
-
 ARQ_VALES  = DATA_DIR / "Vales.xlsx"
 ARQ_RV     = DATA_DIR / "RV.xlsx"
 ARQ_ABS    = DATA_DIR / "Absenteismo.xlsx"
@@ -339,7 +281,6 @@ def get_last_mtime():
     arquivos = [ARQ_ATIVOS, ARQ_SKAP, ARQ_VALES, ARQ_RV, ARQ_ABS, ARQ_ACID, ARQ_DTO, ARQ_IND, ARQ_CICLO, ARQ_AD_CHECK, ARQ_LOGON, ARQ_QUEDAS, ARQ_JLL_PG]
     if ARQ_PRONT is not None:
         arquivos.append(ARQ_PRONT)
-
     mtimes = []
     for a in arquivos:
         try:
@@ -357,17 +298,13 @@ last_mtime = get_last_mtime()
 FUNCOES_MAP = {
     normalizar_nome("Ajudante Distribuição"): "Ajudante de Distribuição",
     normalizar_nome("Ajudante AS"): "Ajudante de Distribuição",
-
     normalizar_nome("Motorista Caminhão Distribuição"): "Motorista de Distribuição",
     normalizar_nome("Motorista de Distribuição AS"): "Motorista de Distribuição",
-
     normalizar_nome("Motorista Entregador I"): "Motorista de Van",
     normalizar_nome("Motorista Entregador"): "Motorista de Van",
     normalizar_nome("Motorista Entregador II"): "Motorista de Van",
-
     normalizar_nome("Ajudante Armazém"): "Ajudante de armazem",
     normalizar_nome("Amarrador"): "Ajudante de armazem",
-
     normalizar_nome("Operador de Empilhadeira"): "Operador",
     normalizar_nome("Operador Conferente"): "Operador",
 }
@@ -412,16 +349,10 @@ METAS = {norm_operacao(k): v for k, v in METAS.items()}
 OP_LONDRINA_KEY = norm_operacao("CD LONDRINA")
 OP_PETROPOLIS_KEY = norm_operacao("CD PETROPOLIS")
 
-# pontos padrão (RV não pontua)
-PONTOS_DISTRIB_PADRAO = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}  # 30
-
-# ✅ CD LONDRINA: desconsidera BEES e TML vira 3 (mantém total 30)
-PONTOS_DISTRIB_LONDRINA = {"PDV": 5, "TML": 3, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}  # 30
-
-# ✅ CD PETROPOLIS: usa pontuação padrão (inclui BEES)
-PONTOS_DISTRIB_PETROPOLIS = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}  # 30
-
-PONTOS_ARMAZEM = {"ABS": 10, "ACIDENTE": 10, "DTO": 10}  # 30
+PONTOS_DISTRIB_PADRAO = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}
+PONTOS_DISTRIB_LONDRINA = {"PDV": 5, "TML": 3, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}
+PONTOS_DISTRIB_PETROPOLIS = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}
+PONTOS_ARMAZEM = {"ABS": 10, "ACIDENTE": 10, "DTO": 10}
 
 def pontos_distrib_por_operacao(op_key: str) -> dict:
     if op_key == OP_LONDRINA_KEY:
@@ -432,10 +363,6 @@ def pontos_distrib_por_operacao(op_key: str) -> dict:
 
 def operacao_sem_bees(op_key: str) -> bool:
     return op_key == OP_LONDRINA_KEY
-
-def operacao_com_corte_2026(op_key: str) -> bool:
-    """Retorna True para operações que devem ter corte a partir de 01/01/2026"""
-    return op_key == OP_PETROPOLIS_KEY
 
 OP_PONTA_GROSSA_KEY = norm_operacao("PONTA GROSSA")
 OP_CD_PONTA_GROSSA_KEY = norm_operacao("CD PONTA GROSSA")
@@ -466,38 +393,31 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
                 if non_empty >= 3:
                     return i
         return None
-
     def achar_col(df: pd.DataFrame, keys: list[str]) -> str | None:
         for c in df.columns:
             cc = normalizar_nome(c)
             if any(k in cc for k in keys):
                 return c
         return None
-
     try:
         book = pd.read_excel(path_xlsx, sheet_name=None, header=None)
     except Exception:
         return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
-
     melhor = None
-
     for sheet, raw in book.items():
         if raw is None or raw.empty:
             continue
         h = detectar_header(raw)
         if h is None:
             continue
-
         try:
             df = pd.read_excel(path_xlsx, sheet_name=sheet, header=h)
             df = normalizar_colunas(df)
         except Exception:
             continue
-
         col_nome = achar_col(df, ["EMPREG", "COLAB", "CONDUT", "MOTORIST", "NOME"])
         if col_nome is None:
             continue
-
         col_score = None
         for c in df.columns:
             cc = normalizar_nome(c)
@@ -508,26 +428,20 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
             col_score = achar_col(df, ["PONTUACAO", "PONTUAC", "SCORE", "PONTOS", "NOTA"])
         if col_score is None:
             continue
-
         df["NOME_KEY"] = df[col_nome].astype(str).map(normalizar_nome)
         df["NOME_SIMPLE"] = df["NOME_KEY"].map(nome_simple_from_key)
         df["FIRST_LAST"] = df["NOME_KEY"].map(first_last_key)
-
         s = df[col_score].astype(str).str.replace(",", ".", regex=False)
         df["PRONT_PONDERADA"] = pd.to_numeric(s, errors="coerce")
-
         out = (
             df[["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"]]
             .dropna(subset=["NOME_KEY"])
             .drop_duplicates("NOME_KEY", keep="last")
         )
-
         if melhor is None or len(out) > len(melhor):
             melhor = out
-
     if melhor is None or melhor.empty:
         return pd.DataFrame(columns=["NOME_KEY", "NOME_SIMPLE", "FIRST_LAST", "PRONT_PONDERADA"])
-
     return melhor
 
 # =========================================================
@@ -537,7 +451,6 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
 def carregar_bases(_cache_key: float | None):
     if not ARQ_ATIVOS.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_ATIVOS.name}")
-
     ativos = pd.read_excel(ARQ_ATIVOS)
     skap   = pd.read_excel(ARQ_SKAP) if ARQ_SKAP.exists() else pd.DataFrame()
     vales  = pd.read_excel(ARQ_VALES) if ARQ_VALES.exists() else pd.DataFrame()
@@ -551,14 +464,12 @@ def carregar_bases(_cache_key: float | None):
     logon    = pd.read_excel(ARQ_LOGON) if ARQ_LOGON.exists() else pd.DataFrame()
     quedas   = pd.read_excel(ARQ_QUEDAS) if ARQ_QUEDAS.exists() else pd.DataFrame()
     jll_pg   = pd.read_excel(ARQ_JLL_PG) if ARQ_JLL_PG.exists() else pd.DataFrame()
-
     pront = pd.DataFrame()
     if ARQ_PRONT is not None and ARQ_PRONT.exists():
         try:
             pront = ler_prontuario_ponderada(ARQ_PRONT)
         except Exception:
             pront = pd.DataFrame()
-
     return ativos, skap, pront, vales, rv, abs_, acid, dto, ind, ciclo, ad_check, logon, quedas, jll_pg
 
 try:
@@ -571,29 +482,23 @@ except Exception as e:
 # NORMALIZAÇÃO ATIVOS
 # =========================================================
 ativos = normalizar_colunas(ativos)
-
 for c in ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
     if c not in ativos.columns:
         ativos[c] = ""
-
 if "OPERAÇÃO" in ativos.columns and "OPERACAO" not in ativos.columns:
     ativos["OPERACAO"] = ativos["OPERAÇÃO"]
-
 ativos["NOME_KEY"] = ativos["COLABORADOR"].astype(str).map(normalizar_nome)
 ativos["NOME_SIMPLE"] = ativos["NOME_KEY"].map(nome_simple_from_key)
 ativos["FIRST_LAST"] = ativos["NOME_KEY"].map(first_last_key)
-
 ativos["OPER_KEY"] = ativos["OPERACAO"].astype(str).map(norm_operacao)
 ativos["FUNCAO"] = ativos["CARGO"].astype(str).map(unificar_funcao)
 ativos["DATA_ADM_DT"] = tratar_data_segura(ativos["DATA ULT. ADM"])
 ativos["ADMISSAO"] = pd.to_datetime(ativos["DATA_ADM_DT"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 ativos = ativos[ativos["FUNCAO"].isin(FUNCOES_PERMITIDAS)].copy()
-
-# ✅ matcher baseado em ATIVOS (pra harmonizar nomes das outras bases)
 map_to_ativos_key = build_name_matcher(ativos[["COLABORADOR"]].copy())
 
 # =========================================================
-# SKAP (harmoniza nome por similaridade)
+# SKAP
 # =========================================================
 skap = normalizar_colunas(skap) if not skap.empty else skap
 if not skap.empty:
@@ -607,25 +512,22 @@ else:
     skap_niveis = pd.DataFrame(columns=["NOME_KEY", "NIVEIS"])
 
 # =========================================================
-# CICLO DE GENTE (Classificação Final) - harmoniza nome
+# CICLO DE GENTE
 # =========================================================
 ciclo_map = pd.DataFrame(columns=["NOME_KEY", "CICLO_CLASSIFICACAO_FINAL"])
 if ciclo is not None and not ciclo.empty:
     ciclo = normalizar_colunas(ciclo)
-
     col_nome = None
     for c in ciclo.columns:
         cc = normalizar_nome(c)
         if any(k in cc for k in ["COLAB", "EMPREG", "NOME"]):
             col_nome = c
             break
-
     col_final = None
     for c in ciclo.columns:
         if normalizar_nome(c) == normalizar_nome("CLASSIFICACAO FINAL"):
             col_final = c
             break
-
     if col_nome is not None and col_final is not None:
         tmp = ciclo[[col_nome, col_final]].copy()
         tmp["NOME_KEY"] = map_to_ativos_key(tmp[col_nome])
@@ -637,29 +539,24 @@ if ciclo is not None and not ciclo.empty:
         )
 
 # =========================================================
-# BASE MASTER + PRONTUÁRIO + CICLO
+# BASE MASTER
 # =========================================================
 base_master = ativos.merge(skap_niveis, on="NOME_KEY", how="left").merge(ciclo_map, on="NOME_KEY", how="left")
-
 if pront is None or pront.empty:
     base_master["PRONT_PONDERADA"] = np.nan
 else:
     d_key = pront.dropna(subset=["PRONT_PONDERADA"]).drop_duplicates("NOME_KEY", keep="last").set_index("NOME_KEY")["PRONT_PONDERADA"].to_dict()
     d_simple = pront.dropna(subset=["PRONT_PONDERADA"]).drop_duplicates("NOME_SIMPLE", keep="last").set_index("NOME_SIMPLE")["PRONT_PONDERADA"].to_dict()
     d_fl = pront.dropna(subset=["PRONT_PONDERADA"]).drop_duplicates("FIRST_LAST", keep="last").set_index("FIRST_LAST")["PRONT_PONDERADA"].to_dict()
-
     base_master["PRONT_PONDERADA"] = base_master["NOME_KEY"].map(d_key)
     miss = base_master["PRONT_PONDERADA"].isna()
     base_master.loc[miss, "PRONT_PONDERADA"] = base_master.loc[miss, "NOME_SIMPLE"].map(d_simple)
     miss = base_master["PRONT_PONDERADA"].isna()
     base_master.loc[miss, "PRONT_PONDERADA"] = base_master.loc[miss, "FIRST_LAST"].map(d_fl)
-
 if "NIVEIS" not in base_master.columns:
     base_master["NIVEIS"] = ""
 if "CICLO_CLASSIFICACAO_FINAL" not in base_master.columns:
     base_master["CICLO_CLASSIFICACAO_FINAL"] = ""
-
-# prontuário só motoristas
 MOTORISTAS_OK = {normalizar_nome("Motorista de Distribuição"), normalizar_nome("Motorista de Van")}
 base_master["FUNCAO_KEY"] = base_master["FUNCAO"].astype(str).map(normalizar_nome)
 mask_motorista = base_master["FUNCAO_KEY"].isin(MOTORISTAS_OK)
@@ -686,7 +583,7 @@ base_master["PRONT_FAIXA"] = tmp.apply(lambda t: t[0])
 base_master["PRONT_COR"] = tmp.apply(lambda t: t[1])
 
 # =========================================================
-# EVENTOS (harmoniza nomes por similaridade)
+# EVENTOS
 # =========================================================
 def prep_evento(df: pd.DataFrame, col_nome: str, col_data: str, nome_out="NOME_KEY", data_out="DT"):
     if df is None or df.empty:
@@ -696,7 +593,6 @@ def prep_evento(df: pd.DataFrame, col_nome: str, col_data: str, nome_out="NOME_K
         df[col_nome.upper()] = ""
     if col_data.upper() not in df.columns:
         df[col_data.upper()] = ""
-
     out = df[[col_nome.upper(), col_data.upper()]].copy()
     out[nome_out] = map_to_ativos_key(out[col_nome.upper()])
     out[data_out] = tratar_data_segura(out[col_data.upper()])
@@ -710,7 +606,6 @@ if acid_ev.empty:
     acid_ev = prep_evento(acid, "COLABORADOR", "DATA")
 dto_ev   = prep_evento(dto, "COLABORADOR", "DATA")
 
-# Absenteísmo
 abs_ev = pd.DataFrame(columns=["NOME_KEY", "DT", "MES", "TIPO"])
 if abs_ is not None and not abs_.empty:
     abs_ = normalizar_colunas(abs_)
@@ -725,7 +620,6 @@ if abs_ is not None and not abs_.empty:
     abs_ = abs_[abs_["TIPO"].isin([normalizar_nome("JUSTIFICADA"), normalizar_nome("NÃO JUSTIFICADA"), normalizar_nome("NAO JUSTIFICADA")])]
     abs_ev = abs_[["NOME_KEY", "DT", "MES", "TIPO"]].copy()
 
-# RV (por mês) - resultado + recarga
 rv_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PCT_RV", "RECARGAS"])
 if rv is not None and not rv.empty:
     rv = normalizar_colunas(rv)
@@ -733,18 +627,14 @@ if rv is not None and not rv.empty:
         rv["NOME"] = ""
     if "DATA" not in rv.columns:
         rv["DATA"] = ""
-
     col_pct = "%" if "%" in rv.columns else ("PCT" if "PCT" in rv.columns else ("PERCENTUAL" if "PERCENTUAL" in rv.columns else ""))
     col_rec = "RECARGA" if "RECARGA" in rv.columns else ("RECARGAS" if "RECARGAS" in rv.columns else "")
-
     rv["NOME_KEY"] = map_to_ativos_key(rv["NOME"])
     rv["DT"] = tratar_data_segura(rv["DATA"])
     rv = rv.dropna(subset=["DT", "NOME_KEY"])
     rv["MES"] = to_month_key(rv["DT"])
-
     rv["PCT_RV_NUM"] = rv[col_pct].apply(parse_percent) if col_pct else np.nan
     rv["RECARGA_NUM"] = safe_float(rv[col_rec]) if col_rec else np.nan
-
     rv_m = (
         rv.groupby(["NOME_KEY", "MES"], dropna=False)
         .agg(
@@ -754,27 +644,22 @@ if rv is not None and not rv.empty:
         .reset_index()
     )
 
-# Indicadores operacionais
 ind_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PDV", "BEES", "TML_MIN", "JL", "STATUS", "STATUS_RAW"])
 if ind is not None and not ind.empty:
     ind = normalizar_colunas(ind)
     for c in ["COLABORADOR", "DATA", "PDV", "BEES", "TML (MIN)", "JL", "STATUS"]:
         if c not in ind.columns:
             ind[c] = ""
-
     ind["NOME_KEY"] = map_to_ativos_key(ind["COLABORADOR"])
     ind["DT"] = tratar_data_segura(ind["DATA"])
     ind = ind.dropna(subset=["DT", "NOME_KEY"])
     ind["MES"] = to_month_key(ind["DT"])
-
     ind["PDV_NUM"] = ind["PDV"].apply(parse_percent)
     ind["BEES_NUM"] = ind["BEES"].apply(parse_percent)
     ind["TML_MIN"] = ind["TML (MIN)"].apply(parse_time_mmss)
     ind["JL_NUM"] = ind["JL"].apply(parse_percent)
-
     ind["STATUS_NORM"] = ind["STATUS"].astype(str).map(normalizar_nome)
     ind["STATUS_RAW"] = ind["STATUS"].astype(str)
-
     def status_final(s):
         s = normalizar_nome(s)
         if s == normalizar_nome("FERIAS"):
@@ -782,7 +667,6 @@ if ind is not None and not ind.empty:
         if s in [normalizar_nome("AFASTADO"), normalizar_nome("AFS")]:
             return "AFASTADO"
         return ""
-
     def pick_status(series: pd.Series) -> str:
         vals = [status_final(x) for x in series.dropna().astype(str).tolist()]
         if "FERIAS" in vals:
@@ -790,11 +674,9 @@ if ind is not None and not ind.empty:
         if "AFASTADO" in vals:
             return "AFASTADO"
         return ""
-
     def pick_status_raw(series: pd.Series) -> str:
         vals = [str(x).strip() for x in series.dropna().astype(str).tolist() if str(x).strip() != ""]
         return vals[-1] if vals else ""
-
     ind_m = (
         ind.groupby(["NOME_KEY", "MES"], dropna=False)
         .agg(
@@ -808,8 +690,6 @@ if ind is not None and not ind.empty:
         .reset_index()
     )
 
-
-# Indicadores especiais Ponta Grossa / Apoio Logístico
 ad_check_m = pd.DataFrame(columns=["NOME_KEY", "MES", "AD_CHECKLIST"])
 if ad_check is not None and not ad_check.empty:
     ad_check = normalizar_colunas(ad_check)
@@ -884,7 +764,6 @@ if jll_pg is not None and not jll_pg.empty:
         .reset_index()
     )
 
-# contagens
 vales_m = vales_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="VALES")
 acid_m  = acid_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ACIDENTE")
 dto_m   = dto_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="DTO")
@@ -933,22 +812,17 @@ grid = left_join(grid, jll_pg_m, ["JLL_PG"])
 for c in ["ABS","VALES","ACIDENTE","DTO"]:
     if c in grid.columns:
         grid[c] = pd.to_numeric(grid[c], errors="coerce").fillna(0).astype(int)
-
 if "RECARGAS" in grid.columns:
     grid["RECARGAS"] = pd.to_numeric(grid["RECARGAS"], errors="coerce").fillna(0).astype(int)
-
 if "QUEDAS" in grid.columns:
     grid["QUEDAS"] = pd.to_numeric(grid["QUEDAS"], errors="coerce").fillna(0).astype(int)
 
-# ✅ MÊS DE ADMISSÃO NÃO APARECE (só mês seguinte)
 grid["_MES_DT"] = pd.to_datetime(grid["MES"] + "-01", errors="coerce")
 grid["_ADM_MES_DT"] = pd.to_datetime(grid["DATA_ADM_DT"], errors="coerce").dt.to_period("M").dt.to_timestamp()
 grid = grid[grid["_MES_DT"] > grid["_ADM_MES_DT"]].copy()
 grid = grid.drop(columns=["_MES_DT","_ADM_MES_DT"])
-
 grid["MÊS"] = grid["MES"].apply(month_label)
 
-# corte especial Ponta Grossa / Apoio Logístico
 mask_pg_apoio = grid.apply(lambda r: is_ponta_grossa_apoio(r.get("OPERACAO", ""), r.get("ATIVIDADE", "")), axis=1)
 grid_pg_apoio = grid["MES"].ge("2026-01")
 grid = grid[(~mask_pg_apoio) | (grid_pg_apoio)].copy()
@@ -960,84 +834,65 @@ def calc_pontos_row(row) -> dict:
     op_key = norm_operacao(row.get("OPERACAO", ""))
     metas_op = METAS.get(op_key, {})
     mode = view_mode_from_funcao(row.get("FUNCAO", ""))
-
     pts_distrib = pontos_distrib_por_operacao(op_key)
     sem_bees = operacao_sem_bees(op_key)
     is_pg_apoio = is_ponta_grossa_apoio(row.get("OPERACAO", ""), row.get("ATIVIDADE", ""))
-
     res = {
         "PTS_PDV": 0, "PTS_BEES": 0, "PTS_TML": 0, "PTS_JL": 0,
         "PTS_ABS": 0, "PTS_VALES": 0, "PTS_ACIDENTE": 0, "PTS_DTO": 0,
         "PTS_AD_CHECKLIST": 0, "PTS_LOGON": 0, "PTS_QUEDAS": 0,
         "TOTAL_PTS": 0
     }
-
-    # Regra especial: Ponta Grossa / Apoio Logístico
     if is_pg_apoio:
         funcao = str(row.get("FUNCAO", ""))
-
         jll_val = row.get("JLL_PG", np.nan)
         if pd.isna(jll_val) or float(jll_val) >= 80:
             res["PTS_JL"] = 2
-
         if int(row.get("ABS", 0) or 0) == 0:
             res["PTS_ABS"] = 10 if is_func_operador(funcao) else 20 if is_func_ajud_armazem(funcao) else 0
-
         if int(row.get("ACIDENTE", 0) or 0) == 0:
             res["PTS_ACIDENTE"] = 3
-
         if is_func_operador(funcao):
             ad_val = row.get("AD_CHECKLIST", np.nan)
             if pd.isna(ad_val) or float(ad_val) >= 80:
                 res["PTS_AD_CHECKLIST"] = 10
-
             logon_val = row.get("LOGON", np.nan)
             if pd.isna(logon_val) or float(logon_val) >= 80:
                 res["PTS_LOGON"] = 10
-
             if int(row.get("QUEDAS", 0) or 0) == 0:
                 res["PTS_QUEDAS"] = 5
-
         elif is_func_ajud_armazem(funcao):
             logon_val = row.get("LOGON", np.nan)
             if pd.isna(logon_val) or float(logon_val) >= 80:
                 res["PTS_LOGON"] = 15
-
         res["TOTAL_PTS"] = (
             res["PTS_JL"] + res["PTS_ABS"] + res["PTS_ACIDENTE"] +
             res["PTS_AD_CHECKLIST"] + res["PTS_LOGON"] + res["PTS_QUEDAS"]
         )
         return res
-
     if mode == "DISTRIB":
         v_pdv  = row.get("PDV", np.nan)
         v_bees = row.get("BEES", np.nan)
         v_tml  = row.get("TML_MIN", np.nan)
         v_jl   = row.get("JL", np.nan)
-
         if pd.notna(v_pdv) and "PDV" in metas_op and pd.notna(metas_op["PDV"].get("meta", None)):
             if float(v_pdv) <= float(metas_op["PDV"]["meta"]):
                 res["PTS_PDV"] = pts_distrib["PDV"]
-
         if (not sem_bees) and ("BEES" in pts_distrib):
             if pd.notna(v_bees) and "BEES" in metas_op and pd.notna(metas_op["BEES"].get("meta", None)):
                 if float(v_bees) >= float(metas_op["BEES"]["meta"]):
                     res["PTS_BEES"] = pts_distrib["BEES"]
-
         meta_tml = metas_op.get("TML", {}).get("meta", None)
         meta_tml_min = None
         if meta_tml is not None and pd.notna(meta_tml):
             meta_tml = float(meta_tml)
             meta_tml_min = meta_tml * 60.0 if 0 < meta_tml <= 1.5 else meta_tml
-
         if pd.notna(v_tml) and meta_tml_min is not None:
             if float(v_tml) <= float(meta_tml_min):
                 res["PTS_TML"] = pts_distrib["TML"]
-
         if pd.notna(v_jl) and "JL" in metas_op and pd.notna(metas_op["JL"].get("meta", None)):
             if float(v_jl) >= float(metas_op["JL"]["meta"]):
                 res["PTS_JL"] = pts_distrib["JL"]
-
         if int(row.get("ABS", 0) or 0) == 0:
             res["PTS_ABS"] = pts_distrib["ABS"]
         if int(row.get("VALES", 0) or 0) == 0:
@@ -1046,20 +901,17 @@ def calc_pontos_row(row) -> dict:
             res["PTS_ACIDENTE"] = pts_distrib["ACIDENTE"]
         if int(row.get("DTO", 0) or 0) == 0:
             res["PTS_DTO"] = pts_distrib["DTO"]
-
         res["TOTAL_PTS"] = (
             res["PTS_PDV"] + res["PTS_BEES"] + res["PTS_TML"] + res["PTS_JL"] +
             res["PTS_ABS"] + res["PTS_VALES"] + res["PTS_ACIDENTE"] + res["PTS_DTO"]
         )
         return res
-
     if int(row.get("ABS", 0) or 0) == 0:
         res["PTS_ABS"] = PONTOS_ARMAZEM["ABS"]
     if int(row.get("ACIDENTE", 0) or 0) == 0:
         res["PTS_ACIDENTE"] = PONTOS_ARMAZEM["ACIDENTE"]
     if int(row.get("DTO", 0) or 0) == 0:
         res["PTS_DTO"] = PONTOS_ARMAZEM["DTO"]
-
     res["TOTAL_PTS"] = res["PTS_ABS"] + res["PTS_ACIDENTE"] + res["PTS_DTO"]
     return res
 
@@ -1073,12 +925,9 @@ def risco_to_row(total_pts: int, funcao: str, operacao: str = "", atividade: str
         if int(total_pts) >= 20:
             return "ATENÇÃO"
         return "SIM"
-
     mode = view_mode_from_funcao(funcao)
-
     if mode == "ARMAZEM":
         return "NÃO" if int(total_pts) >= 10 else "SIM"
-
     if total_pts > 20:
         return "NÃO"
     if total_pts >= 15:
@@ -1086,8 +935,6 @@ def risco_to_row(total_pts: int, funcao: str, operacao: str = "", atividade: str
     return "SIM"
 
 grid["RISCO DE TO"] = grid.apply(lambda r: risco_to_row(int(r["TOTAL_PTS"]) if pd.notna(r["TOTAL_PTS"]) else 0, str(r.get("FUNCAO","")), str(r.get("OPERACAO","")), str(r.get("ATIVIDADE",""))), axis=1)
-
-# sobrescreve risco com STATUS (FERIAS/AFASTADO)
 if "STATUS" in grid.columns:
     grid["STATUS"] = grid["STATUS"].fillna("").astype(str)
     grid.loc[grid["STATUS"].isin(["FERIAS", "AFASTADO"]), "RISCO DE TO"] = grid["STATUS"]
@@ -1096,24 +943,18 @@ if "STATUS" in grid.columns:
 # SIDEBAR FILTROS
 # =========================================================
 st.sidebar.header("Filtros")
-
 ops_disp = sorted(base_master["OPERACAO"].dropna().astype(str).unique().tolist())
 f_oper = st.sidebar.selectbox("Operação", ["Todos"] + ops_disp, index=0)
-
 mes_opts = ["Todos"] + [month_label(m) for m in meses_all]
 f_mes = st.sidebar.selectbox("Período", mes_opts, index=0)
-
 f_func = st.sidebar.selectbox("Função", ["Todos"] + FUNCOES_PERMITIDAS, index=0)
-
 ativs = sorted(base_master["ATIVIDADE"].dropna().astype(str).unique().tolist())
 f_ativ = st.sidebar.selectbox("Atividade", ["Todos"] + ativs, index=0)
-
 min_adm = pd.to_datetime(base_master["DATA_ADM_DT"], errors="coerce").min()
 max_adm = pd.to_datetime(base_master["DATA_ADM_DT"], errors="coerce").max()
 if pd.isna(min_adm) or pd.isna(max_adm):
     min_adm = pd.to_datetime("2024-01-01")
     max_adm = pd.to_datetime(datetime.today().date())
-
 st.sidebar.subheader("Período de admissão")
 col_ini, col_fim = st.sidebar.columns(2)
 with col_ini:
@@ -1123,7 +964,6 @@ with col_fim:
 if adm_ini > adm_fim:
     st.sidebar.warning("⚠️ Início maior que Fim. Ajustei automaticamente.")
     adm_ini, adm_fim = adm_fim, adm_ini
-
 base_fil = base_master.copy()
 if f_oper != "Todos":
     base_fil = base_fil[base_fil["OPERACAO"] == f_oper]
@@ -1131,30 +971,24 @@ if f_func != "Todos":
     base_fil = base_fil[base_fil["FUNCAO"] == f_func]
 if f_ativ != "Todos":
     base_fil = base_fil[base_fil["ATIVIDADE"].astype(str) == str(f_ativ)]
-
 base_fil["DATA_ADM_DT"] = pd.to_datetime(base_fil["DATA_ADM_DT"], errors="coerce")
 base_fil = base_fil[(base_fil["DATA_ADM_DT"].dt.date >= adm_ini) & (base_fil["DATA_ADM_DT"].dt.date <= adm_fim)]
-
 colabs_disp = sorted(base_fil["COLABORADOR"].dropna().astype(str).unique().tolist())
 f_colab = st.sidebar.selectbox("Colaborador", ["Todos"] + colabs_disp, index=0)
 
 # =========================================================
-# REGRAS DE PONTUAÇÃO (abaixo dos filtros)
+# REGRAS DE PONTUAÇÃO
 # =========================================================
 def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
     if funcao == "Todos":
         mode = "DISTRIB"
     else:
         mode = view_mode_from_funcao(funcao)
-
     op_key = norm_operacao(operacao) if operacao != "Todos" else None
     metas_op = METAS.get(op_key, {}) if op_key else {}
-
     st.sidebar.markdown("---")
     st.sidebar.subheader("Regras de pontuação")
-
     is_pg_ctx = operacao != "Todos" and atividade != "Todos" and is_ponta_grossa_apoio(operacao, atividade)
-
     if is_pg_ctx and funcao in ["Operador", "Ajudante de armazem"]:
         regras = []
         if funcao == "Operador":
@@ -1177,7 +1011,6 @@ def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
             st.sidebar.write(f"• **{nome}** — Meta: **{meta}** / Peso: **{peso}** ({regra})")
         st.sidebar.markdown("**Total de pontos possíveis:** **40**")
         return
-
     if operacao == "Todos" or funcao == "Todos":
         st.sidebar.caption("Selecione **Operação** e **Função** para ver as regras exatas.")
         total_disp = sum(PONTOS_DISTRIB_PADRAO.values())
@@ -1185,39 +1018,30 @@ def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
         st.sidebar.write(f"• Total possível (Distribuição): **{total_disp}**")
         st.sidebar.write(f"• Total possível (Armazém): **{total_arm}**")
         return
-
     regras = []
-
     if mode == "DISTRIB":
         pts = pontos_distrib_por_operacao(op_key)
-
         regras.append(("JL", metas_op.get("JL", {}).get("meta", None), pts["JL"], "% (>= meta)"))
         regras.append(("DEV PDV", metas_op.get("PDV", {}).get("meta", None), pts["PDV"], "% (<= meta)"))
-
         if not operacao_sem_bees(op_key):
             regras.append(("BEES", metas_op.get("BEES", {}).get("meta", None), pts["BEES"], "% (>= meta)"))
-
         regras.append(("TML", metas_op.get("TML", {}).get("meta", None), pts["TML"], "min (<= meta)"))
         regras.append(("ABS", 0, pts["ABS"], "Qtde (== 0)"))
         regras.append(("VALES", 0, pts["VALES"], "Qtde (== 0)"))
         regras.append(("ACIDENTE", 0, pts["ACIDENTE"], "Qtde (== 0)"))
         regras.append(("Desvios DTO", 0, pts["DTO"], "Qtde (== 0)"))
         total = sum(pts.values())
-
     else:
         regras.append(("ABS", 0, PONTOS_ARMAZEM["ABS"], "Qtde (== 0)"))
         regras.append(("ACIDENTE", 0, PONTOS_ARMAZEM["ACIDENTE"], "Qtde (== 0)"))
         regras.append(("Desvios DTO", 0, PONTOS_ARMAZEM["DTO"], "Qtde (== 0)"))
         total = sum(PONTOS_ARMAZEM.values())
-
     for nome, meta, peso, regra in regras:
         meta_txt = "-" if meta is None else str(meta)
         st.sidebar.write(f"• **{nome}** — Meta: **{meta_txt}** / Peso: **{peso}** ({regra})")
-
     st.sidebar.markdown(f"**Total de pontos possíveis:** **{total}**")
 
 render_regras_sidebar(f_oper, f_func, f_ativ)
-
 st.sidebar.markdown("---")
 try:
     if last_mtime is not None:
@@ -1227,7 +1051,6 @@ try:
         st.sidebar.caption("🕒 Última atualização: não disponível")
 except Exception:
     st.sidebar.caption("🕒 Última atualização: não disponível")
-
 if st.sidebar.button("🔄 Atualizar dados agora", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
@@ -1236,48 +1059,37 @@ if st.sidebar.button("🔄 Atualizar dados agora", use_container_width=True):
 # FILTROS NO DF
 # =========================================================
 df = grid.copy()
-
 if f_oper != "Todos":
     df = df[df["OPERACAO"] == f_oper]
 if f_func != "Todos":
     df = df[df["FUNCAO"] == f_func]
 if f_ativ != "Todos":
     df = df[df["ATIVIDADE"].astype(str) == str(f_ativ)]
-
 df["DATA_ADM_DT"] = pd.to_datetime(df["DATA_ADM_DT"], errors="coerce")
 df = df[(df["DATA_ADM_DT"].dt.date >= adm_ini) & (df["DATA_ADM_DT"].dt.date <= adm_fim)]
-
 if f_mes != "Todos":
     mm, yy = f_mes.split("/")
     mes_key = f"{yy}-{mm}"
     df = df[df["MES"] == mes_key]
-
 if f_colab != "Todos":
     nome_key = normalizar_nome(f_colab)
     df = df[df["NOME_KEY"] == nome_key]
-
-# CORTE ESPECIAL CD PETRÓPOLIS (a partir de 01/01/2026)
-# Este bloco foi movido para depois da definição dos filtros
 if f_oper == "CD PETRÓPOLIS" or ("OPERACAO" in df.columns and (df["OPERACAO"] == "CD PETRÓPOLIS").any()):
     mask_petropolis = df["OPERACAO"] == "CD PETRÓPOLIS"
     df_petropolis_corte = df["MES"].ge("2026-01")
     df = df[(~mask_petropolis) | (df_petropolis_corte)].copy()
-
 if f_oper != "Todos" and f_ativ != "Todos" and is_ponta_grossa_apoio(f_oper, f_ativ):
     df = df[df["MES"] >= "2026-01"]
-
-# view mode
 if f_func == "Todos":
     view_mode = "ALL"
 else:
     view_mode = "ARMAZEM" if normalizar_nome(f_func) in FUNCOES_ARMAZEM else "DISTRIB"
 
 # =========================================================
-# REF: médias + último mês do colab (se selecionado)
+# REF: médias + último mês do colab
 # =========================================================
 ref_last_colab = None
 ref_avg = None
-
 if not df.empty:
     ref_avg = {
         "JL": df["JL"].mean(),
@@ -1297,14 +1109,11 @@ if not df.empty:
     }
     if f_colab != "Todos":
         ref_last_colab = df.sort_values("MES", ascending=False).iloc[0].copy()
-
-# contexto da operação (pra esconder BEES só quando for Londrina)
 ctx_oper_key = None
 if f_oper != "Todos":
     ctx_oper_key = norm_operacao(f_oper)
 elif ref_last_colab is not None:
     ctx_oper_key = norm_operacao(ref_last_colab.get("OPERACAO", ""))
-
 hide_bees_ctx = (ctx_oper_key == OP_LONDRINA_KEY)
 is_pg_ctx = (f_oper != "Todos" and f_ativ != "Todos" and is_ponta_grossa_apoio(f_oper, f_ativ))
 
@@ -1355,7 +1164,6 @@ with left:
     st.markdown("#### Colaborador")
     nome_card = ref_last_colab["COLABORADOR"] if ref_last_colab is not None else ""
     subt_card = f"{ref_last_colab['OPERACAO']} · {ref_last_colab['FUNCAO']}" if ref_last_colab is not None else ""
-
     st.markdown(
         f"""
         <div style='padding:12px;border-radius:14px;background:#22262f; min-height:64px;'>
@@ -1365,9 +1173,7 @@ with left:
         """,
         unsafe_allow_html=True
     )
-
     st.markdown("#### Indicadores")
-
     def linha_ind(icon, nome, resultado):
         st.markdown(
             f"""
@@ -1384,7 +1190,6 @@ with left:
             """,
             unsafe_allow_html=True
         )
-
     if ref_avg is None:
         st.info("Sem dados para os filtros atuais.")
     else:
@@ -1398,7 +1203,6 @@ with left:
         ad_res   = fmt_pct(ref_avg.get("AD_CHECKLIST", np.nan)) or "-"
         logon_res = fmt_pct(ref_avg.get("LOGON", np.nan)) or "-"
         quedas_res = "-" if pd.isna(ref_avg.get("QUEDAS", np.nan)) else f"{ref_avg.get('QUEDAS', 0):.2f}"
-
         if is_pg_ctx:
             linha_ind("👥", "JLL", jll_pg_res)
             linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}")
@@ -1413,10 +1217,8 @@ with left:
             if view_mode in ["ALL", "DISTRIB"]:
                 linha_ind("👥", "JL", jl_res)
                 linha_ind("📦", "DEV PDV", pdv_res)
-
                 if not hide_bees_ctx:
                     linha_ind("🟨", "BEES", bees_res)
-
                 linha_ind("⏱️", "TML", tml_res)
                 linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}")
                 linha_ind("🎫", "VALES", f"{ref_avg.get('VALES', 0):.2f}")
@@ -1424,13 +1226,11 @@ with left:
                 linha_ind("📄", "Desvios DTO", f"{ref_avg.get('DTO', 0):.2f}")
                 linha_ind("🔁", "Recargas", rec_res)
                 linha_ind("📈", "Média RV", rv_res)
-
             if view_mode == "ARMAZEM":
                 linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}")
                 linha_ind("⚠️", "ACIDENTE", f"{ref_avg.get('ACIDENTE', 0):.2f}")
                 linha_ind("📄", "Desvios DTO", f"{ref_avg.get('DTO', 0):.2f}")
                 linha_ind("📈", "Média RV", rv_res)
-
     st.markdown("### 🏆 TOP 10")
     if df.empty:
         st.info("Sem dados para ranking com os filtros atuais.")
@@ -1448,22 +1248,17 @@ with left:
 
 with right:
     top1, top2, top3 = st.columns([2.4, 1.3, 1.3])
-
     with top1:
         st.markdown(f"<h4 style='margin:0;'> {ref_last_colab['FUNCAO'] if ref_last_colab is not None else ''} </h4>", unsafe_allow_html=True)
-
     with top2:
         if ref_last_colab is None or pd.isna(ref_last_colab.get("DATA_ADM_DT", None)):
             st.metric("Tempo de casa (meses)", "-")
         else:
             meses = int((pd.Timestamp.today().normalize() - pd.to_datetime(ref_last_colab["DATA_ADM_DT"]).normalize()).days / 30.44)
             st.metric("Tempo de casa (meses)", f"{meses}")
-
     with top3:
         st.metric("Admissão", (ref_last_colab["ADMISSAO"] if ref_last_colab is not None else "-"))
-
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-
     if ref_last_colab is None:
         st.info("Selecione um colaborador para ver o risco do último mês.")
     else:
@@ -1478,10 +1273,8 @@ with right:
             """,
             unsafe_allow_html=True
         )
-
     with st.container(border=True):
         cB, cC, cD = st.columns(3)
-
         with cB:
             v = ref_last_colab.get("PRONT_PONDERADA", np.nan) if ref_last_colab is not None else np.nan
             faixa = ref_last_colab.get("PRONT_FAIXA", "-") if ref_last_colab is not None else "-"
@@ -1499,7 +1292,6 @@ with right:
                     """,
                     unsafe_allow_html=True
                 )
-
         with cC:
             ciclo_val = ""
             if ref_last_colab is not None:
@@ -1507,12 +1299,9 @@ with right:
                 if normalizar_nome(ciclo_val) == "NAN":
                     ciclo_val = ""
             st.metric("Ciclo de gente", ciclo_val)
-
         with cD:
             st.metric("Pontuação Total (média)", "-" if df.empty else f"{df['TOTAL_PTS'].mean():.1f}")
-
     st.divider()
-
     st.subheader("📊 Pontuação x mês")
     if df.empty:
         st.info("Sem dados para o gráfico com os filtros atuais.")
@@ -1522,10 +1311,8 @@ with right:
         fig = px.bar(g, x="MÊS", y="TOTAL_PTS", text=g["TOTAL_PTS"].map(lambda x: f"{x:.0f}"))
         fig.update_layout(yaxis_title="Pontuação (TOTAL)", xaxis_title="")
         st.plotly_chart(fig, use_container_width=True)
-
     st.divider()
-
-        st.subheader("📋 Tabela de Pontuação (por colaborador e mês)")
+    st.subheader("📋 Tabela de Pontuação (por colaborador e mês)")
     if df.empty:
         st.info("Sem dados para tabela com os filtros atuais.")
     else:
@@ -1539,20 +1326,16 @@ with right:
         t["LOGON_FMT"] = t.get("LOGON", np.nan).apply(fmt_pct_or_na)
         t["MÉDIA RV"] = t.get("PCT_RV", np.nan).apply(fmt_pct)
         t["RECARGAS_TXT"] = t.get("RECARGAS", 0).fillna(0).astype(int).astype(str)
-
         t["ABS"] = t["ABS"].astype(int)
         t["VALES"] = t["VALES"].astype(int)
         t["ACIDENTE"] = t["ACIDENTE"].astype(int)
         t["DTO"] = t["DTO"].astype(int)
         if "QUEDAS" in t.columns:
             t["QUEDAS"] = t["QUEDAS"].fillna(0).astype(int)
-
         def status_exibir(x):
             s = "" if pd.isna(x) else str(x).strip()
             return "TRABALHANDO" if normalizar_nome(s) == normalizar_nome("DESCLASSIFICADO") else s
-
         t["STATUS_EXIB"] = t.get("STATUS_RAW", "").apply(status_exibir)
-
         base_cols = {
             ("MÊS",""): t["MÊS"],
             ("COLABORADOR",""): t["COLABORADOR"],
@@ -1560,14 +1343,11 @@ with right:
             ("RISCO DE TO?",""): t["RISCO DE TO"],
             ("TOTAL",""): t["TOTAL_PTS"],
         }
-
         out = pd.DataFrame(base_cols)
-
         def add_indicador(nome, col_res, col_pts=None):
             out[(nome, "Resultado")] = t[col_res]
             if col_pts is not None:
                 out[(nome, "PTS")] = t[col_pts]
-
         if is_pg_ctx:
             add_indicador("JLL", "JLL_PG_FMT", "PTS_JL")
             add_indicador("ABS", "ABS", "PTS_ABS")
@@ -1578,52 +1358,41 @@ with right:
             if f_func == "Operador" or f_func == "Todos":
                 add_indicador("Quedas", "QUEDAS", "PTS_QUEDAS")
             out[("Média RV", "Resultado")] = t["MÉDIA RV"]
-
         elif view_mode in ["ALL", "DISTRIB"]:
             add_indicador("JL", "JL", "PTS_JL")
             add_indicador("DEV PDV", "DEV PDV", "PTS_PDV")
-
             if not hide_bees_ctx:
                 add_indicador("BEES", "BEES", "PTS_BEES")
-
             add_indicador("TML", "TML", "PTS_TML")
             add_indicador("ABS", "ABS", "PTS_ABS")
             add_indicador("VALES", "VALES", "PTS_VALES")
             add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
             add_indicador("Desvios DTO", "DTO", "PTS_DTO")
-
             fun_ok = {
                 normalizar_nome("Motorista de Distribuição"),
                 normalizar_nome("Motorista de Van"),
                 normalizar_nome("Ajudante de Distribuição"),
             }
             mask_fun = t["FUNCAO"].astype(str).map(normalizar_nome).isin(fun_ok)
-
             rec_col = pd.Series([""] * len(t), index=t.index)
             rec_col.loc[mask_fun] = t.loc[mask_fun, "RECARGAS_TXT"]
             out[("Recargas", "Resultado")] = rec_col
-
             out[("Média RV", "Resultado")] = t["MÉDIA RV"]
-
         if (not is_pg_ctx) and view_mode == "ARMAZEM":
             add_indicador("ABS", "ABS", "PTS_ABS")
             add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
             add_indicador("Desvios DTO", "DTO", "PTS_DTO")
             out[("Média RV", "Resultado")] = t["MÉDIA RV"]
-
         out[("_MESKEY","")] = pd.to_datetime(t["MES"] + "-01", errors="coerce")
         out = out.sort_values([("_MESKEY",""), ("COLABORADOR","")]).drop(columns=[("_MESKEY","")])
-
         out_flat = out.copy()
         out_flat.columns = [
             (c[0] if (isinstance(c, tuple) and c[1] == "") else f"{c[0]}_{c[1]}")
             for c in out_flat.columns
         ]
-
         ZERO = "\u200b"
         new_cols = []
         pts_counter = 0
-
         for col in out_flat.columns:
             col = str(col)
             if col.endswith("_Resultado"):
@@ -1634,28 +1403,21 @@ with right:
                 new_cols.append("PTS" + (ZERO * pts_counter))
                 continue
             new_cols.append(col)
-
         out_flat.columns = new_cols
-
         MAX_ROWS_STYLE = 800
         if len(out_flat) > MAX_ROWS_STYLE:
             st.warning(f"Mostrando só os primeiros {MAX_ROWS_STYLE} registros com formatação (limite do Streamlit).")
             out_view = out_flat.head(MAX_ROWS_STYLE).copy()
         else:
             out_view = out_flat
-
         sty = out_view.style.set_properties(**{"text-align": "center"}).set_table_styles(
             [{"selector": "th", "props": [("text-align", "center")]}]
         )
-
         pts_cols = [c for c in out_view.columns if str(c).startswith("PTS")]
         if pts_cols:
             sty = sty.map(color_pts_zero, subset=pts_cols)
-
         if "RISCO DE TO?" in out_view.columns:
             sty = sty.map(color_risco, subset=["RISCO DE TO?"])
-
         if "Média RV" in out_view.columns:
             sty = sty.map(color_rv_cell, subset=["Média RV"])
-
         st.dataframe(sty, use_container_width=True, height=520)
