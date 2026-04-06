@@ -1525,7 +1525,7 @@ with right:
 
     st.divider()
 
-    st.subheader("📋 Tabela de Pontuação (por colaborador e mês)")
+        st.subheader("📋 Tabela de Pontuação (por colaborador e mês)")
     if df.empty:
         st.info("Sem dados para tabela com os filtros atuais.")
     else:
@@ -1644,11 +1644,10 @@ with right:
         else:
             out_view = out_flat
 
-                sty = out_view.style.set_properties(**{"text-align": "center"}).set_table_styles(
+        sty = out_view.style.set_properties(**{"text-align": "center"}).set_table_styles(
             [{"selector": "th", "props": [("text-align", "center")]}]
         )
 
-        # CORREÇÃO: substituir applymap por map
         pts_cols = [c for c in out_view.columns if str(c).startswith("PTS")]
         if pts_cols:
             sty = sty.map(color_pts_zero, subset=pts_cols)
