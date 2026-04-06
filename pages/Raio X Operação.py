@@ -1644,18 +1644,19 @@ with right:
         else:
             out_view = out_flat
 
-        sty = out_view.style.set_properties(**{"text-align": "center"}).set_table_styles(
+                sty = out_view.style.set_properties(**{"text-align": "center"}).set_table_styles(
             [{"selector": "th", "props": [("text-align", "center")]}]
         )
 
+        # CORREÇÃO: substituir applymap por map
         pts_cols = [c for c in out_view.columns if str(c).startswith("PTS")]
         if pts_cols:
-            sty = sty.applymap(color_pts_zero, subset=pts_cols)
+            sty = sty.map(color_pts_zero, subset=pts_cols)
 
         if "RISCO DE TO?" in out_view.columns:
-            sty = sty.applymap(color_risco, subset=["RISCO DE TO?"])
+            sty = sty.map(color_risco, subset=["RISCO DE TO?"])
 
         if "Média RV" in out_view.columns:
-            sty = sty.applymap(color_rv_cell, subset=["Média RV"])
+            sty = sty.map(color_rv_cell, subset=["Média RV"])
 
         st.dataframe(sty, use_container_width=True, height=520)
