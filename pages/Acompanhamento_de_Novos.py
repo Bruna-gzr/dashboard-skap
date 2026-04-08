@@ -625,16 +625,21 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
 
     st.subheader(f"📋 Detalhamento — {nome_aba}")
 
+    # Aplicar estilos de forma compatível
     sty = styler_padrao(view)
-    # Compatível com versões antigas e novas do pandas
-try:
-    sty = sty.map(estilo_progresso, subset=["PROGRESSO GERAL"])
-    sty = sty.map(estilo_status, subset=[status_col])
-    sty = sty.map(estilo_dias, subset=["DIAS"])
-except AttributeError:
-    sty = sty.applymap(estilo_progresso, subset=["PROGRESSO GERAL"])
-    sty = sty.applymap(estilo_status, subset=[status_col])
-    sty = sty.applymap(estilo_dias, subset=["DIAS"])
+    
+    # Aplicar cada estilo individualmente com fallback
+    try:
+        # Tentar com map (pandas moderno)
+        sty = sty.map(estilo_progresso, subset=["PROGRESSO GERAL"])
+        sty = sty.map(estilo_status, subset=[status_col])
+        sty = sty.map(estilo_dias, subset=["DIAS"])
+    except AttributeError:
+        # Fallback para applymap (pandas antigo)
+        sty = sty.applymap(estilo_progresso, subset=["PROGRESSO GERAL"])
+        sty = sty.applymap(estilo_status, subset=[status_col])
+        sty = sty.applymap(estilo_dias, subset=["DIAS"])
+
     st.dataframe(sty, use_container_width=True, height=700)
 
 # =========================
