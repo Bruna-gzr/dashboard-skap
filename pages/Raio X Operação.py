@@ -769,24 +769,39 @@ acid_m  = acid_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ACIDENTE
 dto_m   = dto_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="DTO")
 
 # ===== CORREÇÃO ESPECÍFICA PARA CARLOS DANIEL =====
-# Pega o NOME_KEY correto do Carlos na base master
+# Encontrar o NOME_KEY correto do Carlos na base master
 nome_carlos = "CARLOS DANIEL OLIVEIRA MARTINS"
 carlos_master = base_master[base_master['COLABORADOR'] == nome_carlos]
+
 if not carlos_master.empty:
     nome_key_correto = carlos_master.iloc[0]['NOME_KEY']
     
-    # Encontra TODAS as variações que correspondem a este nome específico
-    # Usando match exato do nome normalizado
-    abs_ev.loc[abs_ev['NOME_KEY'] == nome_key_correto, 'NOME_KEY'] = nome_key_correto  # já está correto
+    # IMPORTANTE: Corrigir o abs_ev ANTES de criar o abs_m
+    # Filtrar apenas os registros que são do Carlos (pelo nome original)
+    # E garantir que ele só tenha os registros que realmente são dele
     
-    # Se houver alguma variação com nome incompleto, corrige só a que for do Carlos
-    # Para identificar, vamos ver quantas ocorrências cada NOME_KEY tem
-    contagem_antes = abs_ev['NOME_KEY'].value_counts()
+    # Primeiro, ver quantos registros o Carlos tem na planilha original
+    carlos_original = abs_[abs_['COLABORADOR'].astype(str).str.contains("CARLOS DANIEL", case=False, na=False)]
     
-    # Agrupar por mês e contar (sem a correção bagunçar)
-    abs_m = abs_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ABS")
-else:
-    abs_m = abs_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ABS")
+    if not carlos_original.empty:
+        # Criar um DataFrame apenas com os registros reais do Carlos
+        carlos_corrected = carlos_original.copy()
+        carlos_corrected["NOME_KEY"] = nome_key_correto
+        carlos_corrected["DT"] = tratar_data_segura(carlos_corrected["DATA"])
+        carlos_corrected["TIPO"] = carlos_corrected["TIPO DE AUSENCIA"].astype(str).map(normalizar_nome)
+        carlos_corrected = carlos_corrected.dropna(subset=["DT"])
+        carlos_corrected["MES"] = to_month_key(carlos_corrected["DT"])
+        carlos_corrected = carlos_corrected[carlos_corrected["TIPO"].isin([normalizar_nome("JUSTIFICADA"), normalizar_nome("NÃO JUSTIFICADA"), normalizar_nome("NAO JUSTIFICADA")])]
+        carlos_ev_corrected = carlos_corrected[["NOME_KEY", "DT", "MES", "TIPO"]].copy()
+        
+        # Remover TODOS os registros do Carlos que foram incorretamente associados
+        abs_ev = abs_ev[abs_ev['NOME_KEY'] != nome_key_correto]
+        
+        # Adicionar apenas os registros corretos
+        abs_ev = pd.concat([abs_ev, carlos_ev_corrected], ignore_index=True)
+
+# Agora criar o abs_m normalmente
+abs_m = abs_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ABS")
 # ===== FIM DA CORREÇÃO =====
 
 # =========================================================
