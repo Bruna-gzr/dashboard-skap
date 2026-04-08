@@ -767,9 +767,6 @@ if jll_pg is not None and not jll_pg.empty:
 vales_m = vales_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="VALES")
 acid_m  = acid_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ACIDENTE")
 dto_m   = dto_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="DTO")
-vales_m = vales_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="VALES")
-acid_m  = acid_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ACIDENTE")
-dto_m   = dto_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="DTO")
 
 # ===== CORREÇÃO PARA CARLOS DANIEL =====
 nome_correto = normalizar_nome("CARLOS DANIEL OLIVEIRA MARTINS")
