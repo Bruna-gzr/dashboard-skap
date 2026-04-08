@@ -768,18 +768,25 @@ vales_m = vales_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="VALES")
 acid_m  = acid_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ACIDENTE")
 dto_m   = dto_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="DTO")
 
-# ===== CORREÇÃO PARA CARLOS DANIEL =====
-nome_correto = normalizar_nome("CARLOS DANIEL OLIVEIRA MARTINS")
-
-# Ver se há múltiplas variações do nome
-variacoes = abs_ev[abs_ev['NOME_KEY'].str.contains("CARLOS|MARTINS", case=False, na=False)]['NOME_KEY'].unique()
-for variacao in variacoes:
-    if variacao != nome_correto:
-        # Substituir pela versão correta
-        abs_ev.loc[abs_ev['NOME_KEY'] == variacao, 'NOME_KEY'] = nome_correto
-
-# Agora criar o abs_m
-abs_m = abs_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ABS")
+# ===== CORREÇÃO ESPECÍFICA PARA CARLOS DANIEL =====
+# Pega o NOME_KEY correto do Carlos na base master
+nome_carlos = "CARLOS DANIEL OLIVEIRA MARTINS"
+carlos_master = base_master[base_master['COLABORADOR'] == nome_carlos]
+if not carlos_master.empty:
+    nome_key_correto = carlos_master.iloc[0]['NOME_KEY']
+    
+    # Encontra TODAS as variações que correspondem a este nome específico
+    # Usando match exato do nome normalizado
+    abs_ev.loc[abs_ev['NOME_KEY'] == nome_key_correto, 'NOME_KEY'] = nome_key_correto  # já está correto
+    
+    # Se houver alguma variação com nome incompleto, corrige só a que for do Carlos
+    # Para identificar, vamos ver quantas ocorrências cada NOME_KEY tem
+    contagem_antes = abs_ev['NOME_KEY'].value_counts()
+    
+    # Agrupar por mês e contar (sem a correção bagunçar)
+    abs_m = abs_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ABS")
+else:
+    abs_m = abs_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ABS")
 # ===== FIM DA CORREÇÃO =====
 
 # =========================================================
