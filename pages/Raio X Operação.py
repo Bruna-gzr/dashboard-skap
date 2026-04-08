@@ -767,7 +767,23 @@ if jll_pg is not None and not jll_pg.empty:
 vales_m = vales_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="VALES")
 acid_m  = acid_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ACIDENTE")
 dto_m   = dto_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="DTO")
-abs_m   = abs_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ABS")
+vales_m = vales_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="VALES")
+acid_m  = acid_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ACIDENTE")
+dto_m   = dto_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="DTO")
+
+# ===== CORREÇÃO PARA CARLOS DANIEL =====
+nome_correto = normalizar_nome("CARLOS DANIEL OLIVEIRA MARTINS")
+
+# Ver se há múltiplas variações do nome
+variacoes = abs_ev[abs_ev['NOME_KEY'].str.contains("CARLOS|MARTINS", case=False, na=False)]['NOME_KEY'].unique()
+for variacao in variacoes:
+    if variacao != nome_correto:
+        # Substituir pela versão correta
+        abs_ev.loc[abs_ev['NOME_KEY'] == variacao, 'NOME_KEY'] = nome_correto
+
+# Agora criar o abs_m
+abs_m = abs_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ABS")
+# ===== FIM DA CORREÇÃO =====
 
 # =========================================================
 # GRID colaborador x mês
