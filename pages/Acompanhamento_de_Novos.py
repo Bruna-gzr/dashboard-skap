@@ -499,11 +499,11 @@ if linhas_nr:
     st.metric("Registros com etapa 'Não Realizada'", len(df_nr))
 
     view_nr = df_nr[["COLABORADOR","STATUS COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
-   # Compatível com versões antigas e novas do pandas
-try:
-    sty_nr = styler_padrao(view_nr).map(estilo_dias, subset=["DIAS"])
-except AttributeError:
-    sty_nr = styler_padrao(view_nr).applymap(estilo_dias, subset=["DIAS"])
+    # Compatível com versões antigas e novas do pandas
+    try:
+        sty_nr = styler_padrao(view_nr).map(estilo_dias, subset=["DIAS"])
+    except AttributeError:
+        sty_nr = styler_padrao(view_nr).applymap(estilo_dias, subset=["DIAS"])
     st.dataframe(sty_nr, use_container_width=True, height=450)
 else:
     st.metric("Registros com etapa 'Não Realizada'", 0)
@@ -542,10 +542,10 @@ if linhas_np:
 
     view_np = df_alerta[["COLABORADOR","STATUS COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
     # Compatível com versões antigas e novas do pandas
-try:
-    sty_np = styler_padrao(view_np).map(estilo_dias, subset=["DIAS"])
-except AttributeError:
-    sty_np = styler_padrao(view_np).applymap(estilo_dias, subset=["DIAS"])
+    try:
+        sty_np = styler_padrao(view_np).map(estilo_dias, subset=["DIAS"])
+    except AttributeError:
+        sty_np = styler_padrao(view_np).applymap(estilo_dias, subset=["DIAS"])
     st.dataframe(sty_np, use_container_width=True, height=420)
 else:
     st.metric("Registros 'No prazo' vencendo em até 3 dias", 0)
