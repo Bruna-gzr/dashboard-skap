@@ -499,6 +499,10 @@ if linhas_nr:
     st.metric("Registros com etapa 'Não Realizada'", len(df_nr))
 
     view_nr = df_nr[["COLABORADOR","STATUS COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
+   # Compatível com versões antigas e novas do pandas
+try:
+    sty_nr = styler_padrao(view_nr).map(estilo_dias, subset=["DIAS"])
+except AttributeError:
     sty_nr = styler_padrao(view_nr).applymap(estilo_dias, subset=["DIAS"])
     st.dataframe(sty_nr, use_container_width=True, height=450)
 else:
@@ -537,6 +541,10 @@ if linhas_np:
     st.metric("Registros 'No prazo' vencendo em até 3 dias", len(df_alerta))
 
     view_np = df_alerta[["COLABORADOR","STATUS COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
+    # Compatível com versões antigas e novas do pandas
+try:
+    sty_np = styler_padrao(view_np).map(estilo_dias, subset=["DIAS"])
+except AttributeError:
     sty_np = styler_padrao(view_np).applymap(estilo_dias, subset=["DIAS"])
     st.dataframe(sty_np, use_container_width=True, height=420)
 else:
@@ -618,10 +626,15 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     st.subheader(f"📋 Detalhamento — {nome_aba}")
 
     sty = styler_padrao(view)
+    # Compatível com versões antigas e novas do pandas
+try:
+    sty = sty.map(estilo_progresso, subset=["PROGRESSO GERAL"])
+    sty = sty.map(estilo_status, subset=[status_col])
+    sty = sty.map(estilo_dias, subset=["DIAS"])
+except AttributeError:
     sty = sty.applymap(estilo_progresso, subset=["PROGRESSO GERAL"])
     sty = sty.applymap(estilo_status, subset=[status_col])
     sty = sty.applymap(estilo_dias, subset=["DIAS"])
-
     st.dataframe(sty, use_container_width=True, height=700)
 
 # =========================
