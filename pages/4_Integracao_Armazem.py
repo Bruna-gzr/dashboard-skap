@@ -449,6 +449,12 @@ if len(resultado_modulos) > 0:
         else:
             return 'background-color: #dc3545; color: white'
     
+    # Tabela com cores - compatível com versões antigas e novas
+try:
+    # Para pandas versões mais recentes (>= 2.1.0)
+    styled_table = tabela_filtrada.style.map(color_status, subset=['Status'])
+except AttributeError:
+    # Para pandas versões antigas (fallback)
     styled_table = tabela_filtrada.style.applymap(color_status, subset=['Status'])
     st.dataframe(styled_table, use_container_width=True, height=400)
 else:
