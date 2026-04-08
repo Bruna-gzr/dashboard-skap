@@ -232,7 +232,7 @@ def build_name_matcher(target_df: pd.DataFrame):
             if score > best_score:
                 best_score = score
                 best_cand = cand
-        if best_score >= 0.86:
+        if best_score >= 0.95:  # Mais rigoroso, só aceita nomes muito parecidos
             return best_cand
         return None
     def map_series(series: pd.Series) -> pd.Series:
