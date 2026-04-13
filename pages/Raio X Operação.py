@@ -283,7 +283,7 @@ for f in DATA_DIR.glob("*.xlsx"):
         break
 ARQ_VALES  = DATA_DIR / "Vales.xlsx"
 ARQ_RV     = DATA_DIR / "RV.xlsx"
-ARQ_RV_EMPT = DATA_DIR / "RV empurrada.xlsx"  # Nova planilha para RV em R$
+ARQ_RV_EMPT = DATA_DIR / "RV empurrada.xlsx"
 ARQ_ABS    = DATA_DIR / "Absenteismo.xlsx"
 ARQ_ACID   = DATA_DIR / "Ocorrencia de acidentes.xlsx"
 ARQ_DTO    = DATA_DIR / "Desvios de DTOs.xlsx"
@@ -323,8 +323,8 @@ FUNCOES_MAP = {
     normalizar_nome("Motorista Entregador I"): "Motorista de Van",
     normalizar_nome("Motorista Entregador"): "Motorista de Van",
     normalizar_nome("Motorista Entregador II"): "Motorista de Van",
-    normalizar_nome("Motorista Carreta"): "Motorista",  # Novo mapeamento
-    normalizar_nome("Motorista Bitrem/Rodotrem"): "Motorista",  # Novo mapeamento
+    normalizar_nome("Motorista Carreta"): "Motorista",
+    normalizar_nome("Motorista Bitrem/Rodotrem"): "Motorista",
     normalizar_nome("Ajudante Armazém"): "Ajudante de armazem",
     normalizar_nome("Amarrador"): "Ajudante de armazem",
     normalizar_nome("Operador de Empilhadeira"): "Operador",
@@ -339,7 +339,7 @@ FUNCOES_DISTRIB = {
     normalizar_nome("Ajudante de Distribuição"),
     normalizar_nome("Motorista de Distribuição"),
     normalizar_nome("Motorista de Van"),
-    normalizar_nome("Motorista"),  # Adicionado Motorista para PONTA GROSSA
+    normalizar_nome("Motorista"),
 }
 FUNCOES_ARMAZEM = {
     normalizar_nome("Operador"),
@@ -387,22 +387,34 @@ def pontos_distrib_por_operacao(op_key: str) -> dict:
 def operacao_sem_bees(op_key: str) -> bool:
     return op_key == OP_LONDRINA_KEY
 
+# Normalização para PONTA GROSSA - compila PONTA GROSSA e LATA PONTA GROSSA
+def normalizar_operacao_pg(operacao: str) -> str:
+    op_norm = norm_operacao(operacao)
+    if op_norm in {norm_operacao("PONTA GROSSA"), norm_operacao("LATA PONTA GROSSA")}:
+        return "PONTA GROSSA"
+    return operacao
+
 OP_PONTA_GROSSA_KEY = norm_operacao("PONTA GROSSA")
-OP_CD_PONTA_GROSSA_KEY = norm_operacao("CD PONTA GROSSA")
 ATIV_APOIO_LOGISTICO_KEY = normalizar_nome("APOIO LOGÍSTICO")
 ATIV_EMPT_KEY = normalizar_nome("EMPURRADA")
 ATIV_TRANSF_KEY = normalizar_nome("TRANSFERÊNCIA INSUMOS")
 DATA_CORTE_PG = pd.Timestamp("2026-01-01")
 
+def is_ponta_grossa_operacao(operacao: str) -> bool:
+    op_norm = norm_operacao(operacao)
+    return op_norm in {norm_operacao("PONTA GROSSA"), norm_operacao("LATA PONTA GROSSA")}
+
 def is_ponta_grossa_apoio(operacao: str, atividade: str) -> bool:
-    op_key = norm_operacao(operacao)
+    if not is_ponta_grossa_operacao(operacao):
+        return False
     ativ_key = normalizar_nome(atividade)
-    return op_key in {OP_PONTA_GROSSA_KEY, OP_CD_PONTA_GROSSA_KEY} and ativ_key == ATIV_APOIO_LOGISTICO_KEY
+    return ativ_key == ATIV_APOIO_LOGISTICO_KEY
 
 def is_ponta_grossa_empurrada_transf(operacao: str, atividade: str) -> bool:
-    op_key = norm_operacao(operacao)
+    if not is_ponta_grossa_operacao(operacao):
+        return False
     ativ_key = normalizar_nome(atividade)
-    return op_key in {OP_PONTA_GROSSA_KEY, OP_CD_PONTA_GROSSA_KEY} and ativ_key in {ATIV_EMPT_KEY, ATIV_TRANSF_KEY}
+    return ativ_key in {ATIV_EMPT_KEY, ATIV_TRANSF_KEY}
 
 def is_func_operador(funcao: str) -> bool:
     return normalizar_nome(funcao) == normalizar_nome("Operador")
@@ -488,7 +500,7 @@ def carregar_bases(_cache_key: float | None):
     skap   = pd.read_excel(ARQ_SKAP) if ARQ_SKAP.exists() else pd.DataFrame()
     vales  = pd.read_excel(ARQ_VALES) if ARQ_VALES.exists() else pd.DataFrame()
     rv     = pd.read_excel(ARQ_RV) if ARQ_RV.exists() else pd.DataFrame()
-    rv_empt = pd.read_excel(ARQ_RV_EMPT) if ARQ_RV_EMPT.exists() else pd.DataFrame()  # Nova planilha
+    rv_empt = pd.read_excel(ARQ_RV_EMPT) if ARQ_RV_EMPT.exists() else pd.DataFrame()
     abs_   = pd.read_excel(ARQ_ABS) if ARQ_ABS.exists() else pd.DataFrame()
     acid   = pd.read_excel(ARQ_ACID) if ARQ_ACID.exists() else pd.DataFrame()
     dto    = pd.read_excel(ARQ_DTO) if ARQ_DTO.exists() else pd.DataFrame()
@@ -521,6 +533,11 @@ for c in ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
         ativos[c] = ""
 if "OPERAÇÃO" in ativos.columns and "OPERACAO" not in ativos.columns:
     ativos["OPERACAO"] = ativos["OPERAÇÃO"]
+
+# Normalizar operação PONTA GROSSA (compila PONTA GROSSA e LATA PONTA GROSSA)
+ativos["OPERACAO_ORIGINAL"] = ativos["OPERACAO"]
+ativos["OPERACAO"] = ativos["OPERACAO"].apply(normalizar_operacao_pg)
+
 ativos["NOME_KEY"] = ativos["COLABORADOR"].astype(str).map(normalizar_nome)
 ativos["NOME_SIMPLE"] = ativos["NOME_KEY"].map(nome_simple_from_key)
 ativos["FIRST_LAST"] = ativos["NOME_KEY"].map(first_last_key)
@@ -678,7 +695,7 @@ if rv is not None and not rv.empty:
         .reset_index()
     )
 
-# Nova planilha RV empurrada (formato R$)
+# Planilha RV empurrada
 rv_empt_m = pd.DataFrame(columns=["NOME_KEY", "MES", "RV_EMPT_VALOR"])
 if rv_empt is not None and not rv_empt.empty:
     rv_empt = normalizar_colunas(rv_empt)
@@ -894,7 +911,7 @@ grid = left_join(grid, vales_m, ["VALES"])
 grid = left_join(grid, acid_m, ["ACIDENTE"])
 grid = left_join(grid, dto_m, ["DTO"])
 grid = left_join(grid, rv_m, ["PCT_RV", "RECARGAS"])
-grid = left_join(grid, rv_empt_m, ["RV_EMPT_VALOR"])  # Nova coluna
+grid = left_join(grid, rv_empt_m, ["RV_EMPT_VALOR"])
 grid = left_join(grid, ad_check_m, ["AD_CHECKLIST"])
 grid = left_join(grid, logon_m, ["LOGON"])
 grid = left_join(grid, quedas_m, ["QUEDAS"])
@@ -916,6 +933,11 @@ grid = grid[grid["_MES_DT"] > grid["_ADM_MES_DT"]].copy()
 grid = grid.drop(columns=["_MES_DT","_ADM_MES_DT"])
 grid["MÊS"] = grid["MES"].apply(month_label)
 
+# Aplicar corte de data para PONTA GROSSA (somente a partir de 01/01/2026)
+mask_pg = grid.apply(lambda r: is_ponta_grossa_operacao(r.get("OPERACAO", "")), axis=1)
+mask_pg_data = grid["_MES_DT"] >= DATA_CORTE_PG
+grid = grid[(~mask_pg) | (mask_pg_data)].copy()
+
 mask_pg_apoio = grid.apply(lambda r: is_ponta_grossa_apoio(r.get("OPERACAO", ""), r.get("ATIVIDADE", "")), axis=1)
 grid_pg_apoio = grid["MES"].ge("2026-01")
 grid = grid[(~mask_pg_apoio) | (grid_pg_apoio)].copy()
@@ -936,7 +958,7 @@ def calc_pontos_row(row) -> dict:
         "PTS_PDV": 0, "PTS_BEES": 0, "PTS_TML": 0, "PTS_JL": 0,
         "PTS_ABS": 0, "PTS_VALES": 0, "PTS_ACIDENTE": 0, "PTS_DTO": 0,
         "PTS_AD_CHECKLIST": 0, "PTS_LOGON": 0, "PTS_QUEDAS": 0,
-        "PTS_RV_EMPT": 0,  # Nova pontuação para RV empurrada (só para exibição, sem peso)
+        "PTS_RV_EMPT": 0,
         "TOTAL_PTS": 0
     }
     
@@ -950,10 +972,6 @@ def calc_pontos_row(row) -> dict:
         if int(row.get("ACIDENTE", 0) or 0) == 0:
             res["PTS_ACIDENTE"] = 10
         
-        # RV_EMPT_VALOR: apenas para exibição, sem pontuação
-        res["PTS_RV_EMPT"] = 0
-        
-        # Total de pontos possíveis: 20
         res["TOTAL_PTS"] = res["PTS_ABS"] + res["PTS_ACIDENTE"]
         return res
     
@@ -1036,14 +1054,11 @@ grid = pd.concat([grid, pts_df], axis=1)
 
 def risco_to_row(total_pts: int, funcao: str, operacao: str = "", atividade: str = "") -> str:
     if is_ponta_grossa_empurrada_transf(operacao, atividade):
-        # Para EMPURRADA e TRANSFERÊNCIA: máximo 20 pontos
-        if int(total_pts) >= 15:
-            return "ATENÇÃO"
-        elif int(total_pts) >= 10:
-            return "ATENÇÃO"
-        elif int(total_pts) > 0:
-            return "ATENÇÃO"
-        return "SIM"
+        # Regra para EMPURRADA/TRANSFERÊNCIA: menor que 10 = SIM, maior que 10 = NÃO
+        if int(total_pts) < 10:
+            return "SIM"
+        else:
+            return "NÃO"
     
     if is_ponta_grossa_apoio(operacao, atividade):
         if int(total_pts) > 25:
@@ -1077,8 +1092,7 @@ f_mes = st.sidebar.selectbox("Período", mes_opts, index=0)
 f_func = st.sidebar.selectbox("Função", ["Todos"] + FUNCOES_PERMITIDAS, index=0)
 
 # Atualizar atividades disponíveis baseado na operação selecionada
-if f_oper != "Todos" and norm_operacao(f_oper) in {OP_PONTA_GROSSA_KEY, OP_CD_PONTA_GROSSA_KEY}:
-    # Para PONTA GROSSA, incluir EMPURRADA e TRANSFERÊNCIA INSUMOS
+if f_oper != "Todos" and is_ponta_grossa_operacao(f_oper):
     ativs_base = sorted(base_master["ATIVIDADE"].dropna().astype(str).unique().tolist())
     ativs_pg = []
     for a in ativs_base:
@@ -1139,6 +1153,7 @@ def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
             st.sidebar.write(f"• **{nome}** — Meta: **{meta}** / Peso: **{peso}** ({regra})")
         st.sidebar.markdown("**Total de pontos possíveis:** **20**")
         st.sidebar.caption("**Média RV:** Exibida em R$ (sem pontuação)")
+        st.sidebar.caption("**RISCO DE TO:** SIM (pts < 10) / NÃO (pts >= 10)")
         return
     
     is_pg_ctx = operacao != "Todos" and atividade != "Todos" and is_ponta_grossa_apoio(operacao, atividade)
@@ -1233,6 +1248,12 @@ if f_oper == "CD PETRÓPOLIS" or ("OPERACAO" in df.columns and (df["OPERACAO"] =
     mask_petropolis = df["OPERACAO"] == "CD PETRÓPOLIS"
     df_petropolis_corte = df["MES"].ge("2026-01")
     df = df[(~mask_petropolis) | (df_petropolis_corte)].copy()
+
+# Aplicar corte de data para PONTA GROSSA no df final
+mask_pg_filter = df.apply(lambda r: is_ponta_grossa_operacao(r.get("OPERACAO", "")), axis=1)
+mask_pg_data_filter = df["_MES_DT"] >= DATA_CORTE_PG
+df = df[(~mask_pg_filter) | (mask_pg_data_filter)].copy()
+
 if f_oper != "Todos" and f_ativ != "Todos" and is_ponta_grossa_apoio(f_oper, f_ativ):
     df = df[df["MES"] >= "2026-01"]
 if f_func == "Todos":
