@@ -154,9 +154,7 @@ def parse_currency_br(x):
     s = str(x).strip()
     if s == "":
         return np.nan
-    # Remove "R$" e espaços
     s = s.replace("R$", "").replace("R$ ", "").strip()
-    # Substitui vírgula por ponto
     s = s.replace(".", "").replace(",", ".")
     v = pd.to_numeric(s, errors="coerce")
     return float(v) if not pd.isna(v) else np.nan
@@ -927,10 +925,11 @@ if "QUEDAS" in grid.columns:
 if "RV_EMPT_VALOR" in grid.columns:
     grid["RV_EMPT_VALOR"] = pd.to_numeric(grid["RV_EMPT_VALOR"], errors="coerce").fillna(0)
 
+# Criar coluna de data do mês para filtros (manter para uso posterior)
 grid["_MES_DT"] = pd.to_datetime(grid["MES"] + "-01", errors="coerce")
 grid["_ADM_MES_DT"] = pd.to_datetime(grid["DATA_ADM_DT"], errors="coerce").dt.to_period("M").dt.to_timestamp()
 grid = grid[grid["_MES_DT"] > grid["_ADM_MES_DT"]].copy()
-grid = grid.drop(columns=["_MES_DT","_ADM_MES_DT"])
+# NÃO remover _MES_DT ainda, pois será usado nos filtros de data
 grid["MÊS"] = grid["MES"].apply(month_label)
 
 # Aplicar corte de data para PONTA GROSSA (somente a partir de 01/01/2026)
@@ -941,6 +940,9 @@ grid = grid[(~mask_pg) | (mask_pg_data)].copy()
 mask_pg_apoio = grid.apply(lambda r: is_ponta_grossa_apoio(r.get("OPERACAO", ""), r.get("ATIVIDADE", "")), axis=1)
 grid_pg_apoio = grid["MES"].ge("2026-01")
 grid = grid[(~mask_pg_apoio) | (grid_pg_apoio)].copy()
+
+# Agora podemos remover _MES_DT se não for mais necessário para outras operações
+# Mas vamos manter para uso nos filtros finais
 
 # =========================================================
 # PONTUAÇÃO
@@ -1054,7 +1056,7 @@ grid = pd.concat([grid, pts_df], axis=1)
 
 def risco_to_row(total_pts: int, funcao: str, operacao: str = "", atividade: str = "") -> str:
     if is_ponta_grossa_empurrada_transf(operacao, atividade):
-        # Regra para EMPURRADA/TRANSFERÊNCIA: menor que 10 = SIM, maior que 10 = NÃO
+        # Regra para EMPURRADA/TRANSFERÊNCIA: menor que 10 = SIM, maior ou igual a 10 = NÃO
         if int(total_pts) < 10:
             return "SIM"
         else:
