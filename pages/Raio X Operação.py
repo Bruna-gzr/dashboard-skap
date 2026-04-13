@@ -147,6 +147,25 @@ def parse_time_mmss(x):
         return float(hh) * 60 + float(mm) + float(ss) / 60
     return np.nan
 
+def parse_currency_br(x):
+    """Converte valor em formato R$ para número float"""
+    if pd.isna(x):
+        return np.nan
+    s = str(x).strip()
+    if s == "":
+        return np.nan
+    # Remove "R$" e espaços
+    s = s.replace("R$", "").replace("R$ ", "").strip()
+    # Substitui vírgula por ponto
+    s = s.replace(".", "").replace(",", ".")
+    v = pd.to_numeric(s, errors="coerce")
+    return float(v) if not pd.isna(v) else np.nan
+
+def fmt_currency_br(v):
+    if pd.isna(v):
+        return ""
+    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
 def fmt_hms_from_minutes(v):
     if pd.isna(v):
         return ""
@@ -232,7 +251,7 @@ def build_name_matcher(target_df: pd.DataFrame):
             if score > best_score:
                 best_score = score
                 best_cand = cand
-        if best_score >= 0.95:  # Mais rigoroso, só aceita nomes muito parecidos
+        if best_score >= 0.95:
             return best_cand
         return None
     def map_series(series: pd.Series) -> pd.Series:
@@ -264,6 +283,7 @@ for f in DATA_DIR.glob("*.xlsx"):
         break
 ARQ_VALES  = DATA_DIR / "Vales.xlsx"
 ARQ_RV     = DATA_DIR / "RV.xlsx"
+ARQ_RV_EMPT = DATA_DIR / "RV empurrada.xlsx"  # Nova planilha para RV em R$
 ARQ_ABS    = DATA_DIR / "Absenteismo.xlsx"
 ARQ_ACID   = DATA_DIR / "Ocorrencia de acidentes.xlsx"
 ARQ_DTO    = DATA_DIR / "Desvios de DTOs.xlsx"
@@ -278,7 +298,7 @@ ARQ_JLL_PG   = DATA_DIR / "JLL.xlsx"
 # CACHE BUSTER
 # =========================================================
 def get_last_mtime():
-    arquivos = [ARQ_ATIVOS, ARQ_SKAP, ARQ_VALES, ARQ_RV, ARQ_ABS, ARQ_ACID, ARQ_DTO, ARQ_IND, ARQ_CICLO, ARQ_AD_CHECK, ARQ_LOGON, ARQ_QUEDAS, ARQ_JLL_PG]
+    arquivos = [ARQ_ATIVOS, ARQ_SKAP, ARQ_VALES, ARQ_RV, ARQ_RV_EMPT, ARQ_ABS, ARQ_ACID, ARQ_DTO, ARQ_IND, ARQ_CICLO, ARQ_AD_CHECK, ARQ_LOGON, ARQ_QUEDAS, ARQ_JLL_PG]
     if ARQ_PRONT is not None:
         arquivos.append(ARQ_PRONT)
     mtimes = []
@@ -303,6 +323,8 @@ FUNCOES_MAP = {
     normalizar_nome("Motorista Entregador I"): "Motorista de Van",
     normalizar_nome("Motorista Entregador"): "Motorista de Van",
     normalizar_nome("Motorista Entregador II"): "Motorista de Van",
+    normalizar_nome("Motorista Carreta"): "Motorista",  # Novo mapeamento
+    normalizar_nome("Motorista Bitrem/Rodotrem"): "Motorista",  # Novo mapeamento
     normalizar_nome("Ajudante Armazém"): "Ajudante de armazem",
     normalizar_nome("Amarrador"): "Ajudante de armazem",
     normalizar_nome("Operador de Empilhadeira"): "Operador",
@@ -317,6 +339,7 @@ FUNCOES_DISTRIB = {
     normalizar_nome("Ajudante de Distribuição"),
     normalizar_nome("Motorista de Distribuição"),
     normalizar_nome("Motorista de Van"),
+    normalizar_nome("Motorista"),  # Adicionado Motorista para PONTA GROSSA
 }
 FUNCOES_ARMAZEM = {
     normalizar_nome("Operador"),
@@ -367,6 +390,8 @@ def operacao_sem_bees(op_key: str) -> bool:
 OP_PONTA_GROSSA_KEY = norm_operacao("PONTA GROSSA")
 OP_CD_PONTA_GROSSA_KEY = norm_operacao("CD PONTA GROSSA")
 ATIV_APOIO_LOGISTICO_KEY = normalizar_nome("APOIO LOGÍSTICO")
+ATIV_EMPT_KEY = normalizar_nome("EMPURRADA")
+ATIV_TRANSF_KEY = normalizar_nome("TRANSFERÊNCIA INSUMOS")
 DATA_CORTE_PG = pd.Timestamp("2026-01-01")
 
 def is_ponta_grossa_apoio(operacao: str, atividade: str) -> bool:
@@ -374,11 +399,19 @@ def is_ponta_grossa_apoio(operacao: str, atividade: str) -> bool:
     ativ_key = normalizar_nome(atividade)
     return op_key in {OP_PONTA_GROSSA_KEY, OP_CD_PONTA_GROSSA_KEY} and ativ_key == ATIV_APOIO_LOGISTICO_KEY
 
+def is_ponta_grossa_empurrada_transf(operacao: str, atividade: str) -> bool:
+    op_key = norm_operacao(operacao)
+    ativ_key = normalizar_nome(atividade)
+    return op_key in {OP_PONTA_GROSSA_KEY, OP_CD_PONTA_GROSSA_KEY} and ativ_key in {ATIV_EMPT_KEY, ATIV_TRANSF_KEY}
+
 def is_func_operador(funcao: str) -> bool:
     return normalizar_nome(funcao) == normalizar_nome("Operador")
 
 def is_func_ajud_armazem(funcao: str) -> bool:
     return normalizar_nome(funcao) == normalizar_nome("Ajudante de armazem")
+
+def is_func_motorista(funcao: str) -> bool:
+    return normalizar_nome(funcao) == normalizar_nome("Motorista")
 
 # =========================================================
 # PRONTUÁRIO
@@ -455,6 +488,7 @@ def carregar_bases(_cache_key: float | None):
     skap   = pd.read_excel(ARQ_SKAP) if ARQ_SKAP.exists() else pd.DataFrame()
     vales  = pd.read_excel(ARQ_VALES) if ARQ_VALES.exists() else pd.DataFrame()
     rv     = pd.read_excel(ARQ_RV) if ARQ_RV.exists() else pd.DataFrame()
+    rv_empt = pd.read_excel(ARQ_RV_EMPT) if ARQ_RV_EMPT.exists() else pd.DataFrame()  # Nova planilha
     abs_   = pd.read_excel(ARQ_ABS) if ARQ_ABS.exists() else pd.DataFrame()
     acid   = pd.read_excel(ARQ_ACID) if ARQ_ACID.exists() else pd.DataFrame()
     dto    = pd.read_excel(ARQ_DTO) if ARQ_DTO.exists() else pd.DataFrame()
@@ -470,10 +504,10 @@ def carregar_bases(_cache_key: float | None):
             pront = ler_prontuario_ponderada(ARQ_PRONT)
         except Exception:
             pront = pd.DataFrame()
-    return ativos, skap, pront, vales, rv, abs_, acid, dto, ind, ciclo, ad_check, logon, quedas, jll_pg
+    return ativos, skap, pront, vales, rv, rv_empt, abs_, acid, dto, ind, ciclo, ad_check, logon, quedas, jll_pg
 
 try:
-    ativos, skap, pront, vales, rv, abs_, acid, dto, ind, ciclo, ad_check, logon, quedas, jll_pg = carregar_bases(last_mtime)
+    ativos, skap, pront, vales, rv, rv_empt, abs_, acid, dto, ind, ciclo, ad_check, logon, quedas, jll_pg = carregar_bases(last_mtime)
 except Exception as e:
     st.error(f"❌ Erro ao carregar bases: {e}")
     st.stop()
@@ -557,7 +591,7 @@ if "NIVEIS" not in base_master.columns:
     base_master["NIVEIS"] = ""
 if "CICLO_CLASSIFICACAO_FINAL" not in base_master.columns:
     base_master["CICLO_CLASSIFICACAO_FINAL"] = ""
-MOTORISTAS_OK = {normalizar_nome("Motorista de Distribuição"), normalizar_nome("Motorista de Van")}
+MOTORISTAS_OK = {normalizar_nome("Motorista de Distribuição"), normalizar_nome("Motorista de Van"), normalizar_nome("Motorista")}
 base_master["FUNCAO_KEY"] = base_master["FUNCAO"].astype(str).map(normalizar_nome)
 mask_motorista = base_master["FUNCAO_KEY"].isin(MOTORISTAS_OK)
 base_master.loc[~mask_motorista, "PRONT_PONDERADA"] = np.nan
@@ -643,6 +677,38 @@ if rv is not None and not rv.empty:
         )
         .reset_index()
     )
+
+# Nova planilha RV empurrada (formato R$)
+rv_empt_m = pd.DataFrame(columns=["NOME_KEY", "MES", "RV_EMPT_VALOR"])
+if rv_empt is not None and not rv_empt.empty:
+    rv_empt = normalizar_colunas(rv_empt)
+    col_nome = None
+    col_proventos = None
+    col_data = None
+    
+    for c in rv_empt.columns:
+        cc = normalizar_nome(c)
+        if "COLABORADOR" in cc or "NOME" in cc:
+            col_nome = c
+        if "PROVENTOS" in cc:
+            col_proventos = c
+        if "DATA" in cc:
+            col_data = c
+    
+    if col_nome is not None and col_proventos is not None:
+        rv_empt["NOME_KEY"] = map_to_ativos_key(rv_empt[col_nome])
+        if col_data is not None:
+            rv_empt["DT"] = tratar_data_segura(rv_empt[col_data])
+        else:
+            rv_empt["DT"] = pd.NaT
+        rv_empt = rv_empt.dropna(subset=["NOME_KEY"])
+        rv_empt["RV_EMPT_VALOR"] = rv_empt[col_proventos].apply(parse_currency_br)
+        rv_empt["MES"] = to_month_key(rv_empt["DT"])
+        rv_empt_m = (
+            rv_empt.groupby(["NOME_KEY", "MES"], dropna=False)
+            .agg(RV_EMPT_VALOR=("RV_EMPT_VALOR", "sum"))
+            .reset_index()
+        )
 
 ind_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PDV", "BEES", "TML_MIN", "JL", "STATUS", "STATUS_RAW"])
 if ind is not None and not ind.empty:
@@ -769,22 +835,15 @@ acid_m  = acid_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ACIDENTE
 dto_m   = dto_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="DTO")
 
 # ===== CORREÇÃO ESPECÍFICA PARA CARLOS DANIEL =====
-# Encontrar o NOME_KEY correto do Carlos na base master
 nome_carlos = "CARLOS DANIEL OLIVEIRA MARTINS"
 carlos_master = base_master[base_master['COLABORADOR'] == nome_carlos]
 
 if not carlos_master.empty:
     nome_key_correto = carlos_master.iloc[0]['NOME_KEY']
     
-    # IMPORTANTE: Corrigir o abs_ev ANTES de criar o abs_m
-    # Filtrar apenas os registros que são do Carlos (pelo nome original)
-    # E garantir que ele só tenha os registros que realmente são dele
-    
-    # Primeiro, ver quantos registros o Carlos tem na planilha original
     carlos_original = abs_[abs_['COLABORADOR'].astype(str).str.contains("CARLOS DANIEL", case=False, na=False)]
     
     if not carlos_original.empty:
-        # Criar um DataFrame apenas com os registros reais do Carlos
         carlos_corrected = carlos_original.copy()
         carlos_corrected["NOME_KEY"] = nome_key_correto
         carlos_corrected["DT"] = tratar_data_segura(carlos_corrected["DATA"])
@@ -794,21 +853,17 @@ if not carlos_master.empty:
         carlos_corrected = carlos_corrected[carlos_corrected["TIPO"].isin([normalizar_nome("JUSTIFICADA"), normalizar_nome("NÃO JUSTIFICADA"), normalizar_nome("NAO JUSTIFICADA")])]
         carlos_ev_corrected = carlos_corrected[["NOME_KEY", "DT", "MES", "TIPO"]].copy()
         
-        # Remover TODOS os registros do Carlos que foram incorretamente associados
         abs_ev = abs_ev[abs_ev['NOME_KEY'] != nome_key_correto]
         
-        # Adicionar apenas os registros corretos
         abs_ev = pd.concat([abs_ev, carlos_ev_corrected], ignore_index=True)
 
-# Agora criar o abs_m normalmente
 abs_m = abs_ev.groupby(["NOME_KEY", "MES"]).size().reset_index(name="ABS")
-# ===== FIM DA CORREÇÃO =====
 
 # =========================================================
 # GRID colaborador x mês
 # =========================================================
 meses_sets = []
-for df_ in [vales_m, acid_m, dto_m, abs_m, rv_m, ind_m, ad_check_m, logon_m, quedas_m, jll_pg_m]:
+for df_ in [vales_m, acid_m, dto_m, abs_m, rv_m, rv_empt_m, ind_m, ad_check_m, logon_m, quedas_m, jll_pg_m]:
     if df_ is not None and not df_.empty and "MES" in df_.columns:
         meses_sets.append(df_["MES"].dropna().unique().tolist())
 meses_all = sorted(list(set([m for sub in meses_sets for m in sub])))
@@ -839,6 +894,7 @@ grid = left_join(grid, vales_m, ["VALES"])
 grid = left_join(grid, acid_m, ["ACIDENTE"])
 grid = left_join(grid, dto_m, ["DTO"])
 grid = left_join(grid, rv_m, ["PCT_RV", "RECARGAS"])
+grid = left_join(grid, rv_empt_m, ["RV_EMPT_VALOR"])  # Nova coluna
 grid = left_join(grid, ad_check_m, ["AD_CHECKLIST"])
 grid = left_join(grid, logon_m, ["LOGON"])
 grid = left_join(grid, quedas_m, ["QUEDAS"])
@@ -851,6 +907,8 @@ if "RECARGAS" in grid.columns:
     grid["RECARGAS"] = pd.to_numeric(grid["RECARGAS"], errors="coerce").fillna(0).astype(int)
 if "QUEDAS" in grid.columns:
     grid["QUEDAS"] = pd.to_numeric(grid["QUEDAS"], errors="coerce").fillna(0).astype(int)
+if "RV_EMPT_VALOR" in grid.columns:
+    grid["RV_EMPT_VALOR"] = pd.to_numeric(grid["RV_EMPT_VALOR"], errors="coerce").fillna(0)
 
 grid["_MES_DT"] = pd.to_datetime(grid["MES"] + "-01", errors="coerce")
 grid["_ADM_MES_DT"] = pd.to_datetime(grid["DATA_ADM_DT"], errors="coerce").dt.to_period("M").dt.to_timestamp()
@@ -872,12 +930,33 @@ def calc_pontos_row(row) -> dict:
     pts_distrib = pontos_distrib_por_operacao(op_key)
     sem_bees = operacao_sem_bees(op_key)
     is_pg_apoio = is_ponta_grossa_apoio(row.get("OPERACAO", ""), row.get("ATIVIDADE", ""))
+    is_pg_empt = is_ponta_grossa_empurrada_transf(row.get("OPERACAO", ""), row.get("ATIVIDADE", ""))
+    
     res = {
         "PTS_PDV": 0, "PTS_BEES": 0, "PTS_TML": 0, "PTS_JL": 0,
         "PTS_ABS": 0, "PTS_VALES": 0, "PTS_ACIDENTE": 0, "PTS_DTO": 0,
         "PTS_AD_CHECKLIST": 0, "PTS_LOGON": 0, "PTS_QUEDAS": 0,
+        "PTS_RV_EMPT": 0,  # Nova pontuação para RV empurrada (só para exibição, sem peso)
         "TOTAL_PTS": 0
     }
+    
+    # Caso EMPURRADA ou TRANSFERÊNCIA em PONTA GROSSA
+    if is_pg_empt:
+        # ABS: meta 0, peso 10
+        if int(row.get("ABS", 0) or 0) == 0:
+            res["PTS_ABS"] = 10
+        
+        # ACIDENTE: meta 0, peso 10
+        if int(row.get("ACIDENTE", 0) or 0) == 0:
+            res["PTS_ACIDENTE"] = 10
+        
+        # RV_EMPT_VALOR: apenas para exibição, sem pontuação
+        res["PTS_RV_EMPT"] = 0
+        
+        # Total de pontos possíveis: 20
+        res["TOTAL_PTS"] = res["PTS_ABS"] + res["PTS_ACIDENTE"]
+        return res
+    
     if is_pg_apoio:
         funcao = str(row.get("FUNCAO", ""))
         jll_val = row.get("JLL_PG", np.nan)
@@ -905,6 +984,7 @@ def calc_pontos_row(row) -> dict:
             res["PTS_AD_CHECKLIST"] + res["PTS_LOGON"] + res["PTS_QUEDAS"]
         )
         return res
+    
     if mode == "DISTRIB":
         v_pdv  = row.get("PDV", np.nan)
         v_bees = row.get("BEES", np.nan)
@@ -941,6 +1021,7 @@ def calc_pontos_row(row) -> dict:
             res["PTS_ABS"] + res["PTS_VALES"] + res["PTS_ACIDENTE"] + res["PTS_DTO"]
         )
         return res
+    
     if int(row.get("ABS", 0) or 0) == 0:
         res["PTS_ABS"] = PONTOS_ARMAZEM["ABS"]
     if int(row.get("ACIDENTE", 0) or 0) == 0:
@@ -954,12 +1035,23 @@ pts_df = grid.apply(calc_pontos_row, axis=1, result_type="expand")
 grid = pd.concat([grid, pts_df], axis=1)
 
 def risco_to_row(total_pts: int, funcao: str, operacao: str = "", atividade: str = "") -> str:
+    if is_ponta_grossa_empurrada_transf(operacao, atividade):
+        # Para EMPURRADA e TRANSFERÊNCIA: máximo 20 pontos
+        if int(total_pts) >= 15:
+            return "ATENÇÃO"
+        elif int(total_pts) >= 10:
+            return "ATENÇÃO"
+        elif int(total_pts) > 0:
+            return "ATENÇÃO"
+        return "SIM"
+    
     if is_ponta_grossa_apoio(operacao, atividade):
         if int(total_pts) > 25:
             return "NÃO"
         if int(total_pts) >= 20:
             return "ATENÇÃO"
         return "SIM"
+    
     mode = view_mode_from_funcao(funcao)
     if mode == "ARMAZEM":
         return "NÃO" if int(total_pts) >= 10 else "SIM"
@@ -983,7 +1075,20 @@ f_oper = st.sidebar.selectbox("Operação", ["Todos"] + ops_disp, index=0)
 mes_opts = ["Todos"] + [month_label(m) for m in meses_all]
 f_mes = st.sidebar.selectbox("Período", mes_opts, index=0)
 f_func = st.sidebar.selectbox("Função", ["Todos"] + FUNCOES_PERMITIDAS, index=0)
-ativs = sorted(base_master["ATIVIDADE"].dropna().astype(str).unique().tolist())
+
+# Atualizar atividades disponíveis baseado na operação selecionada
+if f_oper != "Todos" and norm_operacao(f_oper) in {OP_PONTA_GROSSA_KEY, OP_CD_PONTA_GROSSA_KEY}:
+    # Para PONTA GROSSA, incluir EMPURRADA e TRANSFERÊNCIA INSUMOS
+    ativs_base = sorted(base_master["ATIVIDADE"].dropna().astype(str).unique().tolist())
+    ativs_pg = []
+    for a in ativs_base:
+        a_norm = normalizar_nome(a)
+        if a_norm in {ATIV_APOIO_LOGISTICO_KEY, ATIV_EMPT_KEY, ATIV_TRANSF_KEY}:
+            ativs_pg.append(a)
+    ativs = sorted(ativs_pg)
+else:
+    ativs = sorted(base_master["ATIVIDADE"].dropna().astype(str).unique().tolist())
+
 f_ativ = st.sidebar.selectbox("Atividade", ["Todos"] + ativs, index=0)
 min_adm = pd.to_datetime(base_master["DATA_ADM_DT"], errors="coerce").min()
 max_adm = pd.to_datetime(base_master["DATA_ADM_DT"], errors="coerce").max()
@@ -1023,6 +1128,19 @@ def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
     metas_op = METAS.get(op_key, {}) if op_key else {}
     st.sidebar.markdown("---")
     st.sidebar.subheader("Regras de pontuação")
+    
+    is_pg_empt_ctx = operacao != "Todos" and atividade != "Todos" and is_ponta_grossa_empurrada_transf(operacao, atividade)
+    if is_pg_empt_ctx:
+        regras = [
+            ("ABS", "0", 10, "Qtde (== 0)"),
+            ("ACIDENTE", "0", 10, "Qtde (== 0)"),
+        ]
+        for nome, meta, peso, regra in regras:
+            st.sidebar.write(f"• **{nome}** — Meta: **{meta}** / Peso: **{peso}** ({regra})")
+        st.sidebar.markdown("**Total de pontos possíveis:** **20**")
+        st.sidebar.caption("**Média RV:** Exibida em R$ (sem pontuação)")
+        return
+    
     is_pg_ctx = operacao != "Todos" and atividade != "Todos" and is_ponta_grossa_apoio(operacao, atividade)
     if is_pg_ctx and funcao in ["Operador", "Ajudante de armazem"]:
         regras = []
@@ -1046,6 +1164,7 @@ def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
             st.sidebar.write(f"• **{nome}** — Meta: **{meta}** / Peso: **{peso}** ({regra})")
         st.sidebar.markdown("**Total de pontos possíveis:** **40**")
         return
+    
     if operacao == "Todos" or funcao == "Todos":
         st.sidebar.caption("Selecione **Operação** e **Função** para ver as regras exatas.")
         total_disp = sum(PONTOS_DISTRIB_PADRAO.values())
@@ -1053,6 +1172,7 @@ def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
         st.sidebar.write(f"• Total possível (Distribuição): **{total_disp}**")
         st.sidebar.write(f"• Total possível (Armazém): **{total_arm}**")
         return
+    
     regras = []
     if mode == "DISTRIB":
         pts = pontos_distrib_por_operacao(op_key)
@@ -1141,6 +1261,7 @@ if not df.empty:
         "QUEDAS": df["QUEDAS"].mean() if "QUEDAS" in df.columns else np.nan,
         "PCT_RV": df["PCT_RV"].mean(),
         "RECARGAS": df["RECARGAS"].mean() if "RECARGAS" in df.columns else np.nan,
+        "RV_EMPT_VALOR": df["RV_EMPT_VALOR"].mean() if "RV_EMPT_VALOR" in df.columns else np.nan,
     }
     if f_colab != "Todos":
         ref_last_colab = df.sort_values("MES", ascending=False).iloc[0].copy()
@@ -1151,6 +1272,7 @@ elif ref_last_colab is not None:
     ctx_oper_key = norm_operacao(ref_last_colab.get("OPERACAO", ""))
 hide_bees_ctx = (ctx_oper_key == OP_LONDRINA_KEY)
 is_pg_ctx = (f_oper != "Todos" and f_ativ != "Todos" and is_ponta_grossa_apoio(f_oper, f_ativ))
+is_pg_empt_ctx = (f_oper != "Todos" and f_ativ != "Todos" and is_ponta_grossa_empurrada_transf(f_oper, f_ativ))
 
 # =========================================================
 # CORES
@@ -1234,11 +1356,17 @@ with left:
         bees_res = fmt_pct(ref_avg.get("BEES", np.nan)) or "-"
         tml_res  = fmt_hms_from_minutes(ref_avg.get("TML_MIN", np.nan)) or "-"
         rv_res   = fmt_pct(ref_avg.get("PCT_RV", np.nan)) or "-"
+        rv_empt_res = fmt_currency_br(ref_avg.get("RV_EMPT_VALOR", np.nan)) or "-"
         rec_res  = "-" if pd.isna(ref_avg.get("RECARGAS", np.nan)) else f"{ref_avg.get('RECARGAS', 0):.0f}"
         ad_res   = fmt_pct(ref_avg.get("AD_CHECKLIST", np.nan)) or "-"
         logon_res = fmt_pct(ref_avg.get("LOGON", np.nan)) or "-"
         quedas_res = "-" if pd.isna(ref_avg.get("QUEDAS", np.nan)) else f"{ref_avg.get('QUEDAS', 0):.2f}"
-        if is_pg_ctx:
+        
+        if is_pg_empt_ctx:
+            linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}")
+            linha_ind("⚠️", "ACIDENTE", f"{ref_avg.get('ACIDENTE', 0):.2f}")
+            linha_ind("💰", "Média RV", rv_empt_res)
+        elif is_pg_ctx:
             linha_ind("👥", "JLL", jll_pg_res)
             linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}")
             linha_ind("⚠️", "ACIDENTE", f"{ref_avg.get('ACIDENTE', 0):.2f}")
@@ -1360,6 +1488,7 @@ with right:
         t["AD_CHECKLIST_FMT"] = t.get("AD_CHECKLIST", np.nan).apply(fmt_pct_or_na)
         t["LOGON_FMT"] = t.get("LOGON", np.nan).apply(fmt_pct_or_na)
         t["MÉDIA RV"] = t.get("PCT_RV", np.nan).apply(fmt_pct)
+        t["RV_EMPT_FMT"] = t.get("RV_EMPT_VALOR", np.nan).apply(fmt_currency_br)
         t["RECARGAS_TXT"] = t.get("RECARGAS", 0).fillna(0).astype(int).astype(str)
         t["ABS"] = t["ABS"].astype(int)
         t["VALES"] = t["VALES"].astype(int)
@@ -1383,7 +1512,12 @@ with right:
             out[(nome, "Resultado")] = t[col_res]
             if col_pts is not None:
                 out[(nome, "PTS")] = t[col_pts]
-        if is_pg_ctx:
+        
+        if is_pg_empt_ctx:
+            add_indicador("ABS", "ABS", "PTS_ABS")
+            add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
+            out[("Média RV", "Resultado")] = t["RV_EMPT_FMT"]
+        elif is_pg_ctx:
             add_indicador("JLL", "JLL_PG_FMT", "PTS_JL")
             add_indicador("ABS", "ABS", "PTS_ABS")
             add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
@@ -1407,13 +1541,14 @@ with right:
                 normalizar_nome("Motorista de Distribuição"),
                 normalizar_nome("Motorista de Van"),
                 normalizar_nome("Ajudante de Distribuição"),
+                normalizar_nome("Motorista"),
             }
             mask_fun = t["FUNCAO"].astype(str).map(normalizar_nome).isin(fun_ok)
             rec_col = pd.Series([""] * len(t), index=t.index)
             rec_col.loc[mask_fun] = t.loc[mask_fun, "RECARGAS_TXT"]
             out[("Recargas", "Resultado")] = rec_col
             out[("Média RV", "Resultado")] = t["MÉDIA RV"]
-        if (not is_pg_ctx) and view_mode == "ARMAZEM":
+        if (not is_pg_ctx and not is_pg_empt_ctx) and view_mode == "ARMAZEM":
             add_indicador("ABS", "ABS", "PTS_ABS")
             add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
             add_indicador("Desvios DTO", "DTO", "PTS_DTO")
