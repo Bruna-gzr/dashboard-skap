@@ -1,661 +1,552 @@
 import streamlit as st
 
-st.set_page_config(
-    page_title="Dashboard RH",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# Configuração da página
+st.set_page_config(page_title="Materiais de Integração", layout="wide")
 
-import pandas as pd
-import numpy as np
-from datetime import datetime
-from pathlib import Path
-from io import BytesIO
-import unicodedata
-import plotly.express as px
-from zoneinfo import ZoneInfo
+# CSS
+st.markdown("""
+<style>
+    .stApp {
+        background-color: #050816;
+    }
 
-# =========================
-# Página
-# =========================
-st.title("🚚 Integração Distribuição")
+    .page-title {
+        text-align: center;
+        color: white;
+        margin-bottom: 20px;
+    }
 
-# =========================
-# Arquivos (pasta data/)
-# =========================
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+    .unidade-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 30px;
+    }
+    
+    .unidade-titulo {
+        text-align: center;
+        color: white;
+        font-size: 22px;
+        font-weight: 700;
+        margin: 0;
+        padding: 0;
+        margin-bottom: 25px;
+    }
 
-ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
-ARQ_IDS = DATA_DIR / "Base IDs Logon.xlsx"
-ARQ_RESPOSTAS = DATA_DIR / "Respostas Logon.xlsx"
-ARQ_ADMITIDOS = DATA_DIR / "Admitidos.xlsx"
+    .titulo-coluna {
+        color: #CCCCCC;
+        font-weight: bold;
+        margin-bottom: 15px;
+        font-size: 16px;
+        text-align: center;
+        width: 100%;
+        letter-spacing: 0.5px;
+    }
 
-# =========================
-# Última atualização dos dados
-# =========================
-try:
-    arquivos = [ARQ_ATIVOS, ARQ_IDS, ARQ_RESPOSTAS, ARQ_ADMITIDOS]
-    last_mtime = max(a.stat().st_mtime for a in arquivos if a.exists())
-    dt_last_update = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
-    ultima_atualizacao_txt = dt_last_update.strftime("%d/%m/%Y %H:%M")
-except Exception:
-    last_mtime = None
-    ultima_atualizacao_txt = "não disponível"
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background: linear-gradient(135deg, #2D2D2D 0%, #404040 100%);
+        border-radius: 20px;
+        padding: 25px 20px 25px 20px;
+        margin: 8px 0;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        border: 1px solid #555555;
+        height: fit-content;
+    }
 
-# =========================
-# Utils
-# =========================
-def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
-    df.columns = [
-        unicodedata.normalize("NFKD", str(c).strip()).encode("ascii", "ignore").decode("utf-8").upper()
-        for c in df.columns
-    ]
-    return df
+    div[data-testid="stImage"] {
+        text-align: center;
+    }
 
-def normalizar_texto(s: str) -> str:
-    s = "" if s is None else str(s)
-    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("utf-8")
-    return s.upper().strip()
+    div[data-testid="stImage"] img {
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
 
-def limpar_texto(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
-    for c in cols:
-        if c in df.columns:
-            df[c] = df[c].astype(str).str.strip()
-    return df
+    .logo-fallback {
+        background: white;
+        border-radius: 50%;
+        width: 120px;
+        height: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 15px auto;
+    }
+    
+    .logo-fallback-grande {
+        background: white;
+        border-radius: 50%;
+        width: 160px !important;
+        height: 160px !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 15px auto;
+    }
+    
+    .logo-fallback span, .logo-fallback-grande span {
+        font-size: 60px;
+    }
 
-def garantir_coluna(df: pd.DataFrame, col: str, default="") -> pd.DataFrame:
-    if col not in df.columns:
-        df[col] = default
-    return df
+    .link-botao {
+        display: block;
+        width: 100%;
+        background: #3A3A3A;
+        color: #FFFFFF !important;
+        border: 1px solid #555555;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 14px;
+        font-weight: 500;
+        text-align: left;
+        text-decoration: none !important;
+        margin: 3px 0;
+        box-sizing: border-box;
+    }
 
-def centralizar_tabela(df: pd.DataFrame):
-    return (
-        df.style
-        .set_properties(**{"text-align": "center"})
-        .set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
-    )
+    .link-botao:hover {
+        background: #4A4A4A;
+        color: #FFFFFF !important;
+        border: 1px solid #777777;
+        text-decoration: none !important;
+    }
 
-def tratar_data_segura(series: pd.Series) -> pd.Series:
-    """Aceita texto BR dd/mm/aaaa ou serial Excel (blindado)."""
-    dt_txt = pd.to_datetime(series, errors="coerce", dayfirst=True)
+    .link-botao-vazio {
+        display: block;
+        width: 100%;
+        background: #2A2A2A;
+        color: #999999 !important;
+        border: 1px dashed #555555;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 14px;
+        font-weight: 500;
+        text-align: left;
+        text-decoration: none !important;
+        margin: 3px 0;
+        box-sizing: border-box;
+        cursor: default;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-    num = pd.to_numeric(series, errors="coerce").replace([np.inf, -np.inf], np.nan)
-    mask = num.notna() & np.isfinite(num) & (num >= 20000) & (num <= 80000)  # ~1954 a ~2119
+# Título
+st.markdown("<h1 class='page-title'>MATERIAIS DE INTEGRAÇÃO</h1>", unsafe_allow_html=True)
 
-    dt_excel = pd.Series(pd.NaT, index=series.index)
-    if mask.any():
-        dt_excel.loc[mask] = pd.to_datetime(
-            num.loc[mask].astype("int64"),
-            unit="D",
-            origin="1899-12-30",
-            errors="coerce",
-        )
-    return dt_txt.fillna(dt_excel)
+# ============================================
+# DADOS DAS UNIDADES
+# ============================================
 
-def preparar_excel_para_download(df: pd.DataFrame, sheet_name: str = "Dados") -> bytes:
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
-    return output.getvalue()
-
-def safe_filename(s: str) -> str:
-    s = normalizar_texto(s)
-    s = s.replace(" ", "_").replace("/", "-")
-    return s
-
-def opcoes(df: pd.DataFrame, col: str) -> list[str]:
-    if col not in df.columns:
-        return []
-    vals = (
-        df[col].astype(str).str.strip()
-        .replace(["", "nan", "None"], pd.NA)
-        .dropna().unique().tolist()
-    )
-    return sorted(vals)
-
-def limpar_id(v):
-    s = "" if pd.isna(v) else str(v).strip()
-    if s.endswith(".0"):
-        s = s[:-2]
-    return s
-
-# =========================
-# Status colors (coluna STATUS)
-# =========================
-STATUS_STYLE = {
-    "Conforme esperado": "background-color: #22c55e; color: white; font-weight:700;",
-    "Pendente mas no prazo": "background-color: #facc15; color: black; font-weight:700;",
-    "Pendente em atraso": "background-color: #ef4444; color: white; font-weight:700;",
-    "Concluido em atraso": "background-color: #fb923c; color: black; font-weight:700;",
-    "Concluido adiantado": "background-color: #fecaca; color: black; font-weight:700;",
+UNIDADES = {
+    "Aracaju": {
+        "logo": "logos/Aracaju.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Cascavel": {
+        "logo": "logos/Cascavel.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Diadema": {
+        "logo": "logos/Diadema.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Fco Beltrao": {
+        "logo": "logos/Fco Beltrao.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Foz do Iguacu": {
+        "logo": "logos/Foz do Iguacu.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Litoral": {
+        "logo": "logos/Litoral.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Londrina": {
+        "logo": "logos/Londrina.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Petropolis": {
+        "logo": "logos/Petropolis.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    },
+    "Sao Cristovao": {
+        "logo": "logos/Sao Cristovao.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA", "GESTÃO"]
+        },
+        "coluna2": None
+    },
+    "Ponta Grossa": {
+        "logo": "logos/Ponta Grossa Armazem.png",
+        "coluna1": {
+            "titulo": "🚛 EMPURRADA",
+            "setores": ["GENTE", "SEGURANÇA", "OPERAÇÃO"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR", "FROTA"]
+        }
+    },
+    "Vidros": {
+        "logo": "logos/Vidros.png",
+        "coluna1": None,
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
+        }
+    }
 }
 
-# =========================
-# Load (cache buster por mtime)
-# =========================
-@st.cache_data(show_spinner=True)
-def carregar_bases(_cache_buster: float | None):
-    for arq in [ARQ_ATIVOS, ARQ_IDS, ARQ_RESPOSTAS, ARQ_ADMITIDOS]:
-        if not arq.exists():
-            raise FileNotFoundError(f"Arquivo não encontrado: {arq.name}")
+ICONES = {
+    "GENTE": "👥",
+    "SEGURANÇA": "🛡️",
+    "ENTREGA": "🚚",
+    "OPERAÇÃO": "⚙️",
+    "FINANCEIRO": "💰",
+    "FROTA": "🚛",
+    "GESTÃO": "📊",
+    "AJUDANTE DE ARMAZEM": "📦",
+    "OPERADOR": "🔧"
+}
 
-    ativos_ = pd.read_excel(ARQ_ATIVOS)
-    ids_ = pd.read_excel(ARQ_IDS)
-    resp_ = pd.read_excel(ARQ_RESPOSTAS)
-    admit_ = pd.read_excel(ARQ_ADMITIDOS)
-    return ativos_, ids_, resp_, admit_
+UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros", "Aracaju"]
 
-try:
-    ativos, ids_logon, respostas, admitidos = carregar_bases(last_mtime)
-except Exception as e:
-    st.error(f"❌ Erro ao carregar arquivos da pasta /data: {e}")
-    st.info(
-        "✅ Confira se existem exatamente estes arquivos no GitHub na pasta /data (com .xlsx):\n"
-        "- Base colaboradores ativos.xlsx\n"
-        "- Base IDs Logon.xlsx\n"
-        "- Respostas Logon.xlsx\n"
-        "- Admitidos.xlsx"
+LINKS = {
+    "Aracaju": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://canva.link/e77xn1sad2n900l",
+            "SEGURANÇA": "https://canva.link/2ey0m327hdukyw6",
+            "ENTREGA": "https://canva.link/wg8vghxq9uomrr7",
+            "FINANCEIRO": "https://canva.link/1cpe9297qkdyv71",
+            "FROTA": "https://canva.link/8k5ksel3sc06rdb",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://canva.link/w3e28y60fv8adr9",
+            "GENTE": "https://canva.link/fxe16zexlttkntj",
+            "SEGURANÇA": "https://canva.link/wxgp4pnu8brztkj",
+            "AJUDANTE DE ARMAZEM": "https://canva.link/zug2oqbr4yl4x1a",
+            "OPERADOR": "https://canva.link/hqq4r7nvlu0hlbg",
+        }
+    },
+    "Cascavel": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-QmNebQ/8Kw0euGLNWLECVYFqsQdMQ/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDAaKz2M/OD4i20ecobAgfKMzXc6UWw/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDYC9E8A/XjP1QfpAly6vh5GMa4qHeg/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEdX3TZ8/NE2n7F8TJWoKSBAzJcN4uw/edit",
+            "FROTA": "https://www.canva.com/design/DAGSmyTxPe0/aQBjPT4Cl1eSKOy8syqS3w/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGU_LWGMcI/WfOjVdHq0Z0VXL2k5NU66g/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_B8yDeY/hFDGei0Kk4kB_yUU3FV-Ww/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVu5cZKg/pFcm4LK9x-bIzyVUbQ2dTA/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGVVxse6P8/ZK5IbaiyDiCiujblgzqrlA/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVrreB8k/pqquFJQh8iol8TFxUS4WeQ/edit",
+        }
+    },
+    "Fco Beltrao": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-XjNPLY/hA4xTLm0tTVWoId2Zo-C2g/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDKtWIs0/uxqPHW79vJFlhwalB1Oq4Q/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDc36cfM/IsTMyzrBlcij9_QwhDUkEg/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEd4XEG8/_ctUM32RwNdcxIUkSPs2HA/edit",
+            "FROTA": "https://www.canva.com/design/DAGS41NTZxw/4HrzgYFfkORPH2bzZQW5SA/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGU_HP0aYk/sA3bds7hG4thnclb9ZSgFg/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_FyMpic/VuGGBqWhcfO3FjN0HjY77A/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVo4nEFI/7sD5YovYS4Ju-bb_RDwN3g/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGVVwrAEIY/ehdx-uslpTN1PA31kBrH1w/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVsN6DnE/ISHJuq1sp9V13gxaOxPekQ/edit",
+        }
+    },
+    "Foz do Iguacu": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-YEvvSE/jJMcuVGw0ZdIqfQ8w0robg/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDJ_n-f8/49pIU2gWBObd1wsiajBxEw/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDTtzpIE/IIA1qsi03Q1RELHdVBQdvA/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEbX_oV4/kG1bjIY0o6AlhWqpqcfyEw/edit",
+            "FROTA": "https://www.canva.com/design/DAGS5F4ogA4/iUo8W7htTmWFfy59Tdo2FA/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGU_HWh1sA/U7wbr06VOK0iSGPuwL600Q/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_JRutl8/J4p8GTKblzYTa-7Je9e_UQ/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVp_9zt8/aenfN2xqFCeDhiO_kazEiQ/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGVV8zXKHY/dNDjOJuwBcQjiqYLA2CqJA/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVqiIATU/eXCgLPXefRAag1HkG2c0gg/edit",
+        }
+    },
+    "Londrina": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-QimPoo/AGLhPJDzCJeydJVc3yd0Uw/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGxwfnsKiU/Icny_PG98jJHP7FWLmVhwQ/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDRfGt_0/07WhSiMvJVpvvbi5hR1zoA/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEYvZH9I/dR645fh3d4yuRjLy0rYO7A/edit",
+            "FROTA": "https://www.canva.com/design/DAGS5OWwKZs/vMpW_RwRkZU8C8AJXyFl6g/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGU_C4UVDg/arhI8vC22LScNBOma3v9Dg/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_MugIS4/zbsmu8cr1xiEdBysOLLSCw/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVu_kGa0/__pCEmCPdzQTzupz1tQpgg/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGVV_9hm_g/QozEV7PX_sed9KRCvvvy7g/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVgd3aGY/P8dn9WB_DhgUUPWZ_Vy_jA/edit",
+        }
+    },
+    "Diadema": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-viAM-w/knESAP3LfoxcLYdzwf3RHQ/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDJTHnUI/w30aGKH-wifdczxsibtulg/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDVsIO_U/trnm_YPEDyIT2RJk5jAfSA/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVESit5Xo/pUWNe0NGO9D_ZADagWF17A/edit",
+            "FROTA": "https://www.canva.com/design/DAGHYolhfOU/K-VpsGPOIyE2o3tEQgLHxQ/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGU_OL2cqc/GcC9rskk1Ftyxgy-udH6Rg/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_EgSLXU/2mgHz7FfnJXMC3kHDk9wEw/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVp-v6RY/qL9cHSTnPQh17M3sX_Cj-A/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGUUNaGJb0/wdNaRTsmoOyo0yzqR8BbEQ/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVq9lo1I/ou8Zc2jRQyoFj2rJa12B0w/edit",
+        }
+    },
+    "Litoral": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-_M4PNs/DtCfh1gg32RxM7OrvCxPsA/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDK8SlYo/mHhTWjaswJ6bwPNdtZ_PNA/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDUU7vxc/tf6_fp5rfd5RIZhHlM_3DQ/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEf6lCn8/Xzj9ZW82UqXegUYR3Ddg7g/edit",
+            "FROTA": "https://www.canva.com/design/DAGS48PUqZg/cHO-63N_1MQsUi_9TQP1Gw/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGVDISJ7t8/eBxco-geG9dzcUscuN4Ajw/edit",
+            "GENTE": "https://www.canva.com/design/DAGU_CP0NZM/ah6bOwQYckzPHhKyokgZCA/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVVtuVYCg/3LiiUUZ3g7oFPob03F7Q_A/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGVV0Aki6Q/a3CzTux8yUK9Eu2rRDtzjQ/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGVVrEn0GU/n4litgTm7Wkd73GP_CDv9w/edit",
+        }
+    },
+    "Sao Cristovao": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGU-px67Ug/sg0N-xgn0mrTwEpS7vBGCA/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGVDCUZENQ/VsxePkCU4LSgVBXtucWUmA/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGVDRf3UEs/jfFvTjmW82rZbagUM84lWQ/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGVEWaYVHk/HUHW9SpcJ4dxu2xlGULANg/edit",
+            "FROTA": "https://www.canva.com/design/DAGS5PauqJw/06ATl-2-QoI9gkzLe6jf6A/edit",
+            "GESTÃO": "https://www.canva.com/design/DAGU_JUK-OU/PjBIdp1pSyk4WCS7hpW1eA/edit",
+        }
+    },
+    "Petropolis": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://www.canva.com/design/DAGrdKuUfKo/-i30IT8uP8vVVSyDw3QVew/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGrdLiDQEw/DZMkbDlZ0H3iFwBrhrgB_g/edit",
+            "ENTREGA": "https://www.canva.com/design/DAGrdMgj6DA/KnEjbwN-4rl1CduhUO6lJg/edit",
+            "FINANCEIRO": "https://www.canva.com/design/DAGrdEdcYN4/dymXcVB8yUZkVUJyyu5jZw/edit",
+            "FROTA": "https://www.canva.com/design/DAGrdIoLAjA/sR7gtw6yefGLh9-Yw30IpA/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGrdBYuwXw/aDV82dlEboasiO4S80r7WA/edit",
+            "GENTE": "https://www.canva.com/design/DAGrdJnnOyc/hYFCZOdwjt1zdNgS3tcFeg/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGrdG5JKAs/ooUa--ecof6rbjHUZzlbWg/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGrdAuS2kM/10_RN98QD1R7YtVw9RdgYw/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGrdPW5PYI/jV0Np_pbDfIzz54Th11e8Q/edit",
+        }
+    },
+    "Ponta Grossa": {
+        "EMPURRADA": {
+            "GENTE": "https://www.canva.com/design/DAG13LIpHqU/uyorO3CZAB4L5a5j-285KA/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGvfQn9TOM/KfTOeAQ0jykfbcOMuFitxQ/edit",
+            "OPERAÇÃO": "https://www.canva.com/design/DAG1yu-k6hE/OMLmz0AZg2TWe3ePQDQ4kw/edit",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGzPso2Yvo/N-AeSPyW6kmpdGb1iGk_pw/edit",
+            "GENTE": "https://www.canva.com/design/DAGzPoLU4gk/Gu0nh6pvWZrHKxJWx5w9eg/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGzRb9QDkQ/scKlpyHBByhPlWjwDPIWPQ/edit",
+            "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGzPsb89EU/5bOFnfZFvH8dpaqFnEewiA/edit",
+            "OPERADOR": "https://www.canva.com/design/DAGzPtRpVhU/M2A2ILVZhDCrDkk_8sbgew/edit",
+            "FROTA": "https://www.canva.com/design/DAG98JSzhlI/4iLdO9qcpFNeovogVYsqXQ/edit",
+        }
+    },
+    "Vidros": {
+        "ARMAZEM": {
+            "GESTÃO": "https://www.canva.com/design/DAGzPso2Yvo/N-AeSPyW6kmpdGb1iGk_pw/edit",
+            "GENTE": "https://www.canva.com/design/DAGzwHPQ1dw/cgSARPRHdtYGjc2MkGm0Vg/edit",
+            "SEGURANÇA": "https://www.canva.com/design/DAGWAUbDBuw/ZuogV5Rf5zh2eqxIhd11nw/edit",
+            "AJUDANTE DE ARMAZEM": "",
+            "OPERADOR": "",
+        }
+    }
+}
+
+def buscar_link(nome_unidade, titulo_coluna, setor):
+    chave_coluna = (
+        titulo_coluna.replace("🚛 ", "")
+        .replace("👷🏻‍♂️ ", "")
+        .replace("👷 ", "")
+        .strip()
     )
-    st.stop()
+    return LINKS.get(nome_unidade, {}).get(chave_coluna, {}).get(setor, "")
 
-# =========================
-# Normalização
-# =========================
-ativos = normalizar_colunas(ativos)
-ids_logon = normalizar_colunas(ids_logon)
-respostas = normalizar_colunas(respostas)
-admitidos = normalizar_colunas(admitidos)
+def render_link_botao(label, link):
+    if link:
+        st.markdown(
+            f'<a class="link-botao" href="{link}" target="_blank">{label}</a>',
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            f'<div class="link-botao-vazio">{label}</div>',
+            unsafe_allow_html=True
+        )
 
-# Admitidos (colunas esperadas)
-for c in ["COLABORADOR", "DATA", "ATIVIDADE", "OPERACAO", "CARGO"]:
-    admitidos = garantir_coluna(admitidos, c, "")
-
-if "OPERAÇÃO" in admitidos.columns and "OPERACAO" not in admitidos.columns:
-    admitidos["OPERACAO"] = admitidos["OPERAÇÃO"]
-
-admitidos = limpar_texto(admitidos, ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE"])
-admitidos["DATA_ADM_DT"] = tratar_data_segura(admitidos["DATA"])
-
-# Ativos (colunas mínimas)
-for c in ["COLABORADOR", "CARGO", "OPERACAO", "DATA ULT. ADM"]:
-    ativos = garantir_coluna(ativos, c, "")
-
-if "OPERAÇÃO" in ativos.columns and "OPERACAO" not in ativos.columns:
-    ativos["OPERACAO"] = ativos["OPERAÇÃO"]
-
-ativos = limpar_texto(ativos, ["COLABORADOR", "CARGO", "OPERACAO"])
-
-# IDs logon
-for c in ["COLABORADOR", "ID"]:
-    ids_logon = garantir_coluna(ids_logon, c, "")
-ids_logon = limpar_texto(ids_logon, ["COLABORADOR", "ID"])
-ids_logon["ID"] = ids_logon["ID"].apply(limpar_id)
-
-# Respostas
-for c in ["ID", "CURSO", "DATA ENTREGA"]:
-    respostas = garantir_coluna(respostas, c, "")
-respostas = limpar_texto(respostas, ["ID", "CURSO"])
-respostas["ID"] = respostas["ID"].apply(limpar_id)
-
-# =========================
-# Regras: cargos + data admissão (BASE = ADMITIDOS)
-# =========================
-CARGOS_PERMITIDOS = [
-    "Motorista Caminhão Distribuição",
-    "Motorista de Distribuição AS",
-    "Ajudante Distribuição",
-    "Ajudante AS",
-    "Motorista Entregador I",
-    "Motorista Entregador",
-    "Motorista Educador",
-    "Motorista Entregador II",
-]
-CARGOS_PERMITIDOS_UP = [normalizar_texto(c) for c in CARGOS_PERMITIDOS]
-
-admitidos["CARGO_UP"] = admitidos["CARGO"].astype(str).map(normalizar_texto)
-
-limite = pd.to_datetime("2024-09-01")  # >= 01/09/2024
-
-base = admitidos[
-    (admitidos["CARGO_UP"].isin(CARGOS_PERMITIDOS_UP)) &
-    (admitidos["DATA_ADM_DT"].notna()) &
-    (admitidos["DATA_ADM_DT"] >= limite)
-].copy()
-
-# =========================
-# IDs por colaborador (merge)
-# =========================
-ids_logon = ids_logon.drop_duplicates(subset=["COLABORADOR"], keep="last")
-base = base.merge(ids_logon[["COLABORADOR", "ID"]], on="COLABORADOR", how="left")
-base["ID"] = base["ID"].astype(str).str.strip().replace(["", "nan", "None"], pd.NA)
-base["ID"] = base["ID"].apply(limpar_id)
-
-# =========================
-# Status do colaborador (Ativo/Inativo)
-# =========================
-ativos_set = set(
-    ativos["COLABORADOR"].astype(str).map(normalizar_texto).replace({"": None}).dropna().tolist()
-)
-base["STATUS COLABORADOR"] = np.where(
-    base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ativos_set),
-    "Ativo",
-    "Inativo"
-)
-
-# =========================
-# Regras de exclusão
-# =========================
-
-# --- EXCEÇÃO: CD PETRÓPOLIS com admissão em 16/07/2025 (ignorar) ---
-data_excluir = pd.to_datetime("2025-07-16").date()
-op_norm = base["OPERACAO"].astype(str).map(normalizar_texto)
-adm_date = pd.to_datetime(base["DATA_ADM_DT"], errors="coerce").dt.date
-base = base[~(op_norm.str.contains("CD PETROPOLIS", na=False) & (adm_date == data_excluir))]
-
-# --- EXCLUSÕES POR NOME (ignorar no controle) ---
-IGNORAR_NOMES = [
-    "JULIANO CASTEDO MENDES",
-    "CLEITON VINICIUS CESARIO DE CARVALHO",
-    "ALEXANDER DE SOUZA GOMES",
-    "RIVALDO BERNABE DE MELO",
-    "NELSON JOSE FELICIO JUNIOR",
-]
-ignorar_up = set(normalizar_texto(x) for x in IGNORAR_NOMES)
-base = base[~base["COLABORADOR"].astype(str).map(normalizar_texto).isin(ignorar_up)]
-
-# =========================
-# Remover READMITIDOS (manter apenas 1ª admissão)
-# =========================
-base["_NOME_KEY"] = base["COLABORADOR"].astype(str).map(normalizar_texto)
-
-base["_KEY_REHIRES"] = np.where(
-    base["ID"].notna(),
-    "ID|" + base["ID"].astype(str),
-    "NM|" + base["_NOME_KEY"]
-)
-
-base["_ADM_DT"] = pd.to_datetime(base["DATA_ADM_DT"], errors="coerce")
-
-first_adm = base.groupby("_KEY_REHIRES")["_ADM_DT"].transform("min")
-base = base[base["_ADM_DT"] == first_adm].copy()
-
-base = base.sort_values(["_KEY_REHIRES", "_ADM_DT"]).drop_duplicates(subset=["_KEY_REHIRES"], keep="first")
-base = base.drop(columns=["_NOME_KEY", "_KEY_REHIRES", "_ADM_DT"], errors="ignore")
-
-# =========================
-# Datas derivadas
-# =========================
-base["DATA ADMISSAO"] = pd.to_datetime(base["DATA_ADM_DT"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
-hoje = pd.Timestamp.now(tz=ZoneInfo("America/Sao_Paulo")).normalize().tz_localize(None)
-
-# =========================
-# Respostas por ID + Curso (match robusto por CURSO_UP)
-# =========================
-respostas["DATA_ENTREGA_DT"] = tratar_data_segura(respostas["DATA ENTREGA"])
-respostas["CURSO_UP"] = respostas["CURSO"].astype(str).map(normalizar_texto)
-
-resp_min = (
-    respostas.dropna(subset=["ID"])
-    .groupby(["ID", "CURSO_UP"], dropna=False)["DATA_ENTREGA_DT"]
-    .min()
-    .reset_index()
-)
-
-# =========================
-# Etapas + prazos
-# =========================
-ETAPAS = [
-    ("Dia 01 - Distribuição Urbana", 0, 3),
-    ("Dia 02 - Distribuição Urbana", 1, 3),
-    ("Dia 03 - Distribuição Urbana", 2, 4),
-    ("Dia 04 - Distribuição Urbana", 3, 5),
-    ("Dia 05 - Distribuição Urbana", 4, 7),
-    ("Gradativa - Distribuição Urbana", 10, 14),
-    ("1ª Quinzena - Distribuição Urbana", 12, 18),
-    ("1° Mês - Distribuição Urbana", 24, 34),
-]
-
-# =========================
-# Montagem da base LONGA
-# =========================
-linhas = []
-base_cols = ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "DATA ADMISSAO", "DATA_ADM_DT", "ID", "STATUS COLABORADOR"]
-
-for _, r in base[base_cols].iterrows():
-    adm = pd.to_datetime(r["DATA_ADM_DT"]).normalize()
-    _id = r["ID"]
-
-    for (etapa, off_min, off_max) in ETAPAS:
-        prazo_min_dt = (adm + pd.Timedelta(days=off_min)).normalize()
-        prazo_max_dt = (adm + pd.Timedelta(days=off_max)).normalize()
-
-        realizado_dt = pd.NaT
-        if pd.notna(_id):
-            etapa_up = normalizar_texto(etapa)
-            hit = resp_min[(resp_min["ID"] == str(_id)) & (resp_min["CURSO_UP"] == etapa_up)]
-            if len(hit) > 0:
-                realizado_dt = hit["DATA_ENTREGA_DT"].iloc[0]
-
-        if pd.notna(realizado_dt):
-            realizado_dt = pd.to_datetime(realizado_dt).normalize()
-
-        if pd.isna(realizado_dt):
-            dias = int((prazo_max_dt - hoje).days)
-            status = "Pendente em atraso" if hoje > prazo_max_dt else "Pendente mas no prazo"
-            realizado_txt = ""
-        else:
-            dias = int((prazo_max_dt - realizado_dt).days)
-            if realizado_dt < prazo_min_dt:
-                status = "Concluido adiantado"
-            elif realizado_dt > prazo_max_dt:
-                status = "Concluido em atraso"
-            else:
-                status = "Conforme esperado"
-            realizado_txt = realizado_dt.strftime("%d/%m/%Y")
-
-        linhas.append({
-            "COLABORADOR": r["COLABORADOR"],
-            "STATUS COLABORADOR": r["STATUS COLABORADOR"],
-            "CARGO": r["CARGO"],
-            "OPERACAO": r["OPERACAO"],
-            "ATIVIDADE": r.get("ATIVIDADE", ""),
-            "ADMISSAO": r["DATA ADMISSAO"],
-            "ADMISSAO_DT": adm,
-            "ETAPA": etapa,
-            "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
-            "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
-            "REALIZADO": realizado_txt,
-            "DIAS": dias,
-            "STATUS": status,
-        })
-
-etapas_df = pd.DataFrame(linhas)
-
-# =========================
-# Filtros
-# =========================
-st.sidebar.header("Filtros")
-
-min_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").min()
-max_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").max()
-if pd.isna(min_adm) or pd.isna(max_adm):
-    min_adm = pd.to_datetime("2024-09-01")
-    max_adm = pd.to_datetime(datetime.today().date()).normalize()
-
-default_ini = pd.to_datetime("2025-01-01")
-if default_ini < min_adm:
-    default_ini = min_adm
-if default_ini > max_adm:
-    default_ini = min_adm
-
-st.sidebar.subheader("Período de admissão")
-col_ini, col_fim = st.sidebar.columns(2)
-
-with col_ini:
-    data_ini = st.date_input(
-        "Início",
-        value=default_ini.date(),
-        min_value=min_adm.date(),
-        max_value=max_adm.date(),
-        format="DD/MM/YYYY",
-        key="adm_ini",
-    )
-
-with col_fim:
-    data_fim = st.date_input(
-        "Fim",
-        value=max_adm.date(),
-        min_value=min_adm.date(),
-        max_value=max_adm.date(),
-        format="DD/MM/YYYY",
-        key="adm_fim",
-    )
-
-if data_ini > data_fim:
-    st.sidebar.warning("⚠️ A data de Início não pode ser maior que a data de Fim. Ajustei automaticamente.")
-    data_ini, data_fim = data_fim, data_ini
-
-f_operacao = st.sidebar.multiselect("Operação", opcoes(etapas_df, "OPERACAO"))
-f_cargo = st.sidebar.multiselect("Cargo", opcoes(etapas_df, "CARGO"))
-f_etapa = st.sidebar.multiselect("Etapa", opcoes(etapas_df, "ETAPA"))
-f_status = st.sidebar.multiselect(
-    "Status (etapa)",
-    ["Pendente em atraso", "Pendente mas no prazo", "Concluido em atraso", "Concluido adiantado", "Conforme esperado"]
-)
-
-f_status_colab = st.sidebar.multiselect(
-    "Status do colaborador",
-    ["Ativo", "Inativo"],
-    default=["Ativo"]
-)
-
-# =========================
-# Área administrativa (cache)
-# =========================
-st.sidebar.markdown("---")
-st.sidebar.caption(f"🕒 Última atualização: {ultima_atualizacao_txt}")
-
-if st.sidebar.button(
-    "⚙️ Recarregar cache (uso corporativo)",
-    use_container_width=True
-):
-    st.cache_data.clear()
-    st.rerun()
-
-df_f = etapas_df.copy()
-if f_operacao:
-    df_f = df_f[df_f["OPERACAO"].isin(f_operacao)]
-if f_cargo:
-    df_f = df_f[df_f["CARGO"].isin(f_cargo)]
-if f_etapa:
-    df_f = df_f[df_f["ETAPA"].isin(f_etapa)]
-if f_status:
-    df_f = df_f[df_f["STATUS"].isin(f_status)]
-if f_status_colab:
-    df_f = df_f[df_f["STATUS COLABORADOR"].isin(f_status_colab)]
-
-df_f = df_f[
-    (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date >= data_ini) &
-    (pd.to_datetime(df_f["ADMISSAO_DT"]).dt.date <= data_fim)
-]
-
-# =========================
-# Ordenação geral por ADMISSAO (crescente)
-# =========================
-df_f["_ADM_DT"] = pd.to_datetime(df_f["ADMISSAO_DT"], errors="coerce")
-df_f = df_f.sort_values(["_ADM_DT", "COLABORADOR", "ETAPA"]).drop(columns=["_ADM_DT"])
-
-# =========================
-# Cards
-# =========================
-total_linhas = len(df_f)
-pend_atraso = int((df_f["STATUS"] == "Pendente em atraso").sum())
-pend_prazo = int((df_f["STATUS"] == "Pendente mas no prazo").sum())
-conc_ok = int((df_f["STATUS"] == "Conforme esperado").sum())
-conc_adiant = int((df_f["STATUS"] == "Concluido adiantado").sum())
-
-no_prazo_vencendo_3 = int(
-    ((df_f["STATUS"] == "Pendente mas no prazo") & (df_f["DIAS"] >= 0) & (df_f["DIAS"] <= 3)).sum()
-)
-
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("Etapas (linhas)", total_linhas)
-c2.metric("🔴 Pendente em atraso", pend_atraso)
-c3.metric("🟡 Pendente no prazo", pend_prazo)
-c4.metric("🟡 No prazo vencendo em até 3 dias", no_prazo_vencendo_3)
-c5.metric("🟢 Conforme esperado", conc_ok)
-c6.metric("⚡ Concluído adiantado", conc_adiant)
-
-st.divider()
-
-# =========================
-# 1 - 📌 Aderência Média - Log20
-# =========================
-st.subheader("📌 Aderência Média - Log20")
-
-total_etapas = len(df_f)
-total_ok = int(((df_f["STATUS"] == "Conforme esperado") | (df_f["STATUS"] == "Pendente mas no prazo")).sum())
-aderencia_total = (total_ok / total_etapas) if total_etapas > 0 else 0.0
-pct = aderencia_total * 100
-
-if pct >= 100:
-    cor = "#22c55e"
-elif pct >= 80:
-    cor = "#facc15"
-else:
-    cor = "#ef4444"
-
-col_bar, col_pct = st.columns([8, 1])
-with col_bar:
-    st.markdown(
-        f"""
-        <div style="width: 100%; background: #2a2f3a; border-radius: 999px; height: 12px; overflow: hidden;">
-          <div style="width: {min(pct, 100):.2f}%; background: {cor}; height: 12px;"></div>
+def criar_card_unidade(nome_unidade, dados):
+    with st.container(border=True):
+        logo_grande = nome_unidade in UNIDADES_LOGO_GRANDE
+        fallback_class = "logo-fallback-grande" if logo_grande else "logo-fallback"
+        logo_width = 160 if logo_grande else 120
+        
+        st.markdown('<div class="unidade-header">', unsafe_allow_html=True)
+        
+        try:
+            st.image(dados["logo"], width=logo_width)
+        except Exception:
+            st.markdown(f"""
+            <div class="{fallback_class}">
+                <span>🏢</span>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown(f"""
+            <div class="unidade-titulo">{nome_unidade}</div>
         </div>
-        """,
-        unsafe_allow_html=True
-    )
-with col_pct:
-    st.write(f"**{pct:.2f}%**")
+        """, unsafe_allow_html=True)
 
-st.divider()
+        colunas_ativas = 0
+        if dados["coluna1"] is not None:
+            colunas_ativas += 1
+        if dados["coluna2"] is not None:
+            colunas_ativas += 1
+        
+        if colunas_ativas == 2:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                titulo_coluna_1 = dados["coluna1"]["titulo"]
+                st.markdown(
+                    f"<div class='titulo-coluna'>{titulo_coluna_1}</div>",
+                    unsafe_allow_html=True
+                )
+                for setor in dados["coluna1"]["setores"]:
+                    icone = ICONES.get(setor, "🔗")
+                    link = buscar_link(nome_unidade, titulo_coluna_1, setor)
+                    render_link_botao(f"{icone} {setor}", link)
 
-# =========================
-# 2 - Aderência por Operação
-# =========================
-st.subheader("📊 Aderência por Operação")
+            with col2:
+                titulo_coluna_2 = dados["coluna2"]["titulo"]
+                st.markdown(
+                    f"<div class='titulo-coluna'>{titulo_coluna_2}</div>",
+                    unsafe_allow_html=True
+                )
+                for setor in dados["coluna2"]["setores"]:
+                    icone = ICONES.get(setor, "🔗")
+                    link = buscar_link(nome_unidade, titulo_coluna_2, setor)
+                    render_link_botao(f"{icone} {setor}", link)
+        
+        elif colunas_ativas == 1:
+            col = st.columns([1, 2, 1])[1]
+            
+            with col:
+                if dados["coluna1"] is not None:
+                    titulo_coluna = dados["coluna1"]["titulo"]
+                    st.markdown(
+                        f"<div class='titulo-coluna'>{titulo_coluna}</div>",
+                        unsafe_allow_html=True
+                    )
+                    for setor in dados["coluna1"]["setores"]:
+                        icone = ICONES.get(setor, "🔗")
+                        link = buscar_link(nome_unidade, titulo_coluna, setor)
+                        render_link_botao(f"{icone} {setor}", link)
+                
+                elif dados["coluna2"] is not None:
+                    titulo_coluna = dados["coluna2"]["titulo"]
+                    st.markdown(
+                        f"<div class='titulo-coluna'>{titulo_coluna}</div>",
+                        unsafe_allow_html=True
+                    )
+                    for setor in dados["coluna2"]["setores"]:
+                        icone = ICONES.get(setor, "🔗")
+                        link = buscar_link(nome_unidade, titulo_coluna, setor)
+                        render_link_botao(f"{icone} {setor}", link)
 
-ader_oper = (
-    df_f.groupby("OPERACAO", dropna=False)
-    .agg(
-        TOTAL=("STATUS", "size"),
-        OK=("STATUS", lambda s: ((s == "Conforme esperado") | (s == "Pendente mas no prazo")).sum()),
-    )
-    .reset_index()
-)
+unidades_lista = list(UNIDADES.items())
 
-ader_oper["ADERENCIA_%"] = np.where(
-    ader_oper["TOTAL"] > 0,
-    (ader_oper["OK"] / ader_oper["TOTAL"]) * 100,
-    0
-)
+for i in range(0, len(unidades_lista), 2):
+    cols = st.columns(2, gap="large")
 
-ader_oper = ader_oper.sort_values("ADERENCIA_%", ascending=False)
+    with cols[0]:
+        if i < len(unidades_lista):
+            nome, dados = unidades_lista[i]
+            criar_card_unidade(nome, dados)
 
-if len(ader_oper) == 0:
-    st.info("Sem dados para calcular aderência com os filtros atuais.")
-else:
-    fig_ad = px.bar(
-        ader_oper,
-        x="OPERACAO",
-        y="ADERENCIA_%",
-        text=ader_oper["ADERENCIA_%"].map(lambda x: f"{x:.2f}%"),
-    )
-    fig_ad.update_layout(yaxis_title="Aderência (%)", xaxis={"categoryorder": "total descending"})
-    st.plotly_chart(fig_ad, use_container_width=True)
-
-st.divider()
-
-# =========================
-# 3 - 🔴 Pendentes em atraso
-# =========================
-st.subheader("🔴 Pendentes em atraso")
-
-atraso_df = df_f[df_f["STATUS"] == "Pendente em atraso"].copy()
-cols_atraso = ["COLABORADOR", "STATUS COLABORADOR", "CARGO", "OPERACAO", "ADMISSAO", "ETAPA", "PRAZO MAXIMO", "DIAS"]
-atraso_df = atraso_df[[c for c in cols_atraso if c in atraso_df.columns]]
-
-if len(atraso_df) == 0:
-    st.info("Nenhuma etapa em atraso com os filtros atuais.")
-else:
-    atraso_df["_ADM_DT"] = pd.to_datetime(atraso_df["ADMISSAO"], dayfirst=True, errors="coerce")
-    atraso_df = atraso_df.sort_values(["_ADM_DT", "COLABORADOR", "ETAPA"]).drop(columns=["_ADM_DT"])
-    st.dataframe(centralizar_tabela(atraso_df), use_container_width=True)
-
-st.divider()
-
-# =========================
-# 4 - 🟡 No prazo vencendo em até 3 dias
-# =========================
-vencendo_3_df = df_f[
-    (df_f["STATUS"] == "Pendente mas no prazo") &
-    (df_f["DIAS"] >= 0) &
-    (df_f["DIAS"] <= 3)
-].copy()
-
-cols_alerta = ["COLABORADOR", "STATUS COLABORADOR", "CARGO", "OPERACAO", "ADMISSAO", "ETAPA", "PRAZO MAXIMO", "DIAS"]
-vencendo_3_df = vencendo_3_df[[c for c in cols_alerta if c in vencendo_3_df.columns]]
-
-st.subheader("🟡 No prazo vencendo em até 3 dias")
-if len(vencendo_3_df) == 0:
-    st.info("Nenhuma etapa 'Pendente mas no prazo' vencendo em até 3 dias com os filtros atuais.")
-else:
-    vencendo_3_df["_ADM_DT"] = pd.to_datetime(vencendo_3_df["ADMISSAO"], dayfirst=True, errors="coerce")
-    vencendo_3_df = vencendo_3_df.sort_values(["_ADM_DT", "COLABORADOR", "DIAS"]).drop(columns=["_ADM_DT"])
-    st.dataframe(centralizar_tabela(vencendo_3_df), use_container_width=True)
-
-st.divider()
-
-# =========================
-# 5 - 📋 Acompanhamento por Etapa
-# =========================
-st.subheader("📋 Acompanhamento por Etapa")
-
-ordem_etapas = [e[0] for e in ETAPAS]
-tabs = st.tabs(ordem_etapas)
-
-cols_ordem = [
-    "COLABORADOR",
-    "STATUS COLABORADOR",
-    "CARGO",
-    "OPERACAO",
-    "ATIVIDADE",
-    "ADMISSAO",
-    "ETAPA",
-    "PRAZO MINIMO",
-    "PRAZO MAXIMO",
-    "REALIZADO",
-    "DIAS",
-    "STATUS",
-]
-
-for i, etapa in enumerate(ordem_etapas):
-    with tabs[i]:
-        df_etapa = df_f[df_f["ETAPA"] == etapa].copy()
-
-        if len(df_etapa) == 0:
-            st.info("Sem dados para esta etapa com os filtros atuais.")
-            continue
-
-        df_etapa["_ADM_DT"] = pd.to_datetime(df_etapa["ADMISSAO_DT"], errors="coerce")
-        df_etapa = df_etapa.sort_values(["_ADM_DT", "COLABORADOR"]).drop(columns=["_ADM_DT"])
-        df_etapa = df_etapa[[c for c in cols_ordem if c in df_etapa.columns]]
-
-        cc1, cc2, cc3 = st.columns(3)
-        cc1.metric("Registros", len(df_etapa))
-        cc2.metric("🔴 Pendente em atraso", int((df_etapa["STATUS"] == "Pendente em atraso").sum()))
-        cc3.metric("🟡 Pendente no prazo", int((df_etapa["STATUS"] == "Pendente mas no prazo").sum()))
-
-        def style_cell(col_name: str, row: pd.Series) -> str:
-            if col_name == "STATUS":
-                return STATUS_STYLE.get(str(row["STATUS"]), "")
-            if col_name == "DIAS" and str(row["STATUS"]) == "Pendente em atraso":
-                return "color: red; font-weight:800;"
-            return ""
-
-        sty = centralizar_tabela(df_etapa).apply(
-            lambda col: [style_cell(col.name, r) for _, r in df_etapa.iterrows()],
-            axis=0
-        )
-
-        st.dataframe(sty, use_container_width=True)
-
-        excel_etapa = preparar_excel_para_download(df_etapa, sheet_name="Etapa")
-        st.download_button(
-            label=f"⬇️ Baixar Excel ({etapa})",
-            data=excel_etapa,
-            file_name=f"integracao_{safe_filename(etapa)}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+    with cols[1]:
+        if i + 1 < len(unidades_lista):
+            nome, dados = unidades_lista[i + 1]
+            criar_card_unidade(nome, dados)
