@@ -228,6 +228,14 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR"]
         }
     },
+    "Sao Cristovao": {
+        "logo": "logos/Sao Cristovao.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA", "GESTÃO"]
+        },
+        "coluna2": None
+    },
     "Ponta Grossa": {
         "logo": "logos/Ponta Grossa Armazem.png",
         "coluna1": {
@@ -238,14 +246,6 @@ UNIDADES = {
             "titulo": "👷🏻‍♂️ ARMAZEM",
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR", "FROTA"]
         }
-    },
-    "Sao Cristovao": {
-        "logo": "logos/Sao Cristovao.png",
-        "coluna1": {
-            "titulo": "🚛 DISTRIBUIÇÃO",
-            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA", "GESTÃO"]
-        },
-        "coluna2": None
     },
     "Vidros": {
         "logo": "logos/Vidros.png",
@@ -269,7 +269,7 @@ ICONES = {
     "OPERADOR": "🔧"
 }
 
-UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros"]
+UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros", "Aracaju"]
 
 LINKS = {
     "Aracaju": {
@@ -284,7 +284,7 @@ LINKS = {
             "GESTÃO": "https://canva.link/w3e28y60fv8adr9",
             "GENTE": "https://canva.link/fxe16zexlttkntj",
             "SEGURANÇA": "https://canva.link/wxgp4pnu8brztkj",
-            "AJUDANTE DE ARMAZEM": "",
+            "AJUDANTE DE ARMAZEM": "https://canva.link/zug2oqbr4yl4x1a",
             "OPERADOR": "https://canva.link/hqq4r7nvlu0hlbg",
         }
     },
