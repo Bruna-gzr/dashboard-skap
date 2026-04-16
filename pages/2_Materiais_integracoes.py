@@ -249,6 +249,7 @@ UNIDADES = {
     },
     "Estancia": {
         "logo": "logos/Estancia.png",
+        "logo_tamanho": 140,  # Tamanho personalizado para Estancia
         "coluna1": {
             "titulo": "🚛 EMPURRADA",
             "setores": ["GENTE", "SEGURANÇA", "OPERAÇÃO", "FROTA"]
@@ -487,8 +488,15 @@ def render_link_botao(label, link):
 def criar_card_unidade(nome_unidade, dados):
     with st.container(border=True):
         logo_grande = nome_unidade in UNIDADES_LOGO_GRANDE
+        logo_tamanho_personalizado = dados.get("logo_tamanho", None)
+        
         fallback_class = "logo-fallback-grande" if logo_grande else "logo-fallback"
-        logo_width = 160 if logo_grande else 120
+        
+        # Define o tamanho do logo: prioriza tamanho personalizado, depois logo_grande, depois padrão
+        if logo_tamanho_personalizado:
+            logo_width = logo_tamanho_personalizado
+        else:
+            logo_width = 160 if logo_grande else 120
         
         st.markdown('<div class="unidade-header">', unsafe_allow_html=True)
         
