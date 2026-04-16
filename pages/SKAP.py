@@ -822,44 +822,45 @@ farol_base["HABILIDADES TECNICAS"] = pd.to_numeric(
     farol_base["HABILIDADES TECNICAS"], errors="coerce"
 ).fillna(0)
 
-# Critério → colaboradores com 2 meses ou menos (≤ 60 dias)
-farol_2m = farol_base[farol_base["TEMPO DE CASA"] <= 60].copy()
+# Critério → colaboradores com tempo de casa ENTRE 2 e 6 meses (61 a 180 dias)
+farol_2a6m = farol_base[(farol_base["TEMPO DE CASA"] >= 61) & (farol_base["TEMPO DE CASA"] <= 180)].copy()
 
-# Aderente = já possui técnica registrada
-farol_2m["ADERENTE_TEC"] = farol_2m["HABILIDADES TECNICAS"] >= 1
+# Aderente = já possui técnica 100% (habilidades técnicas == 1)
+farol_2a6m["ADERENTE_TEC"] = farol_2a6m["HABILIDADES TECNICAS"] >= 1
 
-# PENDENTES = não registraram Técnica ainda
-pendentes_2m = farol_2m[farol_2m["HABILIDADES TECNICAS"] < 1].copy()
+# PENDENTES = não registraram Técnica 100% ainda
+pendentes_2a6m = farol_2a6m[farol_2a6m["HABILIDADES TECNICAS"] < 1].copy()
 
-card_total_pend_2m = len(pendentes_2m)
+card_total_pend_2a6m = len(pendentes_2a6m)
 
-# Apenas o card (sem tabela)
+# Card atualizado
 st.metric(
-    "👥 Até 2 meses com Técnicas < 100%",
-    card_total_pend_2m
+    "👥 Entre 2 a 6 meses de casa com Hab Técnicas < 100%",
+    card_total_pend_2a6m
 )
+
 # -------------------------
 # Gráfico aderência por unidade
 # -------------------------
 
 aderencia_unidade = (
-    farol_2m.groupby("OPERACAO", dropna=False)
+    farol_2a6m.groupby("OPERACAO", dropna=False)
     .agg(
-        TOTAL_2M=("COLABORADOR", "count"),
+        TOTAL_2A6M=("COLABORADOR", "count"),
         ADERENTES=("ADERENTE_TEC", "sum")
     )
     .reset_index()
 )
 
 aderencia_unidade["ADERENCIA"] = np.where(
-    aderencia_unidade["TOTAL_2M"] > 0,
-    aderencia_unidade["ADERENTES"] / aderencia_unidade["TOTAL_2M"],
+    aderencia_unidade["TOTAL_2A6M"] > 0,
+    aderencia_unidade["ADERENTES"] / aderencia_unidade["TOTAL_2A6M"],
     0
 )
 
 aderencia_unidade["ADERENCIA_TXT"] = aderencia_unidade["ADERENCIA"].map(lambda x: f"{x:.0%}")
 
-st.markdown("**📈 Aderência de Habilidades Técnicas por Unidade (< 2 meses de casa)**")
+st.markdown("**📈 Aderência de Habilidades Técnicas por Unidade (Entre 2 a 6 meses de casa)**")
 
 fig_farol = px.bar(
     aderencia_unidade.sort_values("ADERENCIA", ascending=False),
@@ -877,13 +878,14 @@ fig_farol.update_layout(
 )
 
 st.plotly_chart(fig_farol, use_container_width=True)
+
 # -------------------------
 # Tabela de pendências
 # -------------------------
 
-st.markdown("**📋 Pessoas com menos de 2 meses de casa e Habilidades Técnicas < 100%**")
+st.markdown("**📋 Pessoas com tempo de casa entre 2 e 6 meses e Habilidades Técnicas < 100%**")
 
-cols_pend_2m = [
+cols_pend_2a6m = [
     "COLABORADOR",
     "CARGO",
     "OPERACAO",
@@ -895,37 +897,37 @@ cols_pend_2m = [
     "STATUS TECNICAS",
 ]
 
-cols_pend_2m = [c for c in cols_pend_2m if c in pendentes_2m.columns]
+cols_pend_2a6m = [c for c in cols_pend_2a6m if c in pendentes_2a6m.columns]
 
-tabela_pend_2m_raw = pendentes_2m[cols_pend_2m].copy()
+tabela_pend_2a6m_raw = pendentes_2a6m[cols_pend_2a6m].copy()
 
-tabela_pend_2m = tabela_pend_2m_raw.copy()
+tabela_pend_2a6m = tabela_pend_2a6m_raw.copy()
 
-if "HABILIDADES TECNICAS" in tabela_pend_2m.columns:
-    tabela_pend_2m["HABILIDADES TECNICAS"] = pd.to_numeric(
-        tabela_pend_2m["HABILIDADES TECNICAS"], errors="coerce"
+if "HABILIDADES TECNICAS" in tabela_pend_2a6m.columns:
+    tabela_pend_2a6m["HABILIDADES TECNICAS"] = pd.to_numeric(
+        tabela_pend_2a6m["HABILIDADES TECNICAS"], errors="coerce"
     ).fillna(0).map(lambda x: f"{x:.0%}")
 
-if "STATUS TECNICAS" in tabela_pend_2m.columns:
-    tabela_pend_2m["STATUS TECNICAS"] = tabela_pend_2m["STATUS TECNICAS"].astype(str).map(
+if "STATUS TECNICAS" in tabela_pend_2a6m.columns:
+    tabela_pend_2a6m["STATUS TECNICAS"] = tabela_pend_2a6m["STATUS TECNICAS"].astype(str).map(
         lambda s: "🔴 Não realizado" if s == "Não realizado"
         else "🟡 No prazo" if s == "No prazo"
         else s
     )
 
-if tabela_pend_2m.empty:
-    st.success("Nenhuma pendência encontrada para colaboradores com mais de 2 meses de casa.")
+if tabela_pend_2a6m.empty:
+    st.success("Nenhuma pendência encontrada para colaboradores com tempo de casa entre 2 e 6 meses.")
 else:
-    st.dataframe(centralizar_tabela(tabela_pend_2m), use_container_width=True)
+    st.dataframe(centralizar_tabela(tabela_pend_2a6m), use_container_width=True)
 
-    excel_pend_2m = preparar_excel_para_download(
-        tabela_pend_2m_raw,
+    excel_pend_2a6m = preparar_excel_para_download(
+        tabela_pend_2a6m_raw,
         sheet_name="Farol_Termometro_Gente"
     )
 
     st.download_button(
         "⬇️ Baixar Excel (Farol da Skap - Termômetro de Gente)",
-        data=excel_pend_2m,
+        data=excel_pend_2a6m,
         file_name="farol_skap_termometro_gente.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
