@@ -247,6 +247,17 @@ UNIDADES = {
             "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR", "FROTA"]
         }
     },
+    "Estancia": {
+        "logo": "logos/Estancia.png",
+        "coluna1": {
+            "titulo": "🚛 EMPURRADA",
+            "setores": ["GENTE", "SEGURANÇA", "OPERAÇÃO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR", "FROTA"]
+        }
+    },
     "Vidros": {
         "logo": "logos/Vidros.png",
         "coluna1": None,
@@ -423,6 +434,22 @@ LINKS = {
             "AJUDANTE DE ARMAZEM": "https://www.canva.com/design/DAGzPsb89EU/5bOFnfZFvH8dpaqFnEewiA/edit",
             "OPERADOR": "https://www.canva.com/design/DAGzPtRpVhU/M2A2ILVZhDCrDkk_8sbgew/edit",
             "FROTA": "https://www.canva.com/design/DAG98JSzhlI/4iLdO9qcpFNeovogVYsqXQ/edit",
+        }
+    },
+    "Estancia": {
+        "EMPURRADA": {
+            "GENTE": "https://canva.link/agtw7g9dx88h79t",
+            "SEGURANÇA": "https://www.canva.com/design/DAHGWvUhyag/bfvlI9fAbccWNAJvJZ_CrA/edit",
+            "OPERAÇÃO": "https://canva.link/3o1zack7ha8vlk2",
+            "FROTA": "https://canva.link/c86qx40bt0c0q1u",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://canva.link/puzjldxiupc4rs6",
+            "GENTE": "https://canva.link/g39gnrrua56kzs7",
+            "SEGURANÇA": "https://www.canva.com/design/DAHGWj9jhqY/KWeZ9DptTgGcEY9K-E6fZA/edit",
+            "AJUDANTE DE ARMAZEM": "https://canva.link/mv0olxvfihbfi74",
+            "OPERADOR": "https://canva.link/dr0yiqs1h3wxx85",
+            "FROTA": "https://canva.link/i1atiw576pp6q9y",
         }
     },
     "Vidros": {
