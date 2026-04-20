@@ -242,6 +242,9 @@ admitidos['Status'] = admitidos['Colaborador'].apply(
     lambda x: 'Ativo' if x in colaboradores_ativos_lista else 'Inativo'
 )
 
+# Filtrar apenas colaboradores ATIVOS para aparecer no dashboard
+admitidos = admitidos[admitidos['Status'] == 'Ativo']
+
 # Regras específicas por unidade
 data_corte_petropolis = datetime(2025, 10, 1)
 data_corte_litoral = datetime(2024, 11, 1)
@@ -275,23 +278,22 @@ with st.sidebar:
         help="Selecione uma operação específica"
     )
     
-    # Filtro de status (Ativo/Inativo) - padrão somente Ativos
-    filtro_status = st.multiselect(
-        "👥 Status do Colaborador",
-        options=["Ativo", "Inativo"],
-        default=["Ativo"],
-        help="Filtrar colaboradores por status"
-    )
-    
     # Datas separadas (início e fim) - formato português
     min_date = admitidos['Data'].min().date()
     max_date = admitidos['Data'].max().date()
+    data_padrao_inicio = datetime(2025, 5, 1).date()
+    
+    # Garantir que a data padrão está dentro do intervalo válido
+    if data_padrao_inicio < min_date:
+        data_padrao_inicio = min_date
+    elif data_padrao_inicio > max_date:
+        data_padrao_inicio = max_date
     
     col1, col2 = st.columns(2)
     with col1:
         data_inicio = st.date_input(
             "📅 Data inicial", 
-            value=min_date,
+            value=data_padrao_inicio,
             min_value=min_date,
             max_value=max_date,
             format="DD/MM/YYYY"
@@ -324,6 +326,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### ℹ️ Informações")
     st.caption(f"📅 Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    st.caption(f"👥 Mostrando apenas colaboradores ATIVOS")
     
     st.markdown("---")
     
@@ -340,10 +343,6 @@ admitidos_filtrado = admitidos.copy()
 # Filtro de operação
 if filtro_operacao != "Todas":
     admitidos_filtrado = admitidos_filtrado[admitidos_filtrado['Operação'] == filtro_operacao]
-
-# Filtro de status
-if filtro_status:
-    admitidos_filtrado = admitidos_filtrado[admitidos_filtrado['Status'].isin(filtro_status)]
 
 # Filtro de data
 admitidos_filtrado = admitidos_filtrado[
@@ -371,7 +370,6 @@ for modulo, df_mod in integracao.items():
         results_list.append({
             "Operação": row['Operação'],
             "Colaborador": row['Colaborador'],
-            "Status_Colaborador": row['Status'],
             "Data_Admissao": row['Data'],
             "Módulo": modulo,
             "Status_Modulo": status
@@ -452,8 +450,8 @@ if len(resultado_modulos) > 0:
         modulo_selecionado = modulo_map[filtro_modulo_detalhe]
         tabela_filtrada = resultado_modulos[resultado_modulos['Módulo'] == modulo_selecionado]
     
-    # Preparar tabela detalhada com as colunas solicitadas
-    tabela_detalhada = tabela_filtrada[['Colaborador', 'Data_Admissao', 'Módulo', 'Status_Modulo']].copy()
+    # Preparar tabela detalhada com as colunas solicitadas (incluindo Operação)
+    tabela_detalhada = tabela_filtrada[['Operação', 'Colaborador', 'Data_Admissao', 'Módulo', 'Status_Modulo']].copy()
     
     # Mapear nomes dos módulos
     modulo_nomes = {"M1": "Módulo 1", "M2": "Módulo 2", "M3": "Módulo 3", "M4": "Módulo 4", "M5": "Módulo 5"}
@@ -463,13 +461,13 @@ if len(resultado_modulos) > 0:
     tabela_detalhada['Data_Admissao'] = pd.to_datetime(tabela_detalhada['Data_Admissao']).dt.strftime('%d/%m/%Y')
     
     # Renomear colunas
-    tabela_detalhada.columns = ['Colaborador', 'Admissão', 'Módulo', 'Status do Módulo']
+    tabela_detalhada.columns = ['Operação', 'Colaborador', 'Admissão', 'Módulo', 'Status do Módulo']
     
     # Remover duplicatas (caso um colaborador apareça mais de uma vez para o mesmo módulo)
-    tabela_detalhada = tabela_detalhada.drop_duplicates(subset=['Colaborador', 'Módulo'])
+    tabela_detalhada = tabela_detalhada.drop_duplicates(subset=['Operação', 'Colaborador', 'Módulo'])
     
-    # Ordenar por colaborador e módulo
-    tabela_detalhada = tabela_detalhada.sort_values(['Colaborador', 'Módulo'])
+    # Ordenar por operação, colaborador e módulo
+    tabela_detalhada = tabela_detalhada.sort_values(['Operação', 'Colaborador', 'Módulo'])
     
     # Tabela com cores
     def color_status(val):
@@ -509,14 +507,13 @@ if colaborador_selecionado:
     if not dados_colaborador.empty:
         data_admissao = dados_colaborador.iloc[0]['Data'].strftime('%d/%m/%Y')
         operacao_colaborador = dados_colaborador.iloc[0]['Operação']
-        status_colaborador = dados_colaborador.iloc[0]['Status']
         
         st.markdown(f"""
         <div class="info-colaborador">
             <strong>👤 Colaborador:</strong> {colaborador_selecionado}<br>
             <strong>📅 Data de Admissão:</strong> {data_admissao}<br>
             <strong>🏭 Operação:</strong> {operacao_colaborador}<br>
-            <strong>📌 Status:</strong> {status_colaborador}
+            <strong>📌 Status:</strong> Ativo
         </div>
         """, unsafe_allow_html=True)
 
