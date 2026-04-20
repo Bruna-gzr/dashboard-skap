@@ -7,6 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import locale
 import os
+from io import BytesIO
 
 # Tentar configurar locale para português
 try:
@@ -157,6 +158,13 @@ def calcular_estatisticas_respostas(df_mod, perguntas_gabarito, respostas_valida
     
     return estatisticas
 
+def gerar_excel_detalhamento(df_detalhamento):
+    """Gera arquivo Excel para download do detalhamento"""
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_detalhamento.to_excel(writer, index=False, sheet_name='Detalhamento')
+    return output.getvalue()
+
 # =========================
 # Cache de dados com botão de recarregar
 # =========================
@@ -212,14 +220,6 @@ def recarregar_cache():
 # =========================
 # Carregamento dos dados
 # =========================
-
-# Botão de recarregar cache na sidebar
-with st.sidebar:
-    st.markdown("### 🔄 Controle de Dados")
-    if st.button("🔄 Recarregar Cache", use_container_width=True, help="Clique para recarregar todas as bases de dados"):
-        recarregar_cache()
-    
-    st.markdown("---")
 
 with st.spinner('Carregando dados...'):
     admitidos, integracao, colaboradores_ativos_lista, caminho_base_ativos = load_data()
@@ -313,10 +313,24 @@ with st.sidebar:
         help="Selecione um colaborador específico"
     )
     
-    # Informações de atualização
+    # Filtro de Status do Módulo
+    filtro_status_modulo = st.multiselect(
+        "📋 Status do Módulo",
+        options=["Realizado", "Não realizado"],
+        default=["Realizado", "Não realizado"],
+        help="Filtrar por status de realização do módulo"
+    )
+    
     st.markdown("---")
     st.markdown("### ℹ️ Informações")
     st.caption(f"📅 Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    
+    st.markdown("---")
+    
+    # Botão de recarregar cache movido para o final
+    st.markdown("### 🔄 Controle de Dados")
+    if st.button("🔄 Recarregar Cache (uso corporativo)", use_container_width=True, help="Clique para recarregar todas as bases de dados"):
+        recarregar_cache()
 
 # =========================
 # Aplicando filtros
@@ -353,17 +367,21 @@ results_list = []
 for modulo, df_mod in integracao.items():
     for _, row in admitidos_filtrado.iterrows():
         matched = fuzzy_match(row, df_mod)
-        status = "Realizado" if matched is not None else "Pendente"
+        status = "Realizado" if matched is not None else "Não realizado"
         results_list.append({
             "Operação": row['Operação'],
             "Colaborador": row['Colaborador'],
             "Status_Colaborador": row['Status'],
-            "Data": row['Data'],
+            "Data_Admissao": row['Data'],
             "Módulo": modulo,
-            "Status": status
+            "Status_Modulo": status
         })
 
 resultado_modulos = pd.DataFrame(results_list)
+
+# Aplicar filtro de status do módulo
+if filtro_status_modulo and len(resultado_modulos) > 0:
+    resultado_modulos = resultado_modulos[resultado_modulos['Status_Modulo'].isin(filtro_status_modulo)]
 
 # =========================
 # Título e gráfico de aderência geral
@@ -372,7 +390,7 @@ st.title("📦 Dashboard de Integração Armazém")
 
 # Gráfico de aderência geral por operação (ordenado do maior para o menor)
 if len(resultado_modulos) > 0:
-    aderencia_geral = resultado_modulos.groupby('Operação')['Status'].apply(
+    aderencia_geral = resultado_modulos.groupby('Operação')['Status_Modulo'].apply(
         lambda x: (x == "Realizado").mean() * 100
     ).reset_index()
     aderencia_geral.columns = ['Operação', 'Aderência (%)']
@@ -401,15 +419,11 @@ if len(resultado_modulos) > 0:
         yaxis_title="Aderência (%)",
         yaxis_range=[0, 100],
         height=500,
-        showlegend=False,
+        showlegend=False,  # Remove a legenda
         uniformtext_minsize=10,
         uniformtext_mode='hide'
     )
     st.plotly_chart(fig_aderencia, use_container_width=True, key="aderencia_geral")
-    
-    # Card de quantidade de realizados
-    total_realizados = len(resultado_modulos[resultado_modulos['Status'] == 'Realizado'].drop_duplicates(subset=['Colaborador', 'Módulo']))
-    st.metric("✅ Qtde Realizados", total_realizados)
 else:
     st.warning("Nenhum dado encontrado com os filtros selecionados.")
 
@@ -438,9 +452,24 @@ if len(resultado_modulos) > 0:
         modulo_selecionado = modulo_map[filtro_modulo_detalhe]
         tabela_filtrada = resultado_modulos[resultado_modulos['Módulo'] == modulo_selecionado]
     
-    # Formatar data para formato reduzido
-    if 'Data' in tabela_filtrada.columns:
-        tabela_filtrada['Data'] = pd.to_datetime(tabela_filtrada['Data']).dt.strftime('%d/%m/%Y')
+    # Preparar tabela detalhada com as colunas solicitadas
+    tabela_detalhada = tabela_filtrada[['Colaborador', 'Data_Admissao', 'Módulo', 'Status_Modulo']].copy()
+    
+    # Mapear nomes dos módulos
+    modulo_nomes = {"M1": "Módulo 1", "M2": "Módulo 2", "M3": "Módulo 3", "M4": "Módulo 4", "M5": "Módulo 5"}
+    tabela_detalhada['Módulo'] = tabela_detalhada['Módulo'].map(modulo_nomes)
+    
+    # Formatar data de admissão
+    tabela_detalhada['Data_Admissao'] = pd.to_datetime(tabela_detalhada['Data_Admissao']).dt.strftime('%d/%m/%Y')
+    
+    # Renomear colunas
+    tabela_detalhada.columns = ['Colaborador', 'Admissão', 'Módulo', 'Status do Módulo']
+    
+    # Remover duplicatas (caso um colaborador apareça mais de uma vez para o mesmo módulo)
+    tabela_detalhada = tabela_detalhada.drop_duplicates(subset=['Colaborador', 'Módulo'])
+    
+    # Ordenar por colaborador e módulo
+    tabela_detalhada = tabela_detalhada.sort_values(['Colaborador', 'Módulo'])
     
     # Tabela com cores
     def color_status(val):
@@ -449,14 +478,21 @@ if len(resultado_modulos) > 0:
         else:
             return 'background-color: #dc3545; color: white'
     
-    # Tabela com cores - compatível com versões antigas e novas
-try:
-    # Para pandas versões mais recentes (>= 2.1.0)
-    styled_table = tabela_filtrada.style.map(color_status, subset=['Status'])
-except AttributeError:
-    # Para pandas versões antigas (fallback)
-    styled_table = tabela_filtrada.style.applymap(color_status, subset=['Status'])
+    # Aplicar estilo na coluna de status
+    styled_table = tabela_detalhada.style.map(color_status, subset=['Status do Módulo'])
+    
+    # Exibir tabela
     st.dataframe(styled_table, use_container_width=True, height=400)
+    
+    # Botão para download em Excel
+    excel_data = gerar_excel_detalhamento(tabela_detalhada)
+    st.download_button(
+        label="📥 Baixar Detalhamento em Excel",
+        data=excel_data,
+        file_name=f"detalhamento_integracao_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
 else:
     st.info("Nenhum dado para exibir na tabela detalhada.")
 
