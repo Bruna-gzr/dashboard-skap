@@ -535,10 +535,13 @@ ader_oper = (
     .reset_index()
 )
 
+ader_oper["TOTAL"] = pd.to_numeric(ader_oper["TOTAL"], errors="coerce").fillna(0).astype(float)
+ader_oper["OK"] = pd.to_numeric(ader_oper["OK"], errors="coerce").fillna(0).astype(float)
+
 ader_oper["ADERENCIA_%"] = np.where(
     ader_oper["TOTAL"] > 0,
     (ader_oper["OK"] / ader_oper["TOTAL"]) * 100,
-    0
+    0.0
 )
 
 ader_oper = ader_oper.sort_values("ADERENCIA_%", ascending=False)
