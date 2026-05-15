@@ -140,6 +140,28 @@ st.markdown("<h1 class='page-title'>MATERIAIS DE INTEGRAÇÃO</h1>", unsafe_allo
 # ============================================
 
 UNIDADES = {
+    "Salvador": {
+        "logo": "logos/Salvador.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR", "FROTA"]
+        }
+    },
+    "Camaçari": {
+        "logo": "logos/Camacari.png",
+        "coluna1": {
+            "titulo": "🚛 DISTRIBUIÇÃO",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "ENTREGA", "FINANCEIRO", "FROTA"]
+        },
+        "coluna2": {
+            "titulo": "👷🏻‍♂️ ARMAZEM",
+            "setores": ["GESTÃO", "GENTE", "SEGURANÇA", "AJUDANTE DE ARMAZEM", "OPERADOR", "FROTA"]
+        }
+    },
     "Aracaju": {
         "logo": "logos/Aracaju.png",
         "coluna1": {
@@ -284,6 +306,41 @@ ICONES = {
 UNIDADES_LOGO_GRANDE = ["Litoral", "Vidros", "Aracaju"]
 
 LINKS = {
+    "Salvador": {
+        "DISTRIBUIÇÃO": {
+            "GENTE": "https://canva.link/8us37s9sytyj499",
+            "SEGURANÇA": "https://canva.link/6nwoye9jyqubgbm",
+            "ENTREGA": "https://canva.link/9r8ycaaacpqtgzc",
+            "FINANCEIRO": "https://canva.link/ixbk9dy1al2w0mb",
+            "FROTA": "https://canva.link/o5blcchz26xso73",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://canva.link/bon875u5ln3rl82",
+            "GENTE": "https://canva.link/zy8j92ecrynam7n",
+            "SEGURANÇA": "https://canva.link/zzcmiunr8ge4dvq",
+            "AJUDANTE DE ARMAZEM": "https://canva.link/54dhw5a4lsq05v9",
+            "OPERADOR": "https://canva.link/ojhq88y3r2o814v",
+            "FROTA": "https://canva.link/o5blcchz26xso73",
+        }
+    },
+    "Camaçari": {
+        "DISTRIBUIÇÃO": {
+            "GESTÃO": "https://canva.link/re647fjg4binro1",
+            "GENTE": "https://canva.link/6iszrgmzgol8l23",
+            "SEGURANÇA": "https://canva.link/f0w7xahp9meoq90",
+            "ENTREGA": "https://canva.link/9r4nagf42n0ubs8",
+            "FINANCEIRO": "https://canva.link/ff0h2bje5lg1o2t",
+            "FROTA": "https://canva.link/z46n32bhdkehi50",
+        },
+        "ARMAZEM": {
+            "GESTÃO": "https://canva.link/ze1ga7zde1errin",
+            "GENTE": "https://canva.link/2pj1b7j3zgggppm",
+            "SEGURANÇA": "https://canva.link/3vrdg4mj6r4x915",
+            "AJUDANTE DE ARMAZEM": "https://canva.link/8zgpymmtzud2ruk",
+            "OPERADOR": "https://canva.link/me6gaw3c4pvd8vt",
+            "FROTA": "https://canva.link/y488ciiywicxrpb",
+        }
+    },
     "Aracaju": {
         "DISTRIBUIÇÃO": {
             "GENTE": "https://canva.link/e77xn1sad2n900l",
