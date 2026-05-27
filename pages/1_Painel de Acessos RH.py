@@ -156,7 +156,12 @@ UNIDADES = {
     "Petropolis": {"logo": "logos/Petropolis.png"},
     "Ponta Grossa Empurrada": {"logo": "logos/Ponta Grossa Armazem.png"},
     "Ponta Grossa Armazem": {"logo": "logos/Ponta Grossa Armazem.png"},
-    "Vidros": {"logo": "logos/Vidros.png"}
+    "Vidros": {"logo": "logos/Vidros.png"},
+    "Estancia": {"logo": "logos/Estancia.png"},
+    "Aracaju": {"logo": "logos/Aracaju.png"},
+    "Salvador": {"logo": "logos/Salvador.png"},
+    "CDL Camaçari": {"logo": "logos/Camacari.png"},
+    "CDR Bahia": {"logo": "logos/Camacari.png"}
 }
 
 # Ícones para cada botão
@@ -272,6 +277,46 @@ LINKS = {
         "Pipeline": "https://docs.google.com/spreadsheets/d/1-9vF4G5NMjM-pfdQg9wXempoEwRsxqAvz8irJwvyZjw/edit?gid=499267061#gid=499267061",
         "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1PJYyMTY_aO1vSbOlrXNKDnRix7b_n0haQ5zCuGI-38k/edit?gid=335667020#gid=335667020",
         "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1r8QRVSHYM86RoOQoKblhLLeYmaUiGQrw1LwJAOp73aU/edit?gid=1108610351#gid=1108610351"
+    },
+    "Estancia": {
+        "Comitê de Gente": "https://docs.google.com/spreadsheets/d/11sTwSuOFP9iRdQtRsDKA7h3B7OuXTmJ0ZHS8OqL6GYQ/edit?usp=sharing",
+        "RPS de gente": "https://docs.google.com/spreadsheets/d/1tqfE4mhrQyupITz5mNvHW1SpDQ1r8JO3_jFIc4YrfWM/edit?usp=sharing",
+        "Café com Gerente": "https://docs.google.com/spreadsheets/d/1KwN888x-moO72WNZdVb6bGiM4pBe2VPdy5VOTK4XWMM/edit?usp=sharing",
+        "Pipeline": "https://docs.google.com/spreadsheets/d/1PjBCNTcNCWxkm5fk1tVpcnSvXYDg9WWsAiTFG2TNcVE/edit?usp=sharing",
+        "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1q5I0_MCTzA8UlkLW9mw9ccqx7l4WOtiC7iMKVxZfHMk/edit?usp=sharing",
+        "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/11RWvH4KICqdSniyxFjUQIZZaiBaUle7WAuOKnjzA_TY/edit?usp=sharing"
+    },
+    "Aracaju": {
+        "Comitê de Gente": "https://docs.google.com/spreadsheets/d/12iN63Xlj74oeaudBya7rIJHzqHRSCx-UImx-Jwa2eTM/edit?usp=sharing",
+        "RPS de gente": "https://docs.google.com/spreadsheets/d/1Gd-28c-N4Pny9CyDgStRMDEWo1u_vsx8PRHI2sjnmO4/edit?usp=sharing",
+        "Café com Gerente": "https://docs.google.com/spreadsheets/d/1i2hWzZQvOGdPN8eau2jQtqUMIQSGrsBIJzXC1VQVK2I/edit?usp=sharing",
+        "Pipeline": "https://docs.google.com/spreadsheets/d/1YXLtzJWqfon4QEputQ3rNvbV9HPelrjNqu8ICQ9RWL0/edit?usp=sharing",
+        "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1afnm3-O-XyGWlmrXEVL7gznKvN52Vz6F0AU0sW3SOt8/edit?usp=sharing",
+        "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1npkX9SyQqZyR4tI1N0-zsreAXZtTZK8rxV1X5ebaUkU/edit?usp=sharing"
+    },
+    "Salvador": {
+        "Comitê de Gente": "https://docs.google.com/spreadsheets/d/14G87X0vz6EKDv_h41BbhaWjwsiHW6QJjyyXFMUu1CiI/edit?usp=sharing",
+        "RPS de gente": "https://docs.google.com/spreadsheets/d/17iN421TBkTrYyjTZqEqVJ_89-Yc3usnkEIco8eRxvPQ/edit?usp=sharing",
+        "Café com Gerente": "https://docs.google.com/spreadsheets/d/1m56ACjadaShxmgEnAg7up9i6HciSqWXkNNNMJcNRPFk/edit?usp=sharing",
+        "Pipeline": "https://docs.google.com/spreadsheets/d/1ZM9Fc4GT2kbi1SuTCCdr7t2ZjqR5yjvntfo-WQUHf_I/edit?usp=sharing",
+        "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1Y-NTxUFtwLxisJzT6T_AsJTSH54Q6RfREOOIjAguJGs/edit?usp=sharing",
+        "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1UkhC1NG0znSrCeWWgNNkQsFdlPeaPMhpLbVGBE2ld1Q/edit?usp=sharing"
+    },
+    "CDL Camaçari": {
+        "Comitê de Gente": "https://docs.google.com/spreadsheets/d/1R5db3lXhXY9E3BFOWQGSjurSJyqQ_IVVw0MhyLtDxBI/edit?usp=sharing",
+        "RPS de gente": "https://docs.google.com/spreadsheets/d/1bvUQ5OD-ZgGSuf53F4PqsQDRipzdJ7FcLiBrQBzB4Rg/edit?usp=sharing",
+        "Café com Gerente": "https://docs.google.com/spreadsheets/d/1-fQbTjjdDRsntIkGovqa_Jpi84adxzh9vd0cQz5ORHg/edit?usp=sharing",
+        "Pipeline": "https://docs.google.com/spreadsheets/d/1BZw3wEcWtPjPMVUhQmTp-sonwamOtSQP-IRA8m0e6WY/edit?usp=sharing",
+        "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1O-0IIqIOLqH3d-bixc6xJsrZoFrWG59x318EgZA6Fvs/edit?usp=sharing",
+        "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1MFOcbRPtSLNVtqUETyyUE259GbyTaD2ZVINq6DohLbk/edit?usp=sharing"
+    },
+    "CDR Bahia": {
+        "Comitê de Gente": "https://docs.google.com/spreadsheets/d/1REuJfAx-HURYEFGLqleUXDIuZQx7-pou7YF0xCHDZM4/edit?usp=sharing",
+        "RPS de gente": "https://docs.google.com/spreadsheets/d/1D1QyqIwL2IZeCYoHLdgT4jYdh3AOQU-KJFVTkhT78ps/edit?usp=sharing",
+        "Café com Gerente": "https://docs.google.com/spreadsheets/d/16Jb6837h7vh2N8bKijTLz1EU7AfR23GMCk2pSt4CBLA/edit?usp=sharing",
+        "Pipeline": "https://docs.google.com/spreadsheets/d/1f8HWdaPTKNVBQMuhM2q1iPrVRIhAMKPBOzNXNATj3TA/edit?usp=sharing",
+        "Check List DPO/VPO": "https://docs.google.com/spreadsheets/d/1TbzND1mWG8rQ0_ij7gJgJnpuCHZd6OtkoQZpPD0VJ9s/edit?usp=sharing",
+        "Defesa DPO/VPO": "https://docs.google.com/spreadsheets/d/1QE9RESG60nMwLDYUT6fkPqoackErkXt_69LiM9CbiYM/edit?usp=sharing"
     }
 }
 
