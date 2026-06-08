@@ -204,6 +204,7 @@ def load_data():
     ]
     
     admitidos = pd.read_excel("data/Admitidos.xlsx")
+    admitidos = aplicar_filtro_unidade(admitidos, "Operação")
     integracao = {m: pd.read_excel("data/Integracao Armazem.xlsx", sheet_name=m) for m in ["M1", "M2", "M3", "M4", "M5"]}
     
     colaboradores_ativos_lista = []
