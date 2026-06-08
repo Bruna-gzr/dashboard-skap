@@ -5,19 +5,15 @@ from pathlib import Path
 
 st.set_page_config(page_title="Integração Distribuição", layout="wide")
 
-# 🔍 DEBUG - Mostrar tudo que está na sessão
-st.write("### 🔍 DEBUG - Session State completo:")
-st.write(st.session_state)
-
 # Pega a operação do usuário logado
 OPERACAO_USUARIO = st.session_state.get("operacao", "Todas")
-
-st.write(f"### OPERACAO_USUARIO = '{OPERACAO_USUARIO}'")
 
 st.title("🚚 Integração Distribuição")
 
 if OPERACAO_USUARIO != "Todas":
     st.caption(f"📍 Operação: **{OPERACAO_USUARIO}**")
+else:
+    st.caption("📍 Visualizando TODAS as operações")
 
 # Botão para voltar
 if st.button("← Voltar ao Menu"):
@@ -28,26 +24,25 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 
 admitidos = pd.read_excel(DATA_DIR / "Admitidos.xlsx")
 
-# 🔴 FILTRO DIRETO AQUI (sem chamar função) 🔴
+# 🔴 FILTRO DIRETO AQUI 🔴
 if OPERACAO_USUARIO != "Todas":
     # Filtro exato
-    admitidos = admitidos[admitidos["Operação"] == OPERACAO_USUARIO]
-    st.success(f"✅ Filtrado para: {OPERACAO_USUARIO} - {len(admitidos)} registros")
+    admitidos_filtrado = admitidos[admitidos["Operação"] == OPERACAO_USUARIO].copy()
+    st.success(f"✅ Filtrado para: {OPERACAO_USUARIO} - {len(admitidos_filtrado)} registros")
 else:
-    st.info(f"📊 Mostrando todas as operações - {len(admitidos)} registros")
+    admitidos_filtrado = admitidos.copy()
+    st.info(f"📊 Mostrando todas as operações - {len(admitidos_filtrado)} registros")
 
 # Mostrar resultado
-st.write(f"### Total de registros: {len(admitidos)}")
+st.write(f"### Total de registros: {len(admitidos_filtrado)}")
 
-# Verificar se filtrou corretamente
-st.write("### Operações presentes nos dados filtrados:")
-st.write(admitidos["Operação"].unique().tolist())
-
-# ... resto do seu código
+# Mostrar quais operações estão presentes (só se não for Todas)
+if OPERACAO_USUARIO == "Todas":
+    st.write("### Operações presentes nos dados:")
+    st.write(admitidos_filtrado["Operação"].unique().tolist())
 
 # ===== AQUI ENTRA O RESTO DO SEU CÓDIGO ORIGINAL =====
-# ... seus gráficos, análises, etc ...
-
+# Use 'admitidos_filtrado' no lugar de 'admitidos' no resto do código
 import streamlit as st
 
 st.set_page_config(
