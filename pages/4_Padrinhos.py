@@ -4,14 +4,10 @@ import pandas as pd
 import sys
 from pathlib import Path
 
-# Importar funções do app.py
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from app import get_operacao
+# Pega a operação do usuário logado (vindo do app.py)
+OPERACAO_USUARIO = st.session_state.get("operacao", "Todas")
 
 st.set_page_config(page_title="Gestão de Padrinhos", layout="wide")
-
-# Pega a operação do usuário logado
-OPERACAO_USUARIO = get_operacao()
 
 st.title("👨🏻‍🎓 Gestão de Padrinhos")
 
@@ -20,7 +16,7 @@ if OPERACAO_USUARIO != "Todas":
 else:
     st.caption("📍 Visualizando TODAS as operações")
 
-# Botão para voltar
+# Botão para voltar ao menu
 if st.button("← Voltar ao Menu"):
     st.switch_page("app.py")
 
@@ -229,33 +225,6 @@ def combinar_data_hora(df: pd.DataFrame, col_data="Data Cadastro", col_hora="Hor
             valores.append(pd.Timestamp(d).normalize() + pd.Timedelta(hours=hh, minutes=mm, seconds=ss))
     return pd.to_datetime(pd.Series(valores, index=df.index), errors="coerce")
 
-def classificar_faixa_aderencia(valor):
-    if pd.isna(valor):
-        return "< 80%"
-    if valor >= 90:
-        return ">= 90%"
-    if valor >= 80:
-        return "80% a 89%"
-    return "< 80%"
-
-def cor_status(s):
-    if s == "Realizado no prazo":
-        return "background-color: #2e7d32; color: white;"
-    if s == "Realizado antes do prazo":
-        return "background-color: #1b5e20; color: white;"
-    if s == "Realizado fora do prazo":
-        return "background-color: #ef6c00; color: black;"
-    if s == "Não realizado - Atenção":
-        return "background-color: #f0d36b; color: black;"
-    if s == "Não realizado - Fora do prazo":
-        return "background-color: #c62828; color: white;"
-    return ""
-
-def style_table(df):
-    if "Status" in df.columns:
-        return df.style.map(cor_status, subset=["Status"]).set_properties(**{"text-align": "center"})
-    return df
-
 @st.cache_data(show_spinner=True, ttl=3600)
 def carregar_excel_primeira_aba(path: Path) -> pd.DataFrame:
     if not path.exists():
@@ -300,8 +269,35 @@ def renomear_colunas_duplicadas(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = novas
     return df
 
+def classificar_faixa_aderencia(valor):
+    if pd.isna(valor):
+        return "< 80%"
+    if valor >= 90:
+        return ">= 90%"
+    if valor >= 80:
+        return "80% a 89%"
+    return "< 80%"
+
+def cor_status(s):
+    if s == "Realizado no prazo":
+        return "background-color: #2e7d32; color: white;"
+    if s == "Realizado antes do prazo":
+        return "background-color: #1b5e20; color: white;"
+    if s == "Realizado fora do prazo":
+        return "background-color: #ef6c00; color: black;"
+    if s == "Não realizado - Atenção":
+        return "background-color: #f0d36b; color: black;"
+    if s == "Não realizado - Fora do prazo":
+        return "background-color: #c62828; color: white;"
+    return ""
+
+def style_table(df):
+    if "Status" in df.columns:
+        return df.style.map(cor_status, subset=["Status"]).set_properties(**{"text-align": "center"})
+    return df
+
 # =========================
-# FUNÇÕES DO PIPELINE
+# PREPARAR BASE OPERACIONAL
 # =========================
 
 def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame) -> pd.DataFrame:
@@ -333,9 +329,27 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
         how="left",
     )
 
+    if RAPIDFUZZ_OK:
+        falt = merged["Tipo Cargo"].isna()
+        if falt.any():
+            cargos_ref = atv[["cargo_norm", "Tipo Cargo"]].dropna().drop_duplicates()
+            ref_list = cargos_ref["cargo_norm"].tolist()
+            ref_map = dict(zip(cargos_ref["cargo_norm"], cargos_ref["Tipo Cargo"]))
+
+            def fuzzy_tipo(cargo_norm):
+                if not cargo_norm:
+                    return None, 0
+                hit = process.extractOne(cargo_norm, ref_list, scorer=fuzz.WRatio)
+                if not hit:
+                    return None, 0
+                best, score, _ = hit
+                return ref_map.get(best), score
+
+            tipo_score = merged.loc[falt, "cargo_norm"].apply(fuzzy_tipo)
+            merged.loc[falt, "Tipo Cargo"] = tipo_score.apply(lambda t: t[0])
+
     merged["Tipo Cargo"] = merged["Tipo Cargo"].fillna("")
     oper = merged[merged["Tipo Cargo"].str.upper().eq("OPERACIONAL LOGÍSTICO")].copy()
-
     oper = oper[oper["Data_dt"] >= pd.Timestamp("2024-10-03")].copy()
 
     oper["Operação"] = oper["Operação"].astype(str).str.strip()
@@ -346,12 +360,7 @@ def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame
         axis=1
     )
 
-    oper = (
-        oper.sort_values(["pessoa_key", "Data_dt"], ascending=[True, False])
-            .drop_duplicates(subset=["pessoa_key"], keep="first")
-            .copy()
-    )
-
+    oper = oper.sort_values(["pessoa_key", "Data_dt"], ascending=[True, False]).drop_duplicates(subset=["pessoa_key"], keep="first").copy()
     oper = oper.sort_values(["nome_norm_flex", "cpf_clean", "Data_dt"]).reset_index(drop=True)
     oper["contrato_id"] = oper.index.astype(str)
 
@@ -379,11 +388,7 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
     else:
         atv["cpf_clean"] = ""
 
-    ativos_lookup = (
-        atv[["cpf_clean", "nome_norm", "nome_norm_flex", "op_norm"]]
-        .drop_duplicates()
-        .copy()
-    )
+    ativos_lookup = atv[["cpf_clean", "nome_norm", "nome_norm_flex", "op_norm"]].drop_duplicates().copy()
 
     status_lista = []
     for _, row in base.iterrows():
@@ -393,7 +398,6 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
         op_base = norm_text(row.get("Operação", ""))
 
         pool = ativos_lookup.copy()
-
         if op_base and "op_norm" in pool.columns:
             pool_op = pool[pool["op_norm"] == op_base].copy()
             if not pool_op.empty:
@@ -467,7 +471,7 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
 
     farois = {}
     for etapa in ETAPAS:
-        tmp = base[["contrato_id", "Colaborador", "Operação", "Cargo", "Data_dt", "Status Colaborador"]].copy()
+        tmp = base[["contrato_id", "Colaborador", "CPF", "cpf_clean", "Operação", "Cargo", "Data_dt", "Status Colaborador"]].copy()
         tmp["Etapa"] = etapa["titulo"]
         tmp["Prazo Mín"] = tmp["Data_dt"] + pd.to_timedelta(etapa["prazo_min_dias"], unit="D")
         tmp["Prazo Máx"] = tmp["Data_dt"] + pd.to_timedelta(etapa["prazo_max_dias"], unit="D")
@@ -481,7 +485,7 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
             form_et = form[form[campo].astype(str).str.strip().eq(etapa["valor_selecao"])].copy()
             col_realizacao = "DataHora Resposta" if "DataHora Resposta" in form_et.columns else "Data Cadastro"
             form_et[col_realizacao] = pd.to_datetime(form_et[col_realizacao], errors="coerce", dayfirst=True)
-            real = form_et.dropna(subset=[col_realizacao]).groupby("contrato_id", as_index=False)[col_realizacao].min().rename(columns={col_realizacao: "Data Realização"})
+            real = form_et.dropna(subset=[col_realizacao]).dropna(subset=["contrato_id"]).groupby("contrato_id", as_index=False)[col_realizacao].min().rename(columns={col_realizacao: "Data Realização"})
             tmp = tmp.merge(real, on="contrato_id", how="left")
             tmp["Padrinho"] = pd.NA
 
@@ -528,7 +532,8 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     fig.update_layout(height=380, template="plotly_dark", yaxis=dict(range=[0, 100], visible=False), xaxis_title="", legend_title="Faixa")
     st.plotly_chart(fig, width="stretch", key=f"chart_{key_prefix}")
 
-    tabela = df_farol[["Operação", "Colaborador", "Cargo", "Data_dt", "Etapa", "Prazo Mín", "Prazo Máx", "Data Realização", "Dias", "Status"]].rename(columns={"Data_dt": "Data Admissão"})
+    cols_show = ["Operação", "Colaborador", "Cargo", "Data_dt", "Etapa", "Prazo Mín", "Prazo Máx", "Data Realização", "Dias", "Status"]
+    tabela = df_farol[[c for c in cols_show if c in df_farol.columns]].rename(columns={"Data_dt": "Data Admissão"})
     tabela = formatar_datas_para_tabela(tabela)
     st.dataframe(style_table(tabela), width="stretch", height=430, key=f"df_{key_prefix}")
 
@@ -584,6 +589,22 @@ except Exception as e:
 # =========================
 st.sidebar.markdown("## 🔎 Filtros")
 
+adm_datas = admitidos.copy()
+adm_datas["Data_dt"] = pd.to_datetime(adm_datas["Data"], errors="coerce", dayfirst=True)
+data_min_disponivel = adm_datas["Data_dt"].min()
+data_max_disponivel = adm_datas["Data_dt"].max()
+
+if pd.isna(data_min_disponivel):
+    data_min_disponivel = pd.Timestamp("2024-10-03")
+if pd.isna(data_max_disponivel):
+    data_max_disponivel = pd.Timestamp(datetime.now().date())
+
+data_padrao_ini = pd.Timestamp("2026-01-01")
+if data_padrao_ini > data_max_disponivel:
+    data_padrao_ini = data_max_disponivel
+if data_padrao_ini < data_min_disponivel:
+    data_padrao_ini = data_min_disponivel
+
 ops_all = sorted([x for x in base_oper["Operação"].fillna("").astype(str).unique().tolist() if x.strip()])
 cargos_all = sorted([x for x in base_oper["Cargo"].fillna("").astype(str).unique().tolist() if x.strip()])
 colab_all = sorted([x for x in base_oper["Colaborador"].fillna("").astype(str).unique().tolist() if x.strip()])
@@ -591,15 +612,31 @@ status_options = ["Não realizado - Fora do prazo", "Não realizado - Atenção"
 status_colaborador_options = ["Ativo", "Inativo"]
 
 filtro_ops = st.sidebar.multiselect("Operação", options=ops_all, default=[])
+
+st.sidebar.markdown("### Período de admissão")
+col_ini, col_fim = st.sidebar.columns(2)
+with col_ini:
+    dt_ini = st.date_input("Início", value=data_padrao_ini.date(), min_value=data_min_disponivel.date(), max_value=data_max_disponivel.date(), format="DD/MM/YYYY")
+with col_fim:
+    dt_fim = st.date_input("Fim", value=data_max_disponivel.date(), min_value=data_min_disponivel.date(), max_value=data_max_disponivel.date(), format="DD/MM/YYYY")
+
+dt_ini = pd.Timestamp(dt_ini)
+dt_fim = pd.Timestamp(dt_fim)
+
 filtro_cargos = st.sidebar.multiselect("Cargo", options=cargos_all, default=[])
 filtro_colaborador = st.sidebar.multiselect("Colaborador", options=colab_all, default=[])
 filtro_status_colaborador = st.sidebar.multiselect("Status do colaborador", options=status_colaborador_options, default=["Ativo"])
 filtro_status = st.sidebar.multiselect("Status da etapa", options=status_options, default=[])
 
+st.sidebar.markdown("---")
+st.sidebar.caption(f"Última atualização: {obter_ultima_atualizacao_arquivos([ARQ_ADMITIDOS, ARQ_ATIVOS, ARQ_NPS, ARQ_BATEPAPO])}")
+
 def aplicar_filtros_farol(df_farol: pd.DataFrame) -> pd.DataFrame:
     df = df_farol.copy()
     if filtro_ops:
         df = df[df["Operação"].isin(filtro_ops)]
+    if "Data_dt" in df.columns:
+        df = df[(df["Data_dt"] >= dt_ini) & (df["Data_dt"] <= dt_fim)]
     if filtro_cargos:
         df = df[df["Cargo"].isin(filtro_cargos)]
     if filtro_colaborador:
