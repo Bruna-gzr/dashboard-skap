@@ -37,7 +37,6 @@ st.markdown("""
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-    /* Estilo para os cards de métricas */
     div[data-testid="stMetric"] {
         background-color: #2c2c2c !important;
         border-radius: 10px;
@@ -50,7 +49,6 @@ st.markdown("""
     div[data-testid="stMetric"] div {
         color: white !important;
     }
-    /* Informações do colaborador */
     .info-colaborador {
         background-color: #f0f2f6;
         padding: 15px;
@@ -58,7 +56,6 @@ st.markdown("""
         margin-bottom: 20px;
         border-left: 5px solid #1f77b4;
     }
-    /* Estilo para o texto das perguntas */
     .pergunta-texto {
         font-size: 14px;
         font-weight: bold;
@@ -66,7 +63,6 @@ st.markdown("""
         word-wrap: break-word;
         white-space: normal;
     }
-    /* Estilo para o título do gráfico */
     .grafico-titulo {
         background-color: #2c2c2c;
         color: white;
@@ -76,7 +72,6 @@ st.markdown("""
         font-weight: bold;
         text-align: center;
     }
-    /* Botão de recarregar cache */
     .recarregar-btn {
         margin-bottom: 20px;
     }
@@ -90,30 +85,62 @@ st.markdown("""
 def similar(a, b):
     return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
 
-def fuzzy_match(row, df_target):
-    best_score = 0
-    best_row = None
-
-    for _, tgt in df_target.iterrows():
-        score_name = similar(str(row['Colaborador']), str(tgt['Colaborador']))
-        score_cpf = similar(str(row['CPF']), str(tgt['CPF']))
-        final_score = max(score_name, score_cpf)
-        if final_score > best_score:
-            best_score = final_score
-            best_row = tgt
-
-    return best_row if best_score >= 0.65 else None
+# ===========================================
+# VERSÃO OTIMIZADA - FUZZY MATCH VETORIZADO
+# ===========================================
+def fuzzy_match_vectorized(df_colaboradores, df_mod):
+    """
+    Versão otimizada do fuzzy match usando vetorização parcial
+    """
+    if len(df_colaboradores) == 0 or len(df_mod) == 0:
+        return []
+    
+    resultados = []
+    
+    # Pré-calcular nomes e CPFs normalizados uma única vez
+    df_colaboradores['_nome_norm'] = df_colaboradores['Colaborador'].astype(str).str.lower().str.strip()
+    df_colaboradores['_cpf_norm'] = df_colaboradores['CPF'].astype(str).str.lower().str.strip()
+    
+    df_mod['_nome_norm'] = df_mod['Colaborador'].astype(str).str.lower().str.strip()
+    df_mod['_cpf_norm'] = df_mod['CPF'].astype(str).str.lower().str.strip()
+    
+    # Criar lista para busca rápida
+    mod_dict = []
+    for _, tgt in df_mod.iterrows():
+        mod_dict.append({
+            'nome': tgt['_nome_norm'],
+            'cpf': tgt['_cpf_norm'],
+            'original': tgt
+        })
+    
+    for _, row in df_colaboradores.iterrows():
+        matched = None
+        best_score = 0
+        
+        for tgt in mod_dict:
+            # Score do nome
+            score_name = similar(row['_nome_norm'], tgt['nome'])
+            score_cpf = similar(row['_cpf_norm'], tgt['cpf'])
+            final_score = max(score_name, score_cpf)
+            
+            if final_score > best_score:
+                best_score = final_score
+                if final_score >= 0.65:
+                    matched = tgt['original']
+                else:
+                    matched = None
+        
+        resultados.append(matched)
+    
+    return resultados
 
 def calcular_estatisticas_respostas(df_mod, perguntas_gabarito, respostas_validas):
-    """Calcula estatísticas de acertos por pergunta"""
+    """Calcula estatísticas de acertos por pergunta - OTIMIZADO"""
     estatisticas = []
     
-    # Obter as colunas do DataFrame (removendo Colaborador e CPF)
     colunas_df = [col for col in df_mod.columns if col not in ['Colaborador', 'CPF']]
     
-    # Para cada pergunta do gabarito, encontrar a coluna correspondente no DataFrame
     for idx, (pergunta_gabarito, resposta_correta) in enumerate(zip(perguntas_gabarito, respostas_validas)):
-        # Tentar encontrar a coluna que mais se parece com a pergunta do gabarito
         coluna_encontrada = None
         melhor_similaridade = 0
         
@@ -124,29 +151,31 @@ def calcular_estatisticas_respostas(df_mod, perguntas_gabarito, respostas_valida
                 coluna_encontrada = coluna_df
         
         if coluna_encontrada is None:
-            # Se não encontrar, usar a primeira coluna disponível (fallback)
             if idx < len(colunas_df):
                 coluna_encontrada = colunas_df[idx]
             else:
                 continue
         
-        # Calcular acertos e erros
-        acertos = 0
-        total = 0
-        
-        for _, row in df_mod.iterrows():
-            resposta_usuario = str(row[coluna_encontrada]).strip().lower()
-            if resposta_usuario and resposta_usuario != 'nan' and resposta_usuario != '':
-                total += 1
-                if resposta_usuario == resposta_correta.strip().lower():
-                    acertos += 1
-        
-        if total > 0:
-            percentual_acerto = (acertos / total) * 100
-            percentual_erro = 100 - percentual_acerto
+        # VETORIZADO: cálculo de acertos usando pandas diretamente
+        if coluna_encontrada in df_mod.columns:
+            series_resposta = df_mod[coluna_encontrada].astype(str).str.strip().str.lower()
+            resposta_correta_norm = resposta_correta.strip().lower()
+            
+            # Filtra respostas válidas (não vazias e não 'nan')
+            mask_valida = (series_resposta != '') & (series_resposta != 'nan')
+            total = mask_valida.sum()
+            
+            if total > 0:
+                acertos = (series_resposta[mask_valida] == resposta_correta_norm).sum()
+                percentual_acerto = (acertos / total) * 100
+                percentual_erro = 100 - percentual_acerto
+            else:
+                percentual_acerto = 0
+                percentual_erro = 0
         else:
             percentual_acerto = 0
             percentual_erro = 0
+            total = 0
             
         estatisticas.append({
             'Pergunta': pergunta_gabarito,
@@ -169,10 +198,9 @@ def gerar_excel_detalhamento(df_detalhamento):
 # Cache de dados com botão de recarregar
 # =========================
 
-@st.cache_data(ttl=3600)  # Cache expira após 1 hora
+@st.cache_data(ttl=3600)
 def load_data():
     """Carrega os dados das planilhas"""
-    # Tentar diferentes caminhos para o arquivo
     possiveis_caminhos = [
         "data/Base_Colaboradores_Ativos.xlsx",
         "Base_Colaboradores_Ativos.xlsx",
@@ -183,7 +211,6 @@ def load_data():
     admitidos = pd.read_excel("data/Admitidos.xlsx")
     integracao = {m: pd.read_excel("data/Integracao Armazem.xlsx", sheet_name=m) for m in ["M1", "M2", "M3", "M4", "M5"]}
     
-    # Carregar base de colaboradores ativos
     colaboradores_ativos_lista = []
     arquivo_encontrado = False
     caminho_utilizado = None
@@ -192,7 +219,6 @@ def load_data():
         if os.path.exists(caminho):
             try:
                 colaboradores_ativos = pd.read_excel(caminho)
-                # Verificar se a coluna 'Colaborador' existe
                 if 'Colaborador' in colaboradores_ativos.columns:
                     colaboradores_ativos_lista = colaboradores_ativos['Colaborador'].tolist()
                     arquivo_encontrado = True
@@ -204,14 +230,10 @@ def load_data():
                 st.warning(f"⚠️ Erro ao ler {caminho}: {str(e)}")
     
     if not arquivo_encontrado:
-        # Usar os colaboradores da planilha Admitidos como ativos (fallback)
         colaboradores_ativos_lista = admitidos['Colaborador'].tolist()
     
     return admitidos, integracao, colaboradores_ativos_lista, caminho_utilizado
 
-# =========================
-# Função para recarregar cache
-# =========================
 def recarregar_cache():
     st.cache_data.clear()
     st.success("✅ Cache recarregado com sucesso!")
@@ -224,41 +246,36 @@ def recarregar_cache():
 with st.spinner('Carregando dados...'):
     admitidos, integracao, colaboradores_ativos_lista, caminho_base_ativos = load_data()
     
-    # Mostrar informações sobre a base de ativos
     if caminho_base_ativos:
         st.sidebar.success(f"✅ Base ativos: {len(colaboradores_ativos_lista)} colaboradores")
     else:
         st.sidebar.warning("⚠️ Usando fallback: todos colaboradores como ativos")
 
 # =========================
-# Processamento inicial
+# Processamento inicial (OTIMIZADO - VETORIZADO)
 # =========================
 admitidos = admitidos[admitidos['Cargo'] == "Ajudante Armazém"]
-admitidos = admitidos[~admitidos['Operação'].isin(["VIDROS PR", "PONTA GROSSA"])]
+
+# Filtro vetorizado para excluir operações
+operacoes_excluir = ["VIDROS PR", "PONTA GROSSA"]
+admitidos = admitidos[~admitidos['Operação'].isin(operacoes_excluir)]
+
 admitidos['Data'] = pd.to_datetime(admitidos['Data'], errors='coerce')
 
-# Adicionar coluna de status (Ativo/Inativo)
-admitidos['Status'] = admitidos['Colaborador'].apply(
-    lambda x: 'Ativo' if x in colaboradores_ativos_lista else 'Inativo'
-)
+# Status vetorizado (usando isin)
+colaboradores_ativos_set = set(colaboradores_ativos_lista)
+admitidos['Status'] = admitidos['Colaborador'].apply(lambda x: 'Ativo' if x in colaboradores_ativos_set else 'Inativo')
 
-# Filtrar apenas colaboradores ATIVOS para aparecer no dashboard
-admitidos = admitidos[admitidos['Status'] == 'Ativo']
+# Filtrar apenas ativos
+admitidos = admitidos[admitidos['Status'] == 'Ativo'].copy()
 
-# Regras específicas por unidade
+# Regras específicas por unidade (vetorizado)
 data_corte_petropolis = datetime(2025, 10, 1)
 data_corte_litoral = datetime(2024, 11, 1)
 
-admitidos = admitidos[
-    ~(
-        (admitidos['Operação'] == "CD PETRÓPOLIS") & (admitidos['Data'] < data_corte_petropolis)
-    )
-]
-admitidos = admitidos[
-    ~(
-        (admitidos['Operação'] == "CD LITORAL") & (admitidos['Data'] < data_corte_litoral)
-    )
-]
+mask_petropolis = (admitidos['Operação'] == "CD PETRÓPOLIS") & (admitidos['Data'] < data_corte_petropolis)
+mask_litoral = (admitidos['Operação'] == "CD LITORAL") & (admitidos['Data'] < data_corte_litoral)
+admitidos = admitidos[~(mask_petropolis | mask_litoral)]
 
 hoje_corte = datetime(2026, 2, 28)
 if datetime.now() <= hoje_corte:
@@ -270,7 +287,6 @@ if datetime.now() <= hoje_corte:
 with st.sidebar:
     st.markdown("## 🎛️ Filtros")
     
-    # Lista suspensa para Operação
     operacoes = sorted(admitidos['Operação'].unique())
     filtro_operacao = st.selectbox(
         "🏭 Operação", 
@@ -278,12 +294,10 @@ with st.sidebar:
         help="Selecione uma operação específica"
     )
     
-    # Datas separadas (início e fim) - formato português
     min_date = admitidos['Data'].min().date()
     max_date = admitidos['Data'].max().date()
     data_padrao_inicio = datetime(2025, 5, 1).date()
     
-    # Garantir que a data padrão está dentro do intervalo válido
     if data_padrao_inicio < min_date:
         data_padrao_inicio = min_date
     elif data_padrao_inicio > max_date:
@@ -307,7 +321,6 @@ with st.sidebar:
             format="DD/MM/YYYY"
         )
     
-    # Lista suspensa para Colaborador
     colaboradores = sorted(admitidos['Colaborador'].unique())
     filtro_colaborador = st.selectbox(
         "👤 Colaborador", 
@@ -315,7 +328,6 @@ with st.sidebar:
         help="Selecione um colaborador específico"
     )
     
-    # Filtro de Status do Módulo
     filtro_status_modulo = st.multiselect(
         "📋 Status do Módulo",
         options=["Realizado", "Não realizado"],
@@ -330,9 +342,8 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Botão de recarregar cache movido para o final
     st.markdown("### 🔄 Controle de Dados")
-    if st.button("🔄 Recarregar Cache (uso corporativo)", use_container_width=True, help="Clique para recarregar todas as bases de dados"):
+    if st.button("🔄 Recarregar Cache (uso corporativo)", use_container_width=True):
         recarregar_cache()
 
 # =========================
@@ -340,17 +351,14 @@ with st.sidebar:
 # =========================
 admitidos_filtrado = admitidos.copy()
 
-# Filtro de operação
 if filtro_operacao != "Todas":
     admitidos_filtrado = admitidos_filtrado[admitidos_filtrado['Operação'] == filtro_operacao]
 
-# Filtro de data
 admitidos_filtrado = admitidos_filtrado[
     (admitidos_filtrado['Data'] >= pd.to_datetime(data_inicio)) & 
     (admitidos_filtrado['Data'] <= pd.to_datetime(data_fim))
 ]
 
-# Filtro de colaborador
 colaborador_selecionado = None
 if filtro_colaborador != "Todos":
     admitidos_filtrado = admitidos_filtrado[
@@ -359,13 +367,22 @@ if filtro_colaborador != "Todos":
     colaborador_selecionado = filtro_colaborador
 
 # =========================
-# Fuzzy Match
+# Fuzzy Match (VERSÃO OTIMIZADA)
 # =========================
 results_list = []
 
 for modulo, df_mod in integracao.items():
-    for _, row in admitidos_filtrado.iterrows():
-        matched = fuzzy_match(row, df_mod)
+    # Verificar se as colunas necessárias existem
+    if 'Colaborador' not in df_mod.columns:
+        df_mod['Colaborador'] = ''
+    if 'CPF' not in df_mod.columns:
+        df_mod['CPF'] = ''
+    
+    # Usar função otimizada
+    matches = fuzzy_match_vectorized(admitidos_filtrado, df_mod)
+    
+    for idx, row in admitidos_filtrado.iterrows():
+        matched = matches[idx]
         status = "Realizado" if matched is not None else "Não realizado"
         results_list.append({
             "Operação": row['Operação'],
@@ -377,7 +394,6 @@ for modulo, df_mod in integracao.items():
 
 resultado_modulos = pd.DataFrame(results_list)
 
-# Aplicar filtro de status do módulo
 if filtro_status_modulo and len(resultado_modulos) > 0:
     resultado_modulos = resultado_modulos[resultado_modulos['Status_Modulo'].isin(filtro_status_modulo)]
 
@@ -386,14 +402,12 @@ if filtro_status_modulo and len(resultado_modulos) > 0:
 # =========================
 st.title("📦 Dashboard de Integração Armazém")
 
-# Gráfico de aderência geral por operação (ordenado do maior para o menor)
 if len(resultado_modulos) > 0:
     aderencia_geral = resultado_modulos.groupby('Operação')['Status_Modulo'].apply(
         lambda x: (x == "Realizado").mean() * 100
     ).reset_index()
     aderencia_geral.columns = ['Operação', 'Aderência (%)']
     
-    # Ordenar do maior para o menor
     aderencia_geral = aderencia_geral.sort_values('Aderência (%)', ascending=False)
     
     fig_aderencia = px.bar(
@@ -406,7 +420,6 @@ if len(resultado_modulos) > 0:
         color_continuous_scale=['red', 'yellow', 'green'],
         range_color=[0, 100]
     )
-    # Garantir que o rótulo apareça em todas as barras
     fig_aderencia.update_traces(
         texttemplate='%{text:.1f}%', 
         textposition='outside',
@@ -417,7 +430,7 @@ if len(resultado_modulos) > 0:
         yaxis_title="Aderência (%)",
         yaxis_range=[0, 100],
         height=500,
-        showlegend=False,  # Remove a legenda
+        showlegend=False,
         uniformtext_minsize=10,
         uniformtext_mode='hide'
     )
@@ -433,7 +446,6 @@ st.markdown("---")
 st.subheader("📄 Detalhamento por Colaborador")
 
 if len(resultado_modulos) > 0:
-    # Lista suspensa para filtro de módulo (com todos selecionados por padrão)
     modulos_disponiveis = ["Módulo 1", "Módulo 2", "Módulo 3", "Módulo 4", "Módulo 5"]
     modulo_map = {"Módulo 1": "M1", "Módulo 2": "M2", "Módulo 3": "M3", "Módulo 4": "M4", "Módulo 5": "M5"}
     
@@ -450,39 +462,28 @@ if len(resultado_modulos) > 0:
         modulo_selecionado = modulo_map[filtro_modulo_detalhe]
         tabela_filtrada = resultado_modulos[resultado_modulos['Módulo'] == modulo_selecionado]
     
-    # Preparar tabela detalhada com as colunas solicitadas (incluindo Operação)
     tabela_detalhada = tabela_filtrada[['Operação', 'Colaborador', 'Data_Admissao', 'Módulo', 'Status_Modulo']].copy()
     
-    # Mapear nomes dos módulos
     modulo_nomes = {"M1": "Módulo 1", "M2": "Módulo 2", "M3": "Módulo 3", "M4": "Módulo 4", "M5": "Módulo 5"}
     tabela_detalhada['Módulo'] = tabela_detalhada['Módulo'].map(modulo_nomes)
     
-    # Formatar data de admissão
     tabela_detalhada['Data_Admissao'] = pd.to_datetime(tabela_detalhada['Data_Admissao']).dt.strftime('%d/%m/%Y')
     
-    # Renomear colunas
     tabela_detalhada.columns = ['Operação', 'Colaborador', 'Admissão', 'Módulo', 'Status do Módulo']
     
-    # Remover duplicatas (caso um colaborador apareça mais de uma vez para o mesmo módulo)
     tabela_detalhada = tabela_detalhada.drop_duplicates(subset=['Operação', 'Colaborador', 'Módulo'])
-    
-    # Ordenar por operação, colaborador e módulo
     tabela_detalhada = tabela_detalhada.sort_values(['Operação', 'Colaborador', 'Módulo'])
     
-    # Tabela com cores
     def color_status(val):
         if val == 'Realizado':
             return 'background-color: #28a745; color: white'
         else:
             return 'background-color: #dc3545; color: white'
     
-    # Aplicar estilo na coluna de status
     styled_table = tabela_detalhada.style.map(color_status, subset=['Status do Módulo'])
     
-    # Exibir tabela
     st.dataframe(styled_table, use_container_width=True, height=400)
     
-    # Botão para download em Excel
     excel_data = gerar_excel_detalhamento(tabela_detalhada)
     st.download_button(
         label="📥 Baixar Detalhamento em Excel",
@@ -501,7 +502,6 @@ st.markdown("---")
 # =========================
 st.header("📝 Análise Respostas Check de Retenção")
 
-# Mostrar informações do colaborador selecionado
 if colaborador_selecionado:
     dados_colaborador = admitidos_filtrado[admitidos_filtrado['Colaborador'] == colaborador_selecionado]
     if not dados_colaborador.empty:
@@ -517,7 +517,7 @@ if colaborador_selecionado:
         </div>
         """, unsafe_allow_html=True)
 
-# Gabaritos com as perguntas e respostas corretas
+# Gabaritos
 gabaritos = {
     "M1": {
         "nome": "Módulo 1",
@@ -611,18 +611,15 @@ gabaritos = {
     }
 }
 
-# Criar abas para cada módulo com os novos nomes
 modulos_lista = list(integracao.keys())
 tabs = st.tabs([f"📘 {gabaritos[modulo]['nome']}" for modulo in modulos_lista])
 
-# Iterar corretamente sobre as abas
 for idx, modulo in enumerate(modulos_lista):
     with tabs[idx]:
         st.subheader(f"Análise de Respostas - {gabaritos[modulo]['nome']}")
         
         df_mod = integracao[modulo]
         
-        # Verificar se o módulo existe no gabarito
         if modulo not in gabaritos:
             st.warning(f"Gabarito não encontrado para o módulo {modulo}")
             continue
@@ -630,28 +627,21 @@ for idx, modulo in enumerate(modulos_lista):
         respostas_validas = gabaritos[modulo]['respostas']
         perguntas_gabarito = gabaritos[modulo]['perguntas']
         
-        # Calcular estatísticas por pergunta
         estatisticas = calcular_estatisticas_respostas(df_mod, perguntas_gabarito, respostas_validas)
         
-        # Criar gráficos em grupos de 2 por linha
         for i in range(0, len(estatisticas), 2):
             cols = st.columns(2)
             
-            # Primeiro gráfico da linha
             if i < len(estatisticas):
                 with cols[0]:
-                    # Título do gráfico com fundo escuro
                     st.markdown(f'<div class="grafico-titulo">📊 Pergunta {i+1}</div>', unsafe_allow_html=True)
-                    # Mostrar pergunta completa
                     st.markdown(f'<div class="pergunta-texto">{i+1}. {estatisticas[i]["Pergunta"]}</div>', unsafe_allow_html=True)
                     
-                    # Criar dataframe para o gráfico
                     df_pergunta = pd.DataFrame({
                         'Status': ['Acertos', 'Erros'],
                         'Percentual': [estatisticas[i]['Acertos (%)'], estatisticas[i]['Erros (%)']]
                     })
                     
-                    # Gráfico de barras verticais
                     fig = px.bar(
                         df_pergunta,
                         x='Status',
@@ -671,11 +661,9 @@ for idx, modulo in enumerate(modulos_lista):
                         yaxis_title="Percentual (%)"
                     )
                     
-                    # Usar key única para cada gráfico
                     chart_key = f"chart_{modulo}_{i}_{datetime.now().timestamp()}"
                     st.plotly_chart(fig, use_container_width=True, key=chart_key)
                     
-                    # Mostrar métricas
                     col1, col2 = st.columns(2)
                     with col1:
                         st.metric("✅ Acertos", f"{estatisticas[i]['Acertos (%)']:.1f}%")
@@ -685,21 +673,16 @@ for idx, modulo in enumerate(modulos_lista):
                     st.caption(f"📊 Total: {estatisticas[i]['Total_Respostas']} respostas")
                     st.markdown("---")
             
-            # Segundo gráfico da linha
             if i + 1 < len(estatisticas):
                 with cols[1]:
-                    # Título do gráfico com fundo escuro
                     st.markdown(f'<div class="grafico-titulo">📊 Pergunta {i+2}</div>', unsafe_allow_html=True)
-                    # Mostrar pergunta completa
                     st.markdown(f'<div class="pergunta-texto">{i+2}. {estatisticas[i+1]["Pergunta"]}</div>', unsafe_allow_html=True)
                     
-                    # Criar dataframe para o gráfico
                     df_pergunta = pd.DataFrame({
                         'Status': ['Acertos', 'Erros'],
                         'Percentual': [estatisticas[i+1]['Acertos (%)'], estatisticas[i+1]['Erros (%)']]
                     })
                     
-                    # Gráfico de barras verticais
                     fig = px.bar(
                         df_pergunta,
                         x='Status',
@@ -719,11 +702,9 @@ for idx, modulo in enumerate(modulos_lista):
                         yaxis_title="Percentual (%)"
                     )
                     
-                    # Usar key única para cada gráfico
                     chart_key = f"chart_{modulo}_{i+1}_{datetime.now().timestamp()}"
                     st.plotly_chart(fig, use_container_width=True, key=chart_key)
                     
-                    # Mostrar métricas
                     col1, col2 = st.columns(2)
                     with col1:
                         st.metric("✅ Acertos", f"{estatisticas[i+1]['Acertos (%)']:.1f}%")
