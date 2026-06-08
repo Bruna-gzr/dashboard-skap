@@ -1,4 +1,4 @@
-# app.py - VERSÃO SEM HASH (mais simples)
+# app.py - VERSÃO COMPLETA E ATUALIZADA
 import streamlit as st
 import pandas as pd
 from pathlib import Path
@@ -11,7 +11,6 @@ from pathlib import Path
 def carregar_credenciais():
     """Carrega a planilha de credenciais"""
     caminhos = [
-        Path(".data/credenciais.xlsx"),
         Path("data/credenciais.xlsx"),
         Path("credenciais.xlsx"),
         Path("../credenciais.xlsx"),
@@ -26,13 +25,14 @@ def carregar_credenciais():
         {"Usuario": "Adm", "Senha": "Adm@log20@", "Operacao": "Todas"},
         {"Usuario": "cd.litoral", "Senha": "lito@log20", "Operacao": "CD LITORAL"},
         {"Usuario": "cd.petrop", "Senha": "petr@log20", "Operacao": "CD PETRÓPOLIS"},
+        {"Usuario": "cd.cascave", "Senha": "casc@log20", "Operacao": "CD CASCAVEL"},
     ])
     
     # Tentar salvar
     try:
-        Path(".data").mkdir(exist_ok=True)
-        df.to_excel(".data/credenciais.xlsx", index=False)
-        st.success("Arquivo de credenciais criado em .data/credenciais.xlsx")
+        Path("data").mkdir(exist_ok=True)
+        df.to_excel("data/credenciais.xlsx", index=False)
+        st.success("Arquivo de credenciais criado em data/credenciais.xlsx")
     except:
         pass
     
@@ -73,7 +73,7 @@ def fazer_login():
             
             creds = carregar_credenciais()
             
-            # 🔴 COMPARAÇÃO DIRETA (sem hash)
+            # Comparação direta (sem hash)
             user = creds[
                 (creds["Usuario"].astype(str).str.strip() == usuario) & 
                 (creds["Senha"].astype(str).str.strip() == senha)
@@ -88,7 +88,6 @@ def fazer_login():
                 return True
             else:
                 st.error("❌ Usuário ou senha inválidos")
-                # Mostrar usuários disponíveis para debug (opcional)
                 with st.expander("🔧 Debug - Usuários disponíveis"):
                     st.dataframe(creds[["Usuario", "Operacao"]])
     
@@ -96,12 +95,12 @@ def fazer_login():
     return False
 
 def get_operacao():
+    """Retorna a operação do usuário logado"""
     return st.session_state.get("operacao", "Todas")
 
 def get_usuario():
+    """Retorna o nome do usuário logado"""
     return st.session_state.get("usuario", "")
-
-# app.py - substitua a função aplicar_filtro
 
 def aplicar_filtro(df, coluna="Operação"):
     """Filtra DataFrame pela operação do usuário"""
@@ -116,11 +115,27 @@ def aplicar_filtro(df, coluna="Operação"):
     
     # Verifica se a coluna existe
     if coluna not in df.columns:
-        st.warning(f"⚠️ Coluna '{coluna}' não encontrada. Colunas disponíveis: {list(df.columns)}")
-        return df
+        # Tenta encontrar a coluna ignorando acentos e maiúsculas
+        for col in df.columns:
+            if col.lower().strip() == "operacao":
+                coluna = col
+                break
+            elif "oper" in col.lower():
+                coluna = col
+                break
+        else:
+            # Se não encontrou, mostra aviso
+            st.warning(f"⚠️ Coluna de operação não encontrada. Colunas disponíveis: {list(df.columns)}")
+            return df
     
-    # Aplica o filtro
-    df_filtrado = df[df[coluna].astype(str).str.strip() == operacao].copy()
+    # Aplica o filtro (compara exato)
+    mask = df[coluna].astype(str).str.strip() == operacao
+    df_filtrado = df[mask].copy()
+    
+    # Se não achou nada, tenta contains (para casos com diferenças)
+    if len(df_filtrado) == 0:
+        mask = df[coluna].astype(str).str.contains(operacao, case=False, na=False)
+        df_filtrado = df[mask].copy()
     
     # Mostra no sidebar quantos registros foram filtrados
     if len(df_filtrado) < len(df):
@@ -171,26 +186,26 @@ col1, col2 = st.columns(2)
 
 with col1:
     if st.button("🔐 Painel de Acessos RH", use_container_width=True):
-        st.switch_page(".pages/1_Painel de Acessos RH.py")
+        st.switch_page("pages/1_Painel de Acessos RH.py")
     
     if st.button("📚 Materiais Integrações", use_container_width=True):
-        st.switch_page(".pages/2_Materiais_integracoes.py")
+        st.switch_page("pages/2_Materiais_integracoes.py")
     
     if st.button("🚚 Integração Distribuição", use_container_width=True):
         st.switch_page("pages/3_Integracao_Distribuicao.py")
     
     if st.button("📦 Integração Armazém", use_container_width=True):
-        st.switch_page(".pages/4_Integracao_Armazem.py")
+        st.switch_page("pages/4_Integracao_Armazem.py")
 
 with col2:
     if st.button("👨🏻‍🎓 Padrinhos", use_container_width=True):
-        st.switch_page(".pages/4_Padrinhos.py")
+        st.switch_page("pages/4_Padrinhos.py")
     
     if st.button("📋 Acompanhamento de Novos", use_container_width=True):
-        st.switch_page(".pages/Acompanhamento_de_Novos.py")
+        st.switch_page("pages/Acompanhamento_de_Novos.py")
     
     if st.button("📈 Raio X", use_container_width=True):
-        st.switch_page(".pages/Raio X Operação.py")
+        st.switch_page("pages/Raio X Operação.py")
     
     if st.button("📊 SKAP", use_container_width=True):
-        st.switch_page(".pages/SKAP.py")
+        st.switch_page("pages/SKAP.py")
