@@ -1,5 +1,6 @@
-# .pages/4_Integracao_Armazem.py (exemplo)
+# pages/3_Integracao_Distribuicao.py
 import streamlit as st
+import pandas as pd
 import sys
 from pathlib import Path
 
@@ -7,11 +8,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from app import aplicar_filtro, get_operacao
 
-st.set_page_config(page_title="Integração Armazém", layout="wide")
+st.set_page_config(page_title="Integração Distribuição", layout="wide")
 
 OPERACAO = get_operacao()
 
-st.title("📦 Integração Armazém")
+st.title("🚚 Integração Distribuição")
 
 if OPERACAO != "Todas":
     st.caption(f"📍 Operação: **{OPERACAO}**")
@@ -20,15 +21,29 @@ if OPERACAO != "Todas":
 if st.button("← Voltar ao Menu"):
     st.switch_page("app.py")
 
-# ===== SEU CÓDIGO DE CARREGAR DADOS =====
-import pandas as pd
+# ===== CARREGAR DADOS (COM CAMINHO CORRETO) =====
+DATA_DIR = Path(__file__).parent.parent / ".data"
 
-df = pd.read_excel(".data/Admitidos.xlsx")
+# Carregar todos os DataFrames necessários
+admitidos = pd.read_excel(DATA_DIR / "Admitidos.xlsx")
+base_ativos = pd.read_excel(DATA_DIR / "Base colaboradores ativos.xlsx")
+nps = pd.read_excel(DATA_DIR / "NPS Mentor.xlsx")
+batepapo = pd.read_excel(DATA_DIR / "Bate papo mentor.xlsx")
 
 # Aplicar filtro pela operação do usuário
-df = aplicar_filtro(df, "Operação")
+admitidos = aplicar_filtro(admitidos, "Operação")
+base_ativos = aplicar_filtro(base_ativos, "Operação")
+nps = aplicar_filtro(nps, "Operação")
+batepapo = aplicar_filtro(batepapo, "Operação")
 
-# ... resto do seu código ...
+# ===== SEU CÓDIGO DE ANÁLISE CONTINUA AQUI =====
+st.write(f"📊 Dados carregados:")
+st.write(f"- Admitidos: {len(admitidos)} registros")
+st.write(f"- Base Ativos: {len(base_ativos)} registros")
+st.write(f"- NPS: {len(nps)} registros")
+st.write(f"- Bate papo: {len(batepapo)} registros")
+
+# ... resto do seu código original (gráficos, análises, etc) ...
 
 import streamlit as st
 
