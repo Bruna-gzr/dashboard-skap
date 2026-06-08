@@ -22,7 +22,7 @@ if st.button("← Voltar ao Menu"):
     st.switch_page("app.py")
 
 # ===== CARREGAR DADOS (COM CAMINHO CORRETO) =====
-DATA_DIR = Path(__file__).parent.parent / ".data"
+DATA_DIR = Path(__file__).parent.parent / "data"
 
 # Carregar todos os DataFrames necessários
 admitidos = pd.read_excel(DATA_DIR / "Admitidos.xlsx")
