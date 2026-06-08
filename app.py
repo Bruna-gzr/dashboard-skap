@@ -101,6 +101,8 @@ def get_operacao():
 def get_usuario():
     return st.session_state.get("usuario", "")
 
+# app.py - substitua a função aplicar_filtro
+
 def aplicar_filtro(df, coluna="Operação"):
     """Filtra DataFrame pela operação do usuário"""
     if df is None or df.empty:
@@ -108,15 +110,23 @@ def aplicar_filtro(df, coluna="Operação"):
     
     operacao = get_operacao()
     
-    # Admin ou usuário sem operação específica vê tudo
+    # Admin vê tudo
     if operacao == "Todas" or get_usuario() == "Adm":
         return df
     
-    if coluna in df.columns:
-        df_filtrado = df[df[coluna].astype(str).str.strip() == operacao].copy()
-        return df_filtrado
+    # Verifica se a coluna existe
+    if coluna not in df.columns:
+        st.warning(f"⚠️ Coluna '{coluna}' não encontrada. Colunas disponíveis: {list(df.columns)}")
+        return df
     
-    return df
+    # Aplica o filtro
+    df_filtrado = df[df[coluna].astype(str).str.strip() == operacao].copy()
+    
+    # Mostra no sidebar quantos registros foram filtrados
+    if len(df_filtrado) < len(df):
+        st.sidebar.caption(f"📊 Filtrado: {len(df_filtrado)} de {len(df)} registros")
+    
+    return df_filtrado
 
 # =========================
 # CONFIGURAÇÃO DA PÁGINA
