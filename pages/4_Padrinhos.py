@@ -1462,6 +1462,7 @@ else:
 # =========================
 try:
     admitidos = carregar_excel_primeira_aba(ARQ_ADMITIDOS)
+    admitidos = aplicar_filtro_unidade(admitidos, "Operação")
     base_ativos = carregar_excel_primeira_aba(ARQ_ATIVOS)
 
     nps = carregar_excel_primeira_aba(ARQ_NPS)
