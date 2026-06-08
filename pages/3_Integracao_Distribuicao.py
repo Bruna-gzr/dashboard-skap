@@ -3,37 +3,41 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 
-st.set_page_config(page_title="Teste", layout="wide")
+st.set_page_config(page_title="Integração Distribuição", layout="wide")
 
 # Pega a operação do usuário logado
-operacao_usuario = st.session_state.get("operacao", "Todas")
+OPERACAO_USUARIO = st.session_state.get("operacao", "Todas")
 
 st.title("🚚 Integração Distribuição")
-st.write(f"**Operação do usuário logado:** {operacao_usuario}")
 
-# Carrega os dados
+if OPERACAO_USUARIO != "Todas":
+    st.caption(f"📍 Operação: **{OPERACAO_USUARIO}**")
+
+# Botão para voltar
+if st.button("← Voltar ao Menu"):
+    st.switch_page("app.py")
+
+# Carregar dados
 DATA_DIR = Path(__file__).parent.parent / "data"
-df = pd.read_excel(DATA_DIR / "Admitidos.xlsx")
 
-st.write("**Colunas disponíveis:**")
-st.write(df.columns.tolist())
+admitidos = pd.read_excel(DATA_DIR / "Admitidos.xlsx")
 
-# Tenta filtrar
-coluna_operacao = "Operação"  # tenta esse nome
-
-if coluna_operacao in df.columns:
-    st.write(f"**Valores únicos na coluna '{coluna_operacao}':**")
-    st.write(df[coluna_operacao].unique().tolist())
-    
-    # Aplica o filtro
-    if operacao_usuario != "Todas":
-        df = df[df[coluna_operacao] == operacao_usuario]
-        st.write(f"**Registros após filtro:** {len(df)}")
+# 🔴 FILTRO DIRETO AQUI (sem chamar função) 🔴
+if OPERACAO_USUARIO != "Todas":
+    # Filtro exato
+    admitidos = admitidos[admitidos["Operação"] == OPERACAO_USUARIO]
+    st.success(f"✅ Filtrado para: {OPERACAO_USUARIO} - {len(admitidos)} registros")
 else:
-    st.error(f"Coluna '{coluna_operacao}' não encontrada!")
-    st.write("As colunas que existem são:", df.columns.tolist())
+    st.info(f"📊 Mostrando todas as operações - {len(admitidos)} registros")
 
-st.dataframe(df)
+# Mostrar resultado
+st.write(f"### Total de registros: {len(admitidos)}")
+
+# Verificar se filtrou corretamente
+st.write("### Operações presentes nos dados filtrados:")
+st.write(admitidos["Operação"].unique().tolist())
+
+# ... resto do seu código
 
 # ===== AQUI ENTRA O RESTO DO SEU CÓDIGO ORIGINAL =====
 # ... seus gráficos, análises, etc ...
