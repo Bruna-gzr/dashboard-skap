@@ -951,10 +951,19 @@ grid_pg_apoio = grid["MES"].ge("2026-01")
 grid = grid[(~mask_pg_apoio) | (grid_pg_apoio)].copy()
 
 # =========================================================
-# PONTUAÇÃO (VERSÃO SIMPLES E SEGURA - SEM ERROS)
+# PONTUAÇÃO (VERSÃO CORRIGIDA - TRATA DATAFRAME VAZIO)
 # =========================================================
 def calc_pontos_vetorizado(df: pd.DataFrame) -> pd.DataFrame:
-    """Versão segura do cálculo de pontos (usa apply, mas mantém precisão)"""
+    """Versão segura do cálculo de pontos (trata DataFrame vazio)"""
+    
+    # Se o DataFrame estiver vazio, retorna vazio com as colunas necessárias
+    if df.empty:
+        pts_cols = ["PTS_PDV", "PTS_BEES", "PTS_TML", "PTS_JL", "PTS_ABS", "PTS_VALES", 
+                    "PTS_ACIDENTE", "PTS_DTO", "PTS_AD_CHECKLIST", "PTS_LOGON", "PTS_QUEDAS", "PTS_RV_EMPT", "TOTAL_PTS"]
+        for col in pts_cols:
+            df[col] = 0
+        return df
+    
     df = df.copy()
     
     # Inicializar colunas de pontos
@@ -967,7 +976,8 @@ def calc_pontos_vetorizado(df: pd.DataFrame) -> pd.DataFrame:
         pts = {
             "PTS_PDV": 0, "PTS_BEES": 0, "PTS_TML": 0, "PTS_JL": 0,
             "PTS_ABS": 0, "PTS_VALES": 0, "PTS_ACIDENTE": 0, "PTS_DTO": 0,
-            "PTS_AD_CHECKLIST": 0, "PTS_LOGON": 0, "PTS_QUEDAS": 0, "PTS_RV_EMPT": 0
+            "PTS_AD_CHECKLIST": 0, "PTS_LOGON": 0, "PTS_QUEDAS": 0, "PTS_RV_EMPT": 0,
+            "TOTAL_PTS": 0
         }
         
         operacao = row.get("OPERACAO", "")
@@ -1076,19 +1086,19 @@ def calc_pontos_vetorizado(df: pd.DataFrame) -> pd.DataFrame:
             pts["TOTAL_PTS"] = pts["PTS_ABS"] + pts["PTS_ACIDENTE"] + pts["PTS_DTO"]
             return pts
         
-        pts["TOTAL_PTS"] = 0
         return pts
     
-    # Aplicar linha a linha (mais seguro, compatível com Arrow)
+    # Aplicar linha a linha
     resultados = df.apply(calcular_pontos_linha, axis=1)
     
+    # Preencher as colunas de pontos
     for col in pts_cols:
-        if col in resultados.iloc[0]:
-            df[col] = resultados.apply(lambda x: x.get(col, 0))
+        df[col] = resultados.apply(lambda x: x.get(col, 0))
     
     df["TOTAL_PTS"] = resultados.apply(lambda x: x.get("TOTAL_PTS", 0))
     
     return df
+    
 pts_df = calc_pontos_vetorizado(grid)
 for col in ["PTS_PDV", "PTS_BEES", "PTS_TML", "PTS_JL", "PTS_ABS", "PTS_VALES", "PTS_ACIDENTE", "PTS_DTO", "PTS_AD_CHECKLIST", "PTS_LOGON", "PTS_QUEDAS", "PTS_RV_EMPT", "TOTAL_PTS"]:
     if col in pts_df.columns:
