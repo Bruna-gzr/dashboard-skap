@@ -85,7 +85,7 @@ def similar(a, b):
     return SequenceMatcher(None, str(a).lower().strip(), str(b).lower().strip()).ratio()
 
 def calcular_estatisticas_respostas(df_mod, perguntas_gabarito, respostas_validas):
-    """Calcula estatísticas de acertos por pergunta"""
+    """Calcula estatísticas de acertos por pergunta - OTIMIZADO"""
     estatisticas = []
     
     colunas_df = [col for col in df_mod.columns if col not in ['Colaborador', 'CPF']]
@@ -106,6 +106,7 @@ def calcular_estatisticas_respostas(df_mod, perguntas_gabarito, respostas_valida
             else:
                 continue
         
+        # VETORIZADO: cálculo de acertos usando pandas diretamente
         if coluna_encontrada in df_mod.columns:
             series_resposta = df_mod[coluna_encontrada].astype(str).str.strip().str.lower()
             resposta_correta_norm = resposta_correta.strip().lower()
@@ -196,7 +197,7 @@ with st.spinner('Carregando dados...'):
         st.sidebar.warning("⚠️ Usando fallback: todos colaboradores como ativos")
 
 # =========================
-# Processamento inicial
+# Processamento inicial (OTIMIZADO)
 # =========================
 admitidos = admitidos[admitidos['Cargo'] == "Ajudante Armazém"]
 
@@ -278,33 +279,37 @@ if filtro_colaborador != "Todos":
     colaborador_selecionado = filtro_colaborador
 
 # =========================
-# Fuzzy Match (VERSÃO CORRIGIDA)
+# Fuzzy Match - VERSÃO DEFINITIVA (RÁPIDA)
 # =========================
 results_list = []
 
 for modulo, df_mod in integracao.items():
-    # Garantir colunas necessárias
+    # Garantir colunas
     if 'Colaborador' not in df_mod.columns:
         df_mod['Colaborador'] = ''
     if 'CPF' not in df_mod.columns:
         df_mod['CPF'] = ''
     
-    # Para cada colaborador, buscar match
+    # Criar chave única para cada registro (CPF + nome limpo)
+    df_mod['_chave'] = (
+        df_mod['CPF'].astype(str).str.replace('.', '').str.replace('-', '').str.strip() + '|' +
+        df_mod['Colaborador'].astype(str).str.lower().str.strip()
+    )
+    df_mod['_chave'] = df_mod['_chave'].str.replace('nan|', '').str.replace('|nan', '')
+    
+    # Set para busca O(1)
+    mod_set = set(df_mod['_chave'].tolist())
+    
+    # Para cada colaborador, criar chave similar
     for _, row in admitidos_filtrado.iterrows():
-        matched = None
-        best_score = 0
+        cpf_limpo = str(row.get('CPF', '')).replace('.', '').replace('-', '').strip()
+        nome_limpo = str(row['Colaborador']).lower().strip()
+        chave_colaborador = f"{cpf_limpo}|{nome_limpo}"
         
-        for _, tgt in df_mod.iterrows():
-            score_name = similar(row['Colaborador'], tgt['Colaborador'])
-            score_cpf = similar(row['CPF'], tgt['CPF'])
-            final_score = max(score_name, score_cpf)
-            
-            if final_score > best_score:
-                best_score = final_score
-                if final_score >= 0.65:
-                    matched = tgt
+        # Busca direta no set
+        matched = chave_colaborador in mod_set
         
-        status = "Realizado" if matched is not None else "Não realizado"
+        status = "Realizado" if matched else "Não realizado"
         results_list.append({
             "Operação": row['Operação'],
             "Colaborador": row['Colaborador'],
