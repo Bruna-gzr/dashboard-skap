@@ -167,37 +167,20 @@ def preparar_excel_para_download(df: pd.DataFrame, sheet_name: str = "Dados") ->
 def similaridade(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
-def mapear_chaves_por_aproximacao(chaves_origem, chaves_destino, cutoff=0.92):
+def melhor_chave_aproximada(chave, candidatos, cutoff=0.92):
     """
-    Retorna dict {chave_origem: chave_destino}
-    1) tenta match exato
-    2) se não achar, tenta o mais parecido acima do cutoff
+    Retorna a chave mais parecida acima do cutoff, ou string vazia.
     """
-    chaves_destino = [c for c in chaves_destino if c]
-    destino_set = set(chaves_destino)
-    mapa = {}
-
-    for chave in chaves_origem:
-        if not chave:
-            mapa[chave] = ""
-            continue
-
-        if chave in destino_set:
-            mapa[chave] = chave
-            continue
-
-        melhor = ""
-        melhor_score = 0.0
-
-        for cand in chaves_destino:
-            score = similaridade(chave, cand)
-            if score > melhor_score:
-                melhor_score = score
-                melhor = cand
-
-        mapa[chave] = melhor if melhor_score >= cutoff else ""
-
-    return mapa
+    if not chave:
+        return ""
+    melhor = ""
+    melhor_score = 0.0
+    for cand in candidatos:
+        score = similaridade(chave, cand)
+        if score > melhor_score:
+            melhor_score = score
+            melhor = cand
+    return melhor if melhor_score >= cutoff else ""
 
 # =========================
 # Normalização
@@ -278,21 +261,6 @@ for col in ["CARGO", "LIDERANCA", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
 # =========================
 # Fallback por aproximação SOMENTE para quem não encontrou cargo
 # =========================
-def similaridade(a: str, b: str) -> float:
-    return SequenceMatcher(None, a, b).ratio()
-
-def melhor_chave_aproximada(chave, candidatos, cutoff=0.92):
-    if not chave:
-        return ""
-    melhor = ""
-    melhor_score = 0.0
-    for cand in candidatos:
-        score = similaridade(chave, cand)
-        if score > melhor_score:
-            melhor_score = score
-            melhor = cand
-    return melhor if melhor_score >= cutoff else ""
-
 candidatos_ativos = ativos["CHAVE_COLABORADOR"].dropna().astype(str).unique().tolist()
 
 mask_sem_cargo = base["CARGO"].isna() | (base["CARGO"].astype(str).str.strip() == "")
@@ -398,7 +366,6 @@ ordem = [
     "HABILIDADE ESPECIFICA",
     "HABILIDADE EMPODERAMENTO",
     "CHAVE_COLABORADOR",
-    "CHAVE_ATIVOS",
     "PRAZO_TECNICAS_DT",
     "PRAZO_ESPECIFICAS_DT",
     "DATA ULT. ADM",
@@ -806,128 +773,3 @@ st.download_button(
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     use_container_width=True
 )
-
-st.divider()
-
-# =========================
-# 🌡️ Farol Skap Termômetro de Gente
-# =========================
-
-st.subheader("🌡️ Farol Skap Termômetro de Gente")
-
-farol_base = base_f.copy()
-
-# Garantir tipo numérico
-farol_base["HABILIDADES TECNICAS"] = pd.to_numeric(
-    farol_base["HABILIDADES TECNICAS"], errors="coerce"
-).fillna(0)
-
-# Critério → colaboradores com tempo de casa ENTRE 2 e 6 meses (61 a 180 dias)
-farol_2a6m = farol_base[(farol_base["TEMPO DE CASA"] >= 61) & (farol_base["TEMPO DE CASA"] <= 180)].copy()
-
-# Aderente = já possui técnica 100% (habilidades técnicas == 1)
-farol_2a6m["ADERENTE_TEC"] = farol_2a6m["HABILIDADES TECNICAS"] >= 1
-
-# PENDENTES = não registraram Técnica 100% ainda
-pendentes_2a6m = farol_2a6m[farol_2a6m["HABILIDADES TECNICAS"] < 1].copy()
-
-card_total_pend_2a6m = len(pendentes_2a6m)
-
-# Card atualizado
-st.metric(
-    "👥 Entre 2 a 6 meses de casa com Hab Técnicas < 100%",
-    card_total_pend_2a6m
-)
-
-# -------------------------
-# Gráfico aderência por unidade
-# -------------------------
-
-aderencia_unidade = (
-    farol_2a6m.groupby("OPERACAO", dropna=False)
-    .agg(
-        TOTAL_2A6M=("COLABORADOR", "count"),
-        ADERENTES=("ADERENTE_TEC", "sum")
-    )
-    .reset_index()
-)
-
-aderencia_unidade["ADERENCIA"] = np.where(
-    aderencia_unidade["TOTAL_2A6M"] > 0,
-    aderencia_unidade["ADERENTES"] / aderencia_unidade["TOTAL_2A6M"],
-    0
-)
-
-aderencia_unidade["ADERENCIA_TXT"] = aderencia_unidade["ADERENCIA"].map(lambda x: f"{x:.0%}")
-
-st.markdown("**📈 Aderência de Habilidades Técnicas por Unidade (Entre 2 a 6 meses de casa)**")
-
-fig_farol = px.bar(
-    aderencia_unidade.sort_values("ADERENCIA", ascending=False),
-    x="OPERACAO",
-    y="ADERENCIA",
-    text="ADERENCIA_TXT",
-    color="ADERENCIA",
-    color_continuous_scale=["#e74c3c", "#f1c40f", "#2ecc71"]
-)
-
-fig_farol.update_layout(
-    xaxis_title="Unidade",
-    yaxis_title="Aderência",
-    yaxis_tickformat=".0%"
-)
-
-st.plotly_chart(fig_farol, use_container_width=True)
-
-# -------------------------
-# Tabela de pendências
-# -------------------------
-
-st.markdown("**📋 Pessoas com tempo de casa entre 2 e 6 meses e Habilidades Técnicas < 100%**")
-
-cols_pend_2a6m = [
-    "COLABORADOR",
-    "CARGO",
-    "OPERACAO",
-    "ATIVIDADE",
-    "LIDERANCA",
-    "TEMPO DE CASA",
-    "HABILIDADES TECNICAS",
-    "PRAZO TECNICAS",
-    "STATUS TECNICAS",
-]
-
-cols_pend_2a6m = [c for c in cols_pend_2a6m if c in pendentes_2a6m.columns]
-
-tabela_pend_2a6m_raw = pendentes_2a6m[cols_pend_2a6m].copy()
-
-tabela_pend_2a6m = tabela_pend_2a6m_raw.copy()
-
-if "HABILIDADES TECNICAS" in tabela_pend_2a6m.columns:
-    tabela_pend_2a6m["HABILIDADES TECNICAS"] = pd.to_numeric(
-        tabela_pend_2a6m["HABILIDADES TECNICAS"], errors="coerce"
-    ).fillna(0).map(lambda x: f"{x:.0%}")
-
-if "STATUS TECNICAS" in tabela_pend_2a6m.columns:
-    tabela_pend_2a6m["STATUS TECNICAS"] = tabela_pend_2a6m["STATUS TECNICAS"].astype(str).map(
-        lambda s: "🔴 Não realizado" if s == "Não realizado"
-        else "🟡 No prazo" if s == "No prazo"
-        else s
-    )
-
-if tabela_pend_2a6m.empty:
-    st.success("Nenhuma pendência encontrada para colaboradores com tempo de casa entre 2 e 6 meses.")
-else:
-    st.dataframe(centralizar_tabela(tabela_pend_2a6m), use_container_width=True)
-
-    excel_pend_2a6m = preparar_excel_para_download(
-        tabela_pend_2a6m_raw,
-        sheet_name="Farol_Termometro_Gente"
-    )
-
-    st.download_button(
-        "⬇️ Baixar Excel (Farol da Skap - Termômetro de Gente)",
-        data=excel_pend_2a6m,
-        file_name="farol_skap_termometro_gente.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
