@@ -10,7 +10,7 @@ st.set_page_config(
 import pandas as pd
 import numpy as np
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from io import BytesIO
 import plotly.express as px
@@ -266,8 +266,11 @@ df["ADMISSAO"] = to_datetime_safe(df["ADMISSAO"])
 # hoje no fuso BR (evita +1 dia no Streamlit Cloud)
 hoje = pd.Timestamp.now(tz=ZoneInfo("America/Sao_Paulo")).normalize().tz_localize(None)
 
-cutoff = pd.to_datetime("2025-01-01")
-df = df[df["ADMISSAO"].notna() & (df["ADMISSAO"] >= cutoff)].copy()
+# NOVO: Período de 180 dias para trás a partir de hoje
+data_180_dias_atras = hoje - timedelta(days=180)
+
+# Filtrar apenas admissões nos últimos 180 dias
+df = df[df["ADMISSAO"].notna() & (df["ADMISSAO"] >= data_180_dias_atras)].copy()
 
 td = pd.to_numeric(df["TEMPO DE CASA"], errors="coerce")
 if td.isna().all():
@@ -303,28 +306,14 @@ f_status = st.sidebar.multiselect(
 f_status_colab = st.sidebar.multiselect(
     "Status do colaborador",
     ["Ativo", "Inativo"],
-    default=["Ativo"],
+    default=["Ativo", "Inativo"],  # ALTERADO: agora padrão é "Todos" (Ativo + Inativo)
 )
 
-min_adm = df["ADMISSAO"].min()
-max_adm = df["ADMISSAO"].max()
-if pd.isna(min_adm) or pd.isna(max_adm):
-    min_adm = pd.to_datetime("2025-01-01")
-    max_adm = hoje
+# NOVO: Período fixo: Início = 180 dias atrás, Fim = hoje
+dt_ini = data_180_dias_atras
+dt_fim = hoje
 
-# ✅ Período (2 campos) em PT-BR visual
-col1, col2 = st.sidebar.columns(2)
-with col1:
-    dt_ini = st.date_input("Início", value=min_adm.date(), format="DD/MM/YYYY")
-with col2:
-    dt_fim = st.date_input("Fim", value=max_adm.date(), format="DD/MM/YYYY")
-
-dt_ini = pd.to_datetime(dt_ini)
-dt_fim = pd.to_datetime(dt_fim)
-if dt_fim < dt_ini:
-    dt_ini, dt_fim = dt_fim, dt_ini
-
-st.sidebar.caption(f"Período selecionado: **{dt_ini.strftime('%d/%m/%Y')}** até **{dt_fim.strftime('%d/%m/%Y')}**")
+st.sidebar.caption(f"Período fixo: **{dt_ini.strftime('%d/%m/%Y')}** até **{dt_fim.strftime('%d/%m/%Y')}** (últimos 180 dias)")
 
 df_f = df.copy()
 df_f = df_f[df_f["ADMISSAO"].between(dt_ini, dt_fim)].copy()
@@ -355,7 +344,7 @@ for _, status_col, limite_col, _ in etapas:
     nao_realizada_ids.update(df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist())
 
 c1, c2, c3 = st.columns(3)
-c1.metric("Total (Admissão ≥ 01/01/2025)", len(df_f))
+c1.metric(f"Total (últimos 180 dias)", len(df_f))
 c2.metric("🟡 No prazo vencendo em até 3 dias", len(no_prazo_venc3_ids))
 c3.metric("🔴 Com alguma etapa Não Realizada", len(nao_realizada_ids))
 
@@ -430,7 +419,7 @@ def styler_padrao(df_view: pd.DataFrame):
     return sty
 
 # =========================
-# Gráfico
+# Gráfico com cores personalizadas
 # =========================
 st.subheader("📈 Progresso Geral médio por Operação")
 
@@ -445,11 +434,39 @@ if len(prog_op) == 0:
     st.info("Sem dados para exibir o gráfico com os filtros atuais.")
 else:
     prog_op["PROGRESSO_MEDIO_%"] = (prog_op["PROGRESSO_MEDIO"] * 100).round(1)
-    fig = px.bar(prog_op, x="OPERACAO", y="PROGRESSO_MEDIO_%", text="PROGRESSO_MEDIO_%")
+    
+    # NOVO: Definir cores baseado no valor
+    def get_cor_progresso(valor_percentual):
+        if valor_percentual >= 95:
+            return "#22c55e"  # Verde
+        elif valor_percentual >= 90:
+            return "#facc15"  # Amarelo
+        else:
+            return "#ef4444"  # Vermelho
+    
+    prog_op["COR"] = prog_op["PROGRESSO_MEDIO_%"].apply(get_cor_progresso)
+    
+    fig = px.bar(
+        prog_op, 
+        x="OPERACAO", 
+        y="PROGRESSO_MEDIO_%", 
+        text="PROGRESSO_MEDIO_%",
+        color="PROGRESSO_MEDIO_%",
+        color_continuous_scale=["#ef4444", "#facc15", "#22c55e"],
+        range_color=[0, 100]
+    )
+    fig.update_traces(
+        textposition="outside",
+        marker_color=prog_op["COR"],
+        marker_line_color=prog_op["COR"],
+        marker_line_width=1,
+    )
     fig.update_layout(
         yaxis_title="% médio",
         xaxis_title="Operação",
         xaxis={"categoryorder": "total descending"},
+        showlegend=False,
+        coloraxis_showscale=False
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -499,7 +516,6 @@ if linhas_nr:
     st.metric("Registros com etapa 'Não Realizada'", len(df_nr))
 
     view_nr = df_nr[["COLABORADOR","STATUS COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
-    # Compatível com versões antigas e novas do pandas
     try:
         sty_nr = styler_padrao(view_nr).map(estilo_dias, subset=["DIAS"])
     except AttributeError:
@@ -541,7 +557,6 @@ if linhas_np:
     st.metric("Registros 'No prazo' vencendo em até 3 dias", len(df_alerta))
 
     view_np = df_alerta[["COLABORADOR","STATUS COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
-    # Compatível com versões antigas e novas do pandas
     try:
         sty_np = styler_padrao(view_np).map(estilo_dias, subset=["DIAS"])
     except AttributeError:
@@ -593,7 +608,7 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
         "DIAS",
     ]
 
-    # ✅ Só no Follow: adiciona STATUS COLABORADOR logo após COLABORADOR
+    # Só no Follow: adiciona STATUS COLABORADOR logo após COLABORADOR
     if nome_aba.strip().lower() == "follow":
         cols_view.insert(1, "STATUS COLABORADOR")
 
@@ -630,12 +645,10 @@ def tabela_etapa(nome_aba, status_col, limite_col, dt_col):
     
     # Aplicar cada estilo individualmente com fallback
     try:
-        # Tentar com map (pandas moderno)
         sty = sty.map(estilo_progresso, subset=["PROGRESSO GERAL"])
         sty = sty.map(estilo_status, subset=[status_col])
         sty = sty.map(estilo_dias, subset=["DIAS"])
     except AttributeError:
-        # Fallback para applymap (pandas antigo)
         sty = sty.applymap(estilo_progresso, subset=["PROGRESSO GERAL"])
         sty = sty.applymap(estilo_status, subset=[status_col])
         sty = sty.applymap(estilo_dias, subset=["DIAS"])
