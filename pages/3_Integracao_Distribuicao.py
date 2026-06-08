@@ -1,3 +1,30 @@
+# dashboards/nome_do_dashboard.py
+
+import streamlit as st
+import pandas as pd
+
+# Importar funções de login
+from login_central import aplicar_filtro_operacao, get_operacao_usuario, get_usuario
+
+# Pega a operação do usuário logado
+OPERACAO_USUARIO = get_operacao_usuario()
+
+st.title("📊 Nome do Dashboard")
+
+if OPERACAO_USUARIO != "Todas":
+    st.caption(f"📍 Operação: **{OPERACAO_USUARIO}**")
+else:
+    st.caption("📍 Visualizando TODAS as operações")
+
+# ===== CARREGAR DADOS =====
+df = pd.read_excel("data/arquivo.xlsx")
+
+# 🔴 APLICAR FILTRO 🔴
+df = aplicar_filtro_operacao(df, "Operação")
+
+# ===== RESTO DO CÓDIGO =====
+# ... seu código normal ...
+
 import streamlit as st
 
 st.set_page_config(
