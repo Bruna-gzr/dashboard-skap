@@ -917,7 +917,7 @@ for c in ["ABS","VALES","ACIDENTE","DTO"]:
 if "RECARGAS" in grid.columns:
     grid["RECARGAS"] = pd.to_numeric(grid["RECARGAS"], errors="coerce").fillna(0).astype(int)
 if "QUEDAS" in grid.columns:
-    grid["QUEDAS"] = pd.to_numeric(grid["QUEDAS"], errors="coerce).fillna(0).astype(int)
+    grid["QUEDAS"] = pd.to_numeric(grid["QUEDAS"], errors="coerce").fillna(0).astype(int)
 if "RV_EMPT_VALOR" in grid.columns:
     grid["RV_EMPT_VALOR"] = pd.to_numeric(grid["RV_EMPT_VALOR"], errors="coerce").fillna(0)
 
