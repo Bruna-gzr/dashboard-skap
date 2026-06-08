@@ -317,60 +317,95 @@ ETAPAS = [
 ]
 
 # =========================
-# Montagem da base LONGA
+# Montagem da base LONGA - VERSÃO OTIMIZADA (SEM LOOPS LENTOS)
 # =========================
-linhas = []
+
+# Pré-processamento básico
 base_cols = ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "DATA ADMISSAO", "DATA_ADM_DT", "ID", "STATUS COLABORADOR"]
+base_prep = base[base_cols].copy()
+base_prep["ADM_DT"] = pd.to_datetime(base_prep["DATA_ADM_DT"]).dt.normalize()
+base_prep["_ID_STR"] = base_prep["ID"].astype(str)
 
-for _, r in base[base_cols].iterrows():
-    adm = pd.to_datetime(r["DATA_ADM_DT"]).normalize()
-    _id = r["ID"]
+# Cria dicionário de respostas para busca rápida
+resp_dict = {}
+for _, row in resp_min.iterrows():
+    key = (str(row["ID"]), normalizar_texto(row["CURSO_UP"]))
+    resp_dict[key] = pd.to_datetime(row["DATA_ENTREGA_DT"]).normalize()
 
-    for (etapa, off_min, off_max) in ETAPAS:
-        prazo_min_dt = (adm + pd.Timedelta(days=off_min)).normalize()
-        prazo_max_dt = (adm + pd.Timedelta(days=off_max)).normalize()
+# Lista para acumular DataFrames de cada etapa
+etapas_dfs = []
 
-        realizado_dt = pd.NaT
-        if pd.notna(_id):
-            etapa_up = normalizar_texto(etapa)
-            hit = resp_min[(resp_min["ID"] == str(_id)) & (resp_min["CURSO_UP"] == etapa_up)]
-            if len(hit) > 0:
-                realizado_dt = hit["DATA_ENTREGA_DT"].iloc[0]
-
-        if pd.notna(realizado_dt):
-            realizado_dt = pd.to_datetime(realizado_dt).normalize()
-
-        if pd.isna(realizado_dt):
-            dias = int((prazo_max_dt - hoje).days)
-            status = "Pendente em atraso" if hoje > prazo_max_dt else "Pendente mas no prazo"
-            realizado_txt = ""
-        else:
-            dias = int((prazo_max_dt - realizado_dt).days)
-            if realizado_dt < prazo_min_dt:
-                status = "Concluido adiantado"
-            elif realizado_dt > prazo_max_dt:
-                status = "Concluido em atraso"
+# Processa cada etapa (agora com lógica otimizada)
+for etapa, off_min, off_max in ETAPAS:
+    etapa_up = normalizar_texto(etapa)
+    
+    # Prazos calculados vetorialmente
+    prazo_min = base_prep["ADM_DT"] + pd.Timedelta(days=off_min)
+    prazo_max = base_prep["ADM_DT"] + pd.Timedelta(days=off_max)
+    
+    # Busca data de realização para esta etapa
+    realizado_list = []
+    for _, row in base_prep.iterrows():
+        key = (row["_ID_STR"], etapa_up)
+        realizado_list.append(resp_dict.get(key, pd.NaT))
+    
+    realizado = pd.Series(realizado_list, index=base_prep.index)
+    realizado_dt = pd.to_datetime(realizado).dt.normalize()
+    
+    # Calcula status e dias
+    hoje_norm = pd.Timestamp.now(tz=ZoneInfo("America/Sao_Paulo")).normalize().tz_localize(None)
+    
+    status_list = []
+    dias_list = []
+    realizado_txt_list = []
+    
+    for i in range(len(base_prep)):
+        r_dt = realizado_dt.iloc[i]
+        prazo_max_dt = prazo_max.iloc[i]
+        prazo_min_dt = prazo_min.iloc[i]
+        
+        if pd.isna(r_dt):
+            # Pendente
+            dias_calc = (prazo_max_dt - hoje_norm).days
+            if hoje_norm > prazo_max_dt:
+                status_list.append("Pendente em atraso")
             else:
-                status = "Conforme esperado"
-            realizado_txt = realizado_dt.strftime("%d/%m/%Y")
+                status_list.append("Pendente mas no prazo")
+            dias_list.append(dias_calc)
+            realizado_txt_list.append("")
+        else:
+            # Concluído
+            dias_calc = (prazo_max_dt - r_dt).days
+            if r_dt < prazo_min_dt:
+                status_list.append("Concluido adiantado")
+            elif r_dt > prazo_max_dt:
+                status_list.append("Concluido em atraso")
+            else:
+                status_list.append("Conforme esperado")
+            dias_list.append(dias_calc)
+            realizado_txt_list.append(r_dt.strftime("%d/%m/%Y"))
+    
+    # Cria DataFrame desta etapa
+    etapa_df = pd.DataFrame({
+        "COLABORADOR": base_prep["COLABORADOR"].values,
+        "STATUS COLABORADOR": base_prep["STATUS COLABORADOR"].values,
+        "CARGO": base_prep["CARGO"].values,
+        "OPERACAO": base_prep["OPERACAO"].values,
+        "ATIVIDADE": base_prep["ATIVIDADE"].fillna("").values,
+        "ADMISSAO": base_prep["DATA ADMISSAO"].values,
+        "ADMISSAO_DT": base_prep["ADM_DT"].values,
+        "ETAPA": etapa,
+        "PRAZO MINIMO": prazo_min.dt.strftime("%d/%m/%Y").values,
+        "PRAZO MAXIMO": prazo_max.dt.strftime("%d/%m/%Y").values,
+        "REALIZADO": realizado_txt_list,
+        "DIAS": dias_list,
+        "STATUS": status_list,
+    })
+    
+    etapas_dfs.append(etapa_df)
 
-        linhas.append({
-            "COLABORADOR": r["COLABORADOR"],
-            "STATUS COLABORADOR": r["STATUS COLABORADOR"],
-            "CARGO": r["CARGO"],
-            "OPERACAO": r["OPERACAO"],
-            "ATIVIDADE": r.get("ATIVIDADE", ""),
-            "ADMISSAO": r["DATA ADMISSAO"],
-            "ADMISSAO_DT": adm,
-            "ETAPA": etapa,
-            "PRAZO MINIMO": prazo_min_dt.strftime("%d/%m/%Y"),
-            "PRAZO MAXIMO": prazo_max_dt.strftime("%d/%m/%Y"),
-            "REALIZADO": realizado_txt,
-            "DIAS": dias,
-            "STATUS": status,
-        })
-
-etapas_df = pd.DataFrame(linhas)
+# Concatena todas as etapas
+etapas_df = pd.concat(etapas_dfs, ignore_index=True)
 
 # =========================
 # Filtros
