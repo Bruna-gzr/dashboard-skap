@@ -175,7 +175,63 @@ except Exception as e:
         "- Admitidos.xlsx"
     )
     st.stop()
-
+    
+# =========================
+# DIAGNÓSTICO COMPLETO - CARGOS
+# =========================
+with st.expander("🔍 DIAGNÓSTICO - Verificar Motorista Entregador III", expanded=True):
+    
+    # 1. Verificar se o cargo está na lista de permitidos
+    st.write("**1. Lista de cargos permitidos (normalizados):**")
+    for cargo in sorted(CARGOS_PERMITIDOS_UP):
+        if "ENTREGADOR III" in cargo:
+            st.success(f"✅ {cargo}")
+        else:
+            st.write(f"   - {cargo}")
+    
+    # 2. Verificar todos os cargos únicos na planilha Admitidos
+    st.write("**2. Cargos únicos na planilha Admitidos:**")
+    cargos_unicos = sorted(admitidos["CARGO"].dropna().unique())
+    
+    # Filtrar apenas os que contém "Entregador"
+    for cargo in cargos_unicos:
+        if "ENTREGADOR" in str(cargo).upper():
+            if "III" in str(cargo).upper():
+                st.error(f"🔴 **ENCONTRADO:** '{cargo}'")
+            else:
+                st.write(f"   - {cargo}")
+    
+    # 3. Verificar a normalização
+    st.write("**3. Teste de normalização:**")
+    teste = "Motorista Entregador III"
+    normalizado = normalizar_texto(teste)
+    st.write(f"Original: '{teste}'")
+    st.write(f"Normalizado: '{normalizado}'")
+    
+    # 4. Contar registros
+    st.write("**4. Contagem na base:**")
+    admitidos["CARGO_UP"] = admitidos["CARGO"].astype(str).map(normalizar_texto)
+    
+    qtde_total = len(admitidos)
+    qtde_iii = (admitidos["CARGO_UP"] == "MOTORISTA ENTREGADOR III").sum()
+    qtde_filtro = (admitidos["CARGO_UP"].isin(CARGOS_PERMITIDOS_UP)).sum()
+    
+    st.write(f"Total de registros em Admitidos: {qtde_total}")
+    st.write(f"Registros com 'Motorista Entregador III': {qtde_iii}")
+    st.write(f"Registros que passam no filtro de cargos: {qtde_filtro}")
+    
+    # 5. Mostrar os primeiros registros do cargo III se existir
+    if qtde_iii > 0:
+        st.write("**5. Amostra dos registros encontrados:**")
+        amostra = admitidos[admitidos["CARGO_UP"] == "MOTORISTA ENTREGADOR III"][["COLABORADOR", "CARGO", "DATA"]].head(5)
+        st.dataframe(amostra)
+    else:
+        st.warning("⚠️ Nenhum registro com 'Motorista Entregador III' encontrado na planilha!")
+        st.write("**Possíveis causas:**")
+        st.write("- O cargo pode estar escrito diferente (ex: 'Motorista Entregador 3', 'MOTORISTA ENTREGADOR III')")
+        st.write("- Pode não ter nenhum colaborador com este cargo ainda")
+        st.write("- A coluna 'CARGO' pode ter espaços extras")
+        
 # =========================
 # Normalização
 # =========================
