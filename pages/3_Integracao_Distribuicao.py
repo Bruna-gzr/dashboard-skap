@@ -1,48 +1,39 @@
 # pages/3_Integracao_Distribuicao.py
 import streamlit as st
 import pandas as pd
-import sys
 from pathlib import Path
 
-# Importar funções do app.py
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from app import aplicar_filtro, get_operacao
+st.set_page_config(page_title="Teste", layout="wide")
 
-st.set_page_config(page_title="Integração Distribuição", layout="wide")
-
-OPERACAO = get_operacao()
+# Pega a operação do usuário logado
+operacao_usuario = st.session_state.get("operacao", "Todas")
 
 st.title("🚚 Integração Distribuição")
+st.write(f"**Operação do usuário logado:** {operacao_usuario}")
 
-if OPERACAO != "Todas":
-    st.caption(f"📍 Operação: **{OPERACAO}**")
-
-# Botão para voltar
-if st.button("← Voltar ao Menu"):
-    st.switch_page("app.py")
-
-# ===== CARREGAR DADOS =====
+# Carrega os dados
 DATA_DIR = Path(__file__).parent.parent / "data"
+df = pd.read_excel(DATA_DIR / "Admitidos.xlsx")
 
-# Carregar todos os DataFrames necessários
-admitidos = pd.read_excel(DATA_DIR / "Admitidos.xlsx")
-base_ativos = pd.read_excel(DATA_DIR / "Base colaboradores ativos.xlsx")
-nps = pd.read_excel(DATA_DIR / "NPS Mentor.xlsx")
-batepapo = pd.read_excel(DATA_DIR / "Bate papo mentor.xlsx")
+st.write("**Colunas disponíveis:**")
+st.write(df.columns.tolist())
 
-# Aplicar filtro pela operação do usuário
-admitidos = aplicar_filtro(admitidos)
-base_ativos = aplicar_filtro(base_ativos, "Operação")
-nps = aplicar_filtro(nps, "Operação")
-batepapo = aplicar_filtro(batepapo, "Operação")
+# Tenta filtrar
+coluna_operacao = "Operação"  # tenta esse nome
 
-# ===== MOSTRAR RESUMO =====
-st.write("### 📊 Dados carregados")
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Admitidos", len(admitidos))
-col2.metric("Base Ativos", len(base_ativos))
-col3.metric("NPS", len(nps))
-col4.metric("Bate papo", len(batepapo))
+if coluna_operacao in df.columns:
+    st.write(f"**Valores únicos na coluna '{coluna_operacao}':**")
+    st.write(df[coluna_operacao].unique().tolist())
+    
+    # Aplica o filtro
+    if operacao_usuario != "Todas":
+        df = df[df[coluna_operacao] == operacao_usuario]
+        st.write(f"**Registros após filtro:** {len(df)}")
+else:
+    st.error(f"Coluna '{coluna_operacao}' não encontrada!")
+    st.write("As colunas que existem são:", df.columns.tolist())
+
+st.dataframe(df)
 
 # ===== AQUI ENTRA O RESTO DO SEU CÓDIGO ORIGINAL =====
 # ... seus gráficos, análises, etc ...
