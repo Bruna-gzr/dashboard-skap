@@ -159,7 +159,6 @@ def load_data():
     
     colaboradores_ativos_lista = []
     arquivo_encontrado = False
-    caminho_utilizado = None
     
     for caminho in possiveis_caminhos:
         if os.path.exists(caminho):
@@ -168,7 +167,6 @@ def load_data():
                 if 'Colaborador' in colaboradores_ativos.columns:
                     colaboradores_ativos_lista = colaboradores_ativos['Colaborador'].tolist()
                     arquivo_encontrado = True
-                    caminho_utilizado = caminho
                     break
             except Exception:
                 pass
@@ -176,7 +174,7 @@ def load_data():
     if not arquivo_encontrado:
         colaboradores_ativos_lista = admitidos['Colaborador'].tolist()
     
-    return admitidos, integracao, colaboradores_ativos_lista, caminho_utilizado
+    return admitidos, integracao, colaboradores_ativos_lista
 
 def recarregar_cache():
     st.cache_data.clear()
@@ -188,12 +186,9 @@ def recarregar_cache():
 # =========================
 
 with st.spinner('Carregando dados...'):
-    admitidos, integracao, colaboradores_ativos_lista, caminho_base_ativos = load_data()
+    admitidos, integracao, colaboradores_ativos_lista = load_data()
     
-    if caminho_base_ativos:
-        st.sidebar.success(f"✅ Base ativos: {len(colaboradores_ativos_lista)} colaboradores")
-    else:
-        st.sidebar.warning("⚠️ Usando fallback: todos colaboradores como ativos")
+    st.sidebar.success(f"✅ Base ativos: {len(colaboradores_ativos_lista)} colaboradores")
 
 # =========================
 # Processamento inicial
@@ -231,12 +226,15 @@ with st.sidebar:
     
     min_date = admitidos['Data'].min().date()
     max_date = admitidos['Data'].max().date()
-    data_padrao_inicio = datetime(2025, 5, 1).date()
+    # Data inicial padrão: 01/01/2026
+    data_padrao_inicio = datetime(2026, 1, 1).date()
     
-    if data_padrao_inicio < min_date:
-        data_padrao_inicio = min_date
-    elif data_padrao_inicio > max_date:
+    # Se 01/01/2026 for maior que a data máxima, usa a data máxima
+    if data_padrao_inicio > max_date:
         data_padrao_inicio = max_date
+    # Se for menor que a data mínima, usa a data mínima
+    elif data_padrao_inicio < min_date:
+        data_padrao_inicio = min_date
     
     col1, col2 = st.columns(2)
     with col1:
