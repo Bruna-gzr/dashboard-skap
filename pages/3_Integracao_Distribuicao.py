@@ -21,7 +21,7 @@ if OPERACAO != "Todas":
 if st.button("← Voltar ao Menu"):
     st.switch_page("app.py")
 
-# ===== CARREGAR DADOS (COM CAMINHO CORRETO) =====
+# ===== CARREGAR DADOS =====
 DATA_DIR = Path(__file__).parent.parent / "data"
 
 # Carregar todos os DataFrames necessários
@@ -36,14 +36,16 @@ base_ativos = aplicar_filtro(base_ativos, "Operação")
 nps = aplicar_filtro(nps, "Operação")
 batepapo = aplicar_filtro(batepapo, "Operação")
 
-# ===== SEU CÓDIGO DE ANÁLISE CONTINUA AQUI =====
-st.write(f"📊 Dados carregados:")
-st.write(f"- Admitidos: {len(admitidos)} registros")
-st.write(f"- Base Ativos: {len(base_ativos)} registros")
-st.write(f"- NPS: {len(nps)} registros")
-st.write(f"- Bate papo: {len(batepapo)} registros")
+# ===== MOSTRAR RESUMO =====
+st.write("### 📊 Dados carregados")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Admitidos", len(admitidos))
+col2.metric("Base Ativos", len(base_ativos))
+col3.metric("NPS", len(nps))
+col4.metric("Bate papo", len(batepapo))
 
-# ... resto do seu código original (gráficos, análises, etc) ...
+# ===== AQUI ENTRA O RESTO DO SEU CÓDIGO ORIGINAL =====
+# ... seus gráficos, análises, etc ...
 
 import streamlit as st
 
