@@ -278,7 +278,7 @@ if filtro_colaborador != "Todos":
     colaborador_selecionado = filtro_colaborador
 
 # =========================
-# Fuzzy Match (VERSÃO CORRIGIDA)
+# Fuzzy Match - VERSÃO OTIMIZADA (mantém mesma lógica, mas rápido)
 # =========================
 results_list = []
 
@@ -289,22 +289,40 @@ for modulo, df_mod in integracao.items():
     if 'CPF' not in df_mod.columns:
         df_mod['CPF'] = ''
     
-    # Para cada colaborador, buscar match
+    # PRÉ-CALCULAR tudo que for possível (faz uma vez só)
+    # Criar uma lista de tuplas com (nome_norm, cpf_norm, linha_completa) para busca rápida
+    mod_matches = []
+    for _, tgt in df_mod.iterrows():
+        nome_norm = str(tgt['Colaborador']).lower().strip()
+        cpf_norm = str(tgt['CPF']).lower().strip()
+        mod_matches.append({
+            'nome': nome_norm,
+            'cpf': cpf_norm,
+            'original': tgt
+        })
+    
+    # Para cada colaborador, fazer o match (mesma lógica do original, mas com pré-cálculo)
     for _, row in admitidos_filtrado.iterrows():
-        matched = None
-        best_score = 0
+        nome_row = str(row['Colaborador']).lower().strip()
+        cpf_row = str(row.get('CPF', '')).lower().strip()
         
-        for _, tgt in df_mod.iterrows():
-            score_name = similar(row['Colaborador'], tgt['Colaborador'])
-            score_cpf = similar(row['CPF'], tgt['CPF'])
+        best_score = 0
+        best_match = None
+        
+        for tgt in mod_matches:
+            # Mesma lógica do seu fuzzy_match original
+            score_name = similar(nome_row, tgt['nome'])
+            score_cpf = similar(cpf_row, tgt['cpf'])
             final_score = max(score_name, score_cpf)
             
             if final_score > best_score:
                 best_score = final_score
                 if final_score >= 0.65:
-                    matched = tgt
+                    best_match = tgt['original']
+                else:
+                    best_match = None
         
-        status = "Realizado" if matched is not None else "Não realizado"
+        status = "Realizado" if best_match is not None else "Não realizado"
         results_list.append({
             "Operação": row['Operação'],
             "Colaborador": row['Colaborador'],
