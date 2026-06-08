@@ -227,7 +227,7 @@ CARGOS_PERMITIDOS = [
     "Motorista Entregador",
     "Motorista Educador",
     "Motorista Entregador II",
-    "Motorista Entregador III"
+    "Motorista Entregador III",
 ]
 CARGOS_PERMITIDOS_UP = [normalizar_texto(c) for c in CARGOS_PERMITIDOS]
 
