@@ -5,8 +5,14 @@ from pathlib import Path
 
 st.set_page_config(page_title="Integração Distribuição", layout="wide")
 
+# 🔍 DEBUG - Mostrar tudo que está na sessão
+st.write("### 🔍 DEBUG - Session State completo:")
+st.write(st.session_state)
+
 # Pega a operação do usuário logado
 OPERACAO_USUARIO = st.session_state.get("operacao", "Todas")
+
+st.write(f"### OPERACAO_USUARIO = '{OPERACAO_USUARIO}'")
 
 st.title("🚚 Integração Distribuição")
 
