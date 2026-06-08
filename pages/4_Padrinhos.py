@@ -6,7 +6,7 @@ from pathlib import Path
 
 # Importar funções do app.py
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from app import aplicar_filtro, get_operacao
+from app import get_operacao
 
 st.set_page_config(page_title="Gestão de Padrinhos", layout="wide")
 
@@ -25,9 +25,8 @@ if st.button("← Voltar ao Menu"):
     st.switch_page("app.py")
 
 # =========================
-# RESTO DO SEU CÓDIGO (mantido igual, apenas ajustando os filtros)
+# IMPORTS
 # =========================
-
 import re
 import unicodedata
 from datetime import datetime
@@ -35,9 +34,6 @@ from difflib import SequenceMatcher
 from io import BytesIO
 import plotly.express as px
 
-# =========================
-# Imports opcionais p/ fuzzy (com fallback otimizado)
-# =========================
 try:
     from rapidfuzz import process, fuzz
     RAPIDFUZZ_OK = True
@@ -45,7 +41,7 @@ except Exception:
     RAPIDFUZZ_OK = False
 
 # =========================
-# Estilo
+# CSS
 # =========================
 st.markdown("""
 <style>
@@ -131,40 +127,6 @@ div[data-baseweb="input"] > div {
     border-bottom: 1px solid #3a3a3a;
 }
 
-.lista-scroll {
-    height: 520px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    background: #1f1f1f;
-}
-
-.lista-scroll::-webkit-scrollbar {
-    width: 8px;
-}
-
-.lista-scroll::-webkit-scrollbar-track {
-    background: #202020;
-}
-
-.lista-scroll::-webkit-scrollbar-thumb {
-    background: #555;
-    border-radius: 8px;
-}
-
-.lista-linha {
-    padding: 7px 10px;
-    border-bottom: 1px solid #303030;
-    color: #ffffff;
-    font-size: 0.92rem;
-    line-height: 1.35;
-    word-break: break-word;
-    min-height: 30px;
-}
-
-.lista-linha:nth-child(even) {
-    background: #262626;
-}
-
 .titulo-branco {
     color: #ffffff !important;
     font-weight: 700;
@@ -184,7 +146,7 @@ div[data-baseweb="input"] > div {
 """, unsafe_allow_html=True)
 
 # =========================
-# Helpers
+# FUNÇÕES AUXILIARES
 # =========================
 
 @st.cache_data(ttl=3600)
@@ -267,51 +229,6 @@ def combinar_data_hora(df: pd.DataFrame, col_data="Data Cadastro", col_hora="Hor
             valores.append(pd.Timestamp(d).normalize() + pd.Timedelta(hours=hh, minutes=mm, seconds=ss))
     return pd.to_datetime(pd.Series(valores, index=df.index), errors="coerce")
 
-from functools import lru_cache
-
-@lru_cache(maxsize=10000)
-def similaridade_nome_cached(resp_nome: str, cand_nome: str) -> float:
-    if not resp_nome or not cand_nome:
-        return 0
-    resp_nome_flex = norm_text_nome_flex(resp_nome)
-    cand_nome_flex = norm_text_nome_flex(cand_nome)
-    if not resp_nome_flex or not cand_nome_flex:
-        return 0
-    if RAPIDFUZZ_OK:
-        s1 = fuzz.token_set_ratio(resp_nome_flex, cand_nome_flex)
-        s2 = fuzz.token_sort_ratio(resp_nome_flex, cand_nome_flex)
-        s3 = fuzz.WRatio(resp_nome_flex, cand_nome_flex)
-        s4 = fuzz.partial_ratio(resp_nome_flex, cand_nome_flex)
-        seq = sequence_ratio(resp_nome_flex, cand_nome_flex)
-        score = max(s1, s2 * 0.99, s3 * 0.98, s4 * 0.97, seq * 0.96)
-        inter = token_overlap(resp_nome_flex, cand_nome_flex)
-        if inter >= 2:
-            score += 2.5
-        if inter >= 3:
-            score += 1.5
-        if primeiro_nome(resp_nome_flex) and primeiro_nome(resp_nome_flex) == primeiro_nome(cand_nome_flex):
-            score += 2.5
-        if ult_nome(resp_nome_flex) and ult_nome(resp_nome_flex) == ult_nome(cand_nome_flex):
-            score += 2.0
-        return min(score, 100)
-    base = max(
-        sequence_ratio(resp_nome_flex, cand_nome_flex),
-        sequence_ratio(" ".join(sorted(resp_nome_flex.split())), " ".join(sorted(cand_nome_flex.split())))
-    )
-    inter = token_overlap(resp_nome_flex, cand_nome_flex)
-    if inter >= 2:
-        base += 3
-    if inter >= 3:
-        base += 2
-    if primeiro_nome(resp_nome_flex) == primeiro_nome(cand_nome_flex):
-        base += 2
-    if ult_nome(resp_nome_flex) == ult_nome(cand_nome_flex):
-        base += 2
-    return min(base, 100)
-
-def similaridade_nome(resp_nome: str, cand_nome: str) -> float:
-    return similaridade_nome_cached(resp_nome, cand_nome)
-
 def classificar_faixa_aderencia(valor):
     if pd.isna(valor):
         return "< 80%"
@@ -384,7 +301,242 @@ def renomear_colunas_duplicadas(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # =========================
-# Paths
+# FUNÇÕES DO PIPELINE
+# =========================
+
+def preparar_base_operacional(admitidos: pd.DataFrame, base_ativos: pd.DataFrame) -> pd.DataFrame:
+    req_adm = ["Colaborador", "CPF", "Cargo", "Data", "Operação"]
+    for c in req_adm:
+        if c not in admitidos.columns:
+            raise KeyError(f"Na planilha Admitidos não encontrei a coluna '{c}'")
+
+    req_atv = ["Cargo", "Tipo Cargo"]
+    for c in req_atv:
+        if c not in base_ativos.columns:
+            raise KeyError(f"Na Base colaboradores ativos não encontrei a coluna '{c}'")
+
+    adm = admitidos.copy()
+    atv = base_ativos.copy()
+
+    adm["Data_dt"] = pd.to_datetime(adm["Data"], errors="coerce", dayfirst=True)
+    adm["cpf_clean"] = adm["CPF"].apply(clean_cpf)
+    adm["nome_norm"] = adm["Colaborador"].apply(norm_text)
+    adm["nome_norm_flex"] = adm["Colaborador"].apply(norm_text_nome_flex)
+    adm["cargo_norm"] = adm["Cargo"].apply(norm_text)
+    adm["op_norm"] = adm["Operação"].apply(norm_text)
+
+    atv["cargo_norm"] = atv["Cargo"].apply(norm_text)
+
+    merged = adm.merge(
+        atv[["cargo_norm", "Tipo Cargo"]].drop_duplicates(),
+        on="cargo_norm",
+        how="left",
+    )
+
+    merged["Tipo Cargo"] = merged["Tipo Cargo"].fillna("")
+    oper = merged[merged["Tipo Cargo"].str.upper().eq("OPERACIONAL LOGÍSTICO")].copy()
+
+    oper = oper[oper["Data_dt"] >= pd.Timestamp("2024-10-03")].copy()
+
+    oper["Operação"] = oper["Operação"].astype(str).str.strip()
+    oper["op_norm"] = oper["Operação"].apply(norm_text)
+
+    oper["pessoa_key"] = oper.apply(
+        lambda r: r["cpf_clean"] if str(r.get("cpf_clean", "")).strip() else r["nome_norm_flex"],
+        axis=1
+    )
+
+    oper = (
+        oper.sort_values(["pessoa_key", "Data_dt"], ascending=[True, False])
+            .drop_duplicates(subset=["pessoa_key"], keep="first")
+            .copy()
+    )
+
+    oper = oper.sort_values(["nome_norm_flex", "cpf_clean", "Data_dt"]).reset_index(drop=True)
+    oper["contrato_id"] = oper.index.astype(str)
+
+    return oper
+
+def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.DataFrame) -> pd.DataFrame:
+    base = base_oper.copy()
+    atv = base_ativos.copy()
+
+    if "Colaborador" not in atv.columns:
+        raise KeyError("Na Base colaboradores ativos não encontrei a coluna 'Colaborador'")
+
+    atv["nome_norm"] = atv["Colaborador"].apply(norm_text)
+    atv["nome_norm_flex"] = atv["Colaborador"].apply(norm_text_nome_flex)
+    atv["op_norm"] = atv["Operação"].apply(norm_text) if "Operação" in atv.columns else ""
+
+    col_cpf_ativos = None
+    for c in atv.columns:
+        if norm_text(c) == "CPF":
+            col_cpf_ativos = c
+            break
+
+    if col_cpf_ativos is not None:
+        atv["cpf_clean"] = atv[col_cpf_ativos].apply(clean_cpf)
+    else:
+        atv["cpf_clean"] = ""
+
+    ativos_lookup = (
+        atv[["cpf_clean", "nome_norm", "nome_norm_flex", "op_norm"]]
+        .drop_duplicates()
+        .copy()
+    )
+
+    status_lista = []
+    for _, row in base.iterrows():
+        nome_base = row.get("Colaborador", "")
+        nome_base_flex = norm_text_nome_flex(nome_base)
+        cpf_base = str(row.get("cpf_clean", "")).strip()
+        op_base = norm_text(row.get("Operação", ""))
+
+        pool = ativos_lookup.copy()
+
+        if op_base and "op_norm" in pool.columns:
+            pool_op = pool[pool["op_norm"] == op_base].copy()
+            if not pool_op.empty:
+                pool = pool_op
+
+        exatos = pool[pool["nome_norm_flex"] == nome_base_flex].copy()
+
+        if len(exatos) == 1:
+            status_lista.append("Ativo")
+            continue
+
+        if len(exatos) > 1:
+            if cpf_base and len(cpf_base) == 11:
+                exato_cpf = exatos[exatos["cpf_clean"] == cpf_base].copy()
+                if len(exato_cpf) == 1:
+                    status_lista.append("Ativo")
+                    continue
+            status_lista.append("Inativo")
+            continue
+
+        if cpf_base and len(cpf_base) == 11:
+            cpf_hit = pool[pool["cpf_clean"] == cpf_base].copy()
+            if len(cpf_hit) == 1:
+                status_lista.append("Ativo")
+                continue
+
+        status_lista.append("Inativo")
+
+    base["Status Colaborador"] = status_lista
+    return base
+
+# =========================
+# ETAPAS
+# =========================
+ETAPAS = [
+    {"chave": "NPS_1_SEMANA", "titulo": "NPS 1ª SEMANA", "tipo": "NPS", "campo_selecao": "Selecione a semana da avaliação:", "valor_selecao": "Primeira semana junto ao padrinho.", "prazo_min_dias": 11, "prazo_max_dias": 14},
+    {"chave": "NPS_ULTIMA", "titulo": "NPS ÚLTIMA SEMANA", "tipo": "NPS", "campo_selecao": "Selecione a semana da avaliação:", "valor_selecao": "Última semana junto ao padrinho.", "prazo_min_dias": 20, "prazo_max_dias": 32},
+    {"chave": "BP_2_SEMANA", "titulo": "BATE-PAPO — 2ª SEMANA", "tipo": "BP", "campo_selecao": "Selecione a semana do bate papo:", "valor_selecao": "Segunda Semana", "prazo_min_dias": 11, "prazo_max_dias": 14},
+    {"chave": "BP_3_SEMANA", "titulo": "BATE-PAPO — 3ª SEMANA", "tipo": "BP", "campo_selecao": "Selecione a semana do bate papo:", "valor_selecao": "Terceira Semana", "prazo_min_dias": 20, "prazo_max_dias": 22},
+    {"chave": "BP_ULTIMA", "titulo": "BATE-PAPO — ÚLTIMA SEMANA", "tipo": "BP", "campo_selecao": "Selecione a semana do bate papo:", "valor_selecao": "Última Semana", "prazo_min_dias": 28, "prazo_max_dias": 32},
+]
+
+def status_prazo(data_realizacao, prazo_min, prazo_max, hoje):
+    if pd.isna(data_realizacao):
+        return "Não realizado - Atenção" if hoje <= prazo_max else "Não realizado - Fora do prazo"
+    if data_realizacao < prazo_min:
+        return "Realizado antes do prazo"
+    if data_realizacao <= prazo_max:
+        return "Realizado no prazo"
+    return "Realizado fora do prazo"
+
+def calcular_dias(status, data_realizacao, prazo_min, prazo_max, hoje):
+    if pd.isna(prazo_max):
+        return pd.NA
+    if pd.isna(data_realizacao):
+        return (prazo_max.normalize() - hoje.normalize()).days
+    if status == "Realizado fora do prazo":
+        return (prazo_max.normalize() - pd.Timestamp(data_realizacao).normalize()).days
+    if status == "Realizado antes do prazo":
+        if pd.isna(prazo_min):
+            return pd.NA
+        return (prazo_min.normalize() - pd.Timestamp(data_realizacao).normalize()).days
+    if status == "Realizado no prazo":
+        return (prazo_max.normalize() - pd.Timestamp(data_realizacao).normalize()).days
+    return (prazo_max.normalize() - hoje.normalize()).days
+
+def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
+    base = base_oper.copy()
+    if "Data_dt" not in base.columns:
+        base["Data_dt"] = pd.to_datetime(base["Data"], errors="coerce", dayfirst=True)
+
+    farois = {}
+    for etapa in ETAPAS:
+        tmp = base[["contrato_id", "Colaborador", "Operação", "Cargo", "Data_dt", "Status Colaborador"]].copy()
+        tmp["Etapa"] = etapa["titulo"]
+        tmp["Prazo Mín"] = tmp["Data_dt"] + pd.to_timedelta(etapa["prazo_min_dias"], unit="D")
+        tmp["Prazo Máx"] = tmp["Data_dt"] + pd.to_timedelta(etapa["prazo_max_dias"], unit="D")
+
+        form = df_nps if etapa["tipo"] == "NPS" else df_bp
+        campo = etapa["campo_selecao"]
+
+        if campo not in form.columns:
+            tmp["Data Realização"] = pd.NaT
+        else:
+            form_et = form[form[campo].astype(str).str.strip().eq(etapa["valor_selecao"])].copy()
+            col_realizacao = "DataHora Resposta" if "DataHora Resposta" in form_et.columns else "Data Cadastro"
+            form_et[col_realizacao] = pd.to_datetime(form_et[col_realizacao], errors="coerce", dayfirst=True)
+            real = form_et.dropna(subset=[col_realizacao]).groupby("contrato_id", as_index=False)[col_realizacao].min().rename(columns={col_realizacao: "Data Realização"})
+            tmp = tmp.merge(real, on="contrato_id", how="left")
+            tmp["Padrinho"] = pd.NA
+
+        tmp["Status"] = tmp.apply(lambda r: status_prazo(r["Data Realização"], r["Prazo Mín"], r["Prazo Máx"], hoje), axis=1)
+        tmp["Dias"] = tmp.apply(lambda r: calcular_dias(r["Status"], r["Data Realização"], r["Prazo Mín"], r["Prazo Máx"], hoje), axis=1)
+
+        ordem = pd.CategoricalDtype(categories=["Não realizado - Fora do prazo", "Não realizado - Atenção", "Realizado fora do prazo", "Realizado no prazo", "Realizado antes do prazo"], ordered=True)
+        tmp["Status"] = tmp["Status"].astype(ordem)
+        farois[etapa["chave"]] = tmp.sort_values(["Status", "Dias"], ascending=[True, True])
+
+    return farois
+
+def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
+    if df_farol.empty:
+        st.info("Sem dados para os filtros selecionados.")
+        return
+
+    df_farol = df_farol.copy()
+    df_farol["Operação"] = df_farol["Operação"].fillna("SEM OPERAÇÃO").astype(str).str.strip()
+
+    st.markdown(f'<div class="card"><h3 style="margin:0; text-align:center;">{titulo}</h3></div>', unsafe_allow_html=True)
+
+    total = len(df_farol)
+    pend_fora = int((df_farol["Status"] == "Não realizado - Fora do prazo").sum())
+    mask_atenc_7 = ((df_farol["Status"] == "Não realizado - Atenção") & (pd.to_numeric(df_farol["Dias"], errors="coerce") <= 7))
+    pend_atenc_7 = int(mask_atenc_7.sum())
+    realizados = int(df_farol["Status"].isin(["Realizado no prazo", "Realizado fora do prazo", "Realizado antes do prazo"]).sum())
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total", f"{total:,}".replace(",", "."))
+    c2.metric("🔴 Pendentes em atraso", f"{pend_fora:,}".replace(",", "."))
+    c3.metric("🟡 No prazo vencendo em até 7 dias", f"{pend_atenc_7:,}".replace(",", "."))
+    c4.metric("Realizados", f"{realizados:,}".replace(",", "."))
+
+    st.markdown("<hr/>", unsafe_allow_html=True)
+
+    g = df_farol.assign(pend_fora=(df_farol["Status"] == "Não realizado - Fora do prazo")).groupby("Operação", as_index=False).agg(total=("Colaborador", "count"), pend_fora=("pend_fora", "sum"))
+    g["Aderência %"] = ((g["total"] - g["pend_fora"]) / g["total"]).fillna(0) * 100
+    g["Faixa"] = g["Aderência %"].apply(classificar_faixa_aderencia)
+    g = g.sort_values("Aderência %", ascending=False)
+
+    fig = px.bar(g, x="Operação", y="Aderência %", text=g["Aderência %"].round(2).astype(str) + "%", color="Faixa", color_discrete_map={">= 90%": "#2e7d32", "80% a 89%": "#f0d36b", "< 80%": "#c62828"})
+    fig.update_traces(textposition="outside", width=0.48)
+    fig.update_layout(height=380, template="plotly_dark", yaxis=dict(range=[0, 100], visible=False), xaxis_title="", legend_title="Faixa")
+    st.plotly_chart(fig, width="stretch", key=f"chart_{key_prefix}")
+
+    tabela = df_farol[["Operação", "Colaborador", "Cargo", "Data_dt", "Etapa", "Prazo Mín", "Prazo Máx", "Data Realização", "Dias", "Status"]].rename(columns={"Data_dt": "Data Admissão"})
+    tabela = formatar_datas_para_tabela(tabela)
+    st.dataframe(style_table(tabela), width="stretch", height=430, key=f"df_{key_prefix}")
+
+    excel_bytes = to_excel_bytes(tabela, sheet_name="farol")
+    st.download_button("⬇️ Baixar Excel", data=excel_bytes, file_name=f"farol_padrinhos_{key_prefix.lower()}.xlsx", key=f"download_{key_prefix}", width="stretch")
+
+# =========================
+# PATHS E CARREGAMENTO
 # =========================
 DATA_DIR = Path(__file__).parent.parent / "data"
 ARQ_ADMITIDOS = DATA_DIR / "Admitidos.xlsx"
@@ -392,12 +544,8 @@ ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 ARQ_NPS = DATA_DIR / "NPS Mentor.xlsx"
 ARQ_BATEPAPO = DATA_DIR / "Bate papo mentor.xlsx"
 
-# =========================
-# Carregamento
-# =========================
 try:
     admitidos = carregar_excel_primeira_aba(ARQ_ADMITIDOS)
-    # 🔴 FILTRO APLICADO AQUI 🔴
     if OPERACAO_USUARIO != "Todas":
         admitidos = admitidos[admitidos["Operação"] == OPERACAO_USUARIO].copy()
     
@@ -407,6 +555,8 @@ try:
 
     nps = carregar_excel_primeira_aba(ARQ_NPS)
     nps = renomear_colunas_duplicadas(nps)
+    if OPERACAO_USUARIO != "Todas" and "Informe a operação que você trabalha" in nps.columns:
+        nps = nps[nps["Informe a operação que você trabalha"] == OPERACAO_USUARIO].copy()
 
     batepapo = carregar_excel_primeira_aba(ARQ_BATEPAPO)
     batepapo = renomear_colunas_duplicadas(batepapo)
@@ -416,21 +566,70 @@ except Exception as e:
     st.stop()
 
 # =========================
-# Pipeline principal
+# PIPELINE PRINCIPAL
 # =========================
 try:
     base_oper = preparar_base_operacional(admitidos, base_ativos)
     base_oper = classificar_status_colaborador(base_oper, base_ativos)
+    
+    hoje = pd.Timestamp(datetime.now().date())
+    farois = montar_farol_por_etapa(base_oper, nps, batepapo, hoje=hoje)
 
-    result = vincular_checks_otimizado(base_oper, nps, batepapo)
-    df_nps = result["nps_vinculado"]
-    df_bp = result["batepapo_vinculado"]
 except Exception as e:
-    st.error(f"Erro no pipeline de mentoria: {e}")
+    st.error(f"Erro no pipeline: {e}")
     st.stop()
 
 # =========================
-# O RESTO DO SEU CÓDIGO CONTINUA IGUAL...
+# SIDEBAR - FILTROS
 # =========================
-# (as funções filtrar_respostas_por_sidebar, render_farol, etc.
-#  e a parte final dos tabs e gráficos permanecem IGUAIS ao seu código original)
+st.sidebar.markdown("## 🔎 Filtros")
+
+ops_all = sorted([x for x in base_oper["Operação"].fillna("").astype(str).unique().tolist() if x.strip()])
+cargos_all = sorted([x for x in base_oper["Cargo"].fillna("").astype(str).unique().tolist() if x.strip()])
+colab_all = sorted([x for x in base_oper["Colaborador"].fillna("").astype(str).unique().tolist() if x.strip()])
+status_options = ["Não realizado - Fora do prazo", "Não realizado - Atenção", "Realizado fora do prazo", "Realizado no prazo", "Realizado antes do prazo"]
+status_colaborador_options = ["Ativo", "Inativo"]
+
+filtro_ops = st.sidebar.multiselect("Operação", options=ops_all, default=[])
+filtro_cargos = st.sidebar.multiselect("Cargo", options=cargos_all, default=[])
+filtro_colaborador = st.sidebar.multiselect("Colaborador", options=colab_all, default=[])
+filtro_status_colaborador = st.sidebar.multiselect("Status do colaborador", options=status_colaborador_options, default=["Ativo"])
+filtro_status = st.sidebar.multiselect("Status da etapa", options=status_options, default=[])
+
+def aplicar_filtros_farol(df_farol: pd.DataFrame) -> pd.DataFrame:
+    df = df_farol.copy()
+    if filtro_ops:
+        df = df[df["Operação"].isin(filtro_ops)]
+    if filtro_cargos:
+        df = df[df["Cargo"].isin(filtro_cargos)]
+    if filtro_colaborador:
+        df = df[df["Colaborador"].isin(filtro_colaborador)]
+    if filtro_status_colaborador:
+        df = df[df["Status Colaborador"].isin(filtro_status_colaborador)]
+    if filtro_status:
+        df = df[df["Status"].isin(filtro_status)]
+    return df
+
+# =========================
+# TABS
+# =========================
+tabs = st.tabs(["PROCESSO PADRINHOS (GERAL)", "NPS 1ª SEMANA", "NPS ÚLTIMA SEMANA", "BATE-PAPO 2ª SEMANA", "BATE-PAPO 3ª SEMANA", "BATE-PAPO ÚLTIMA SEMANA"])
+
+with tabs[0]:
+    df_all = pd.concat([farois[e["chave"]] for e in ETAPAS], ignore_index=True)
+    render_farol(aplicar_filtros_farol(df_all), "🚦 Processo Padrinhos: Aderência Geral", key_prefix="GERAL")
+
+with tabs[1]:
+    render_farol(aplicar_filtros_farol(farois["NPS_1_SEMANA"]), "NPS 1ª SEMANA", key_prefix="NPS1")
+
+with tabs[2]:
+    render_farol(aplicar_filtros_farol(farois["NPS_ULTIMA"]), "NPS ÚLTIMA SEMANA", key_prefix="NPSU")
+
+with tabs[3]:
+    render_farol(aplicar_filtros_farol(farois["BP_2_SEMANA"]), "BATE-PAPO — 2ª SEMANA", key_prefix="BP2")
+
+with tabs[4]:
+    render_farol(aplicar_filtros_farol(farois["BP_3_SEMANA"]), "BATE-PAPO — 3ª SEMANA", key_prefix="BP3")
+
+with tabs[5]:
+    render_farol(aplicar_filtros_farol(farois["BP_ULTIMA"]), "BATE-PAPO — ÚLTIMA SEMANA", key_prefix="BPU")
