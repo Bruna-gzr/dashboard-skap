@@ -1,29 +1,34 @@
-# dashboards/nome_do_dashboard.py
-
+# .pages/4_Integracao_Armazem.py (exemplo)
 import streamlit as st
+import sys
+from pathlib import Path
+
+# Importar funções do app.py
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from app import aplicar_filtro, get_operacao
+
+st.set_page_config(page_title="Integração Armazém", layout="wide")
+
+OPERACAO = get_operacao()
+
+st.title("📦 Integração Armazém")
+
+if OPERACAO != "Todas":
+    st.caption(f"📍 Operação: **{OPERACAO}**")
+
+# Botão para voltar
+if st.button("← Voltar ao Menu"):
+    st.switch_page("app.py")
+
+# ===== SEU CÓDIGO DE CARREGAR DADOS =====
 import pandas as pd
 
-# Importar funções de login
-from login_central import aplicar_filtro_operacao, get_operacao_usuario, get_usuario
+df = pd.read_excel(".data/Admitidos.xlsx")
 
-# Pega a operação do usuário logado
-OPERACAO_USUARIO = get_operacao_usuario()
+# Aplicar filtro pela operação do usuário
+df = aplicar_filtro(df, "Operação")
 
-st.title("📊 Nome do Dashboard")
-
-if OPERACAO_USUARIO != "Todas":
-    st.caption(f"📍 Operação: **{OPERACAO_USUARIO}**")
-else:
-    st.caption("📍 Visualizando TODAS as operações")
-
-# ===== CARREGAR DADOS =====
-df = pd.read_excel("data/arquivo.xlsx")
-
-# 🔴 APLICAR FILTRO 🔴
-df = aplicar_filtro_operacao(df, "Operação")
-
-# ===== RESTO DO CÓDIGO =====
-# ... seu código normal ...
+# ... resto do seu código ...
 
 import streamlit as st
 
