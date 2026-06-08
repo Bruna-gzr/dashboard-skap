@@ -951,10 +951,10 @@ grid_pg_apoio = grid["MES"].ge("2026-01")
 grid = grid[(~mask_pg_apoio) | (grid_pg_apoio)].copy()
 
 # =========================================================
-# PONTUAÇÃO (VETORIZADA - SEM LOOP)
+# PONTUAÇÃO (VERSÃO CORRIGIDA - SEM ERROS)
 # =========================================================
 def calc_pontos_vetorizado(df: pd.DataFrame) -> pd.DataFrame:
-    """Versão vetorizada do cálculo de pontos (muito mais rápida)"""
+    """Versão corrigida do cálculo de pontos"""
     df = df.copy()
     
     # Inicializar colunas de pontos com 0
@@ -962,91 +962,134 @@ def calc_pontos_vetorizado(df: pd.DataFrame) -> pd.DataFrame:
     for col in pts_cols:
         df[col] = 0
     
+    # Preparar dados
     op_key = df["OPERACAO"].map(norm_operacao)
-    metas_op = op_key.map(lambda x: METAS.get(x, {}))
-    
     mode = df["FUNCAO"].map(view_mode_from_funcao)
     
+    # Criar máscaras
     is_pg_apoio = df.apply(lambda r: is_ponta_grossa_apoio(r.get("OPERACAO", ""), r.get("ATIVIDADE", "")), axis=1)
     is_pg_empt = df.apply(lambda r: is_ponta_grossa_empurrada_transf(r.get("OPERACAO", ""), r.get("ATIVIDADE", "")), axis=1)
     sem_bees = op_key.map(operacao_sem_bees)
     
-    pts_distrib = op_key.map(pontos_distrib_por_operacao)
-    
-    # Caso EMPURRADA ou TRANSFERÊNCIA
+    # =========================================================
+    # CASO EMPURRADA ou TRANSFERÊNCIA
+    # =========================================================
     mask_empt = is_pg_empt
     df.loc[mask_empt & (df["ABS"].fillna(0) == 0), "PTS_ABS"] = 10
     df.loc[mask_empt & (df["ACIDENTE"].fillna(0) == 0), "PTS_ACIDENTE"] = 10
     
-    # Caso APOIO LOGÍSTICO
+    # =========================================================
+    # CASO APOIO LOGÍSTICO
+    # =========================================================
     mask_apoio = is_pg_apoio
-    funcao = df["FUNCAO"]
+    funcao_series = df["FUNCAO"].fillna("")
+    is_operador = funcao_series.apply(is_func_operador)
+    is_ajudante = funcao_series.apply(is_func_ajud_armazem)
     
-    df.loc[mask_apoio, "PTS_JL"] = np.where(
-        df.loc[mask_apoio, "JLL_PG"].fillna(0) >= 80, 2, 0
-    )
-    df.loc[mask_apoio & (df["ABS"].fillna(0) == 0), "PTS_ABS"] = np.where(
-        funcao.map(is_func_operador), 10,
-        np.where(funcao.map(is_func_ajud_armazem), 20, 0)
-    )
-    df.loc[mask_apoio & (df["ACIDENTE"].fillna(0) == 0), "PTS_ACIDENTE"] = 3
+    # JLL
+    jll_val = df["JLL_PG"].fillna(0)
+    df.loc[mask_apoio, "PTS_JL"] = 0
+    df.loc[mask_apoio & (jll_val >= 80), "PTS_JL"] = 2
     
-    df.loc[mask_apoio & funcao.map(is_func_operador), "PTS_AD_CHECKLIST"] = np.where(
-        df.loc[mask_apoio & funcao.map(is_func_operador), "AD_CHECKLIST"].fillna(0) >= 80, 10, 0
-    )
-    df.loc[mask_apoio, "PTS_LOGON"] = np.where(
-        df.loc[mask_apoio, "LOGON"].fillna(0) >= 80,
-        np.where(funcao.map(is_func_operador), 10, np.where(funcao.map(is_func_ajud_armazem), 15, 0)),
-        0
-    )
-    df.loc[mask_apoio & funcao.map(is_func_operador) & (df["QUEDAS"].fillna(0) == 0), "PTS_QUEDAS"] = 5
+    # ABS
+    abs_val = df["ABS"].fillna(0)
+    df.loc[mask_apoio & (abs_val == 0), "PTS_ABS"] = 0
+    df.loc[mask_apoio & is_operador & (abs_val == 0), "PTS_ABS"] = 10
+    df.loc[mask_apoio & is_ajudante & (abs_val == 0), "PTS_ABS"] = 20
     
-    # Modo DISTRIBUIÇÃO
+    # ACIDENTE
+    acid_val = df["ACIDENTE"].fillna(0)
+    df.loc[mask_apoio & (acid_val == 0), "PTS_ACIDENTE"] = 3
+    
+    # AD_CHECKLIST (só para operador)
+    ad_val = df["AD_CHECKLIST"].fillna(0)
+    df.loc[mask_apoio & is_operador, "PTS_AD_CHECKLIST"] = 0
+    df.loc[mask_apoio & is_operador & (ad_val >= 80), "PTS_AD_CHECKLIST"] = 10
+    
+    # LOGON
+    logon_val = df["LOGON"].fillna(0)
+    df.loc[mask_apoio, "PTS_LOGON"] = 0
+    df.loc[mask_apoio & is_operador & (logon_val >= 80), "PTS_LOGON"] = 10
+    df.loc[mask_apoio & is_ajudante & (logon_val >= 80), "PTS_LOGON"] = 15
+    
+    # QUEDAS (só para operador)
+    quedas_val = df["QUEDAS"].fillna(0)
+    df.loc[mask_apoio & is_operador & (quedas_val == 0), "PTS_QUEDAS"] = 5
+    
+    # =========================================================
+    # MODO DISTRIBUIÇÃO
+    # =========================================================
     mask_distrib = (mode == "DISTRIB") & (~mask_apoio) & (~mask_empt)
     
-    for idx in df[mask_distrib].index:
-        row = df.loc[idx]
-        op = op_key[idx]
-        pts = pts_distrib[idx]
-        metas = METAS.get(op, {})
+    # Para cada operação, calcular pontos
+    operacoes_distrib = df[mask_distrib]["OPERACAO"].unique()
+    
+    for oper in operacoes_distrib:
+        mask_op = (df["OPERACAO"] == oper) & mask_distrib
+        if not mask_op.any():
+            continue
         
-        # PDV
-        pdv_val = row.get("PDV", np.nan)
-        if pd.notna(pdv_val) and "PDV" in metas and pdv_val <= metas["PDV"].get("meta", np.inf):
-            df.loc[idx, "PTS_PDV"] = pts.get("PDV", 0)
+        op_norm = norm_operacao(oper)
+        metas = METAS.get(op_norm, {})
+        pts = pontos_distrib_por_operacao(op_norm)
+        sem_bees_op = operacao_sem_bees(op_norm)
+        
+        # PDV (quanto menor, melhor)
+        pdv_val = df.loc[mask_op, "PDV"].fillna(np.nan)
+        meta_pdv = metas.get("PDV", {}).get("meta", np.nan)
+        if pd.notna(meta_pdv):
+            df.loc[mask_op & (pdv_val <= meta_pdv), "PTS_PDV"] = pts.get("PDV", 0)
         
         # BEES
-        if not sem_bees[idx]:
-            bees_val = row.get("BEES", np.nan)
-            if pd.notna(bees_val) and "BEES" in metas and bees_val >= metas["BEES"].get("meta", -np.inf):
-                df.loc[idx, "PTS_BEES"] = pts.get("BEES", 0)
+        if not sem_bees_op:
+            bees_val = df.loc[mask_op, "BEES"].fillna(np.nan)
+            meta_bees = metas.get("BEES", {}).get("meta", np.nan)
+            if pd.notna(meta_bees):
+                df.loc[mask_op & (bees_val >= meta_bees), "PTS_BEES"] = pts.get("BEES", 0)
         
         # TML
-        tml_val = row.get("TML_MIN", np.nan)
+        tml_val = df.loc[mask_op, "TML_MIN"].fillna(np.nan)
         meta_tml = metas.get("TML", {}).get("meta", None)
-        if pd.notna(tml_val) and meta_tml is not None:
+        if meta_tml is not None and pd.notna(meta_tml):
             meta_tml_min = meta_tml * 60 if 0 < meta_tml <= 1.5 else meta_tml
-            if tml_val <= meta_tml_min:
-                df.loc[idx, "PTS_TML"] = pts.get("TML", 0)
+            df.loc[mask_op & (tml_val <= meta_tml_min), "PTS_TML"] = pts.get("TML", 0)
         
         # JL
-        jl_val = row.get("JL", np.nan)
-        if pd.notna(jl_val) and "JL" in metas and jl_val >= metas["JL"].get("meta", -np.inf):
-            df.loc[idx, "PTS_JL"] = pts.get("JL", 0)
+        jl_val = df.loc[mask_op, "JL"].fillna(np.nan)
+        meta_jl = metas.get("JL", {}).get("meta", np.nan)
+        if pd.notna(meta_jl):
+            df.loc[mask_op & (jl_val >= meta_jl), "PTS_JL"] = pts.get("JL", 0)
         
-        # ABS, VALES, ACIDENTE, DTO
-        df.loc[idx, "PTS_ABS"] = pts.get("ABS", 0) if row.get("ABS", 0) == 0 else 0
-        df.loc[idx, "PTS_VALES"] = pts.get("VALES", 0) if row.get("VALES", 0) == 0 else 0
-        df.loc[idx, "PTS_ACIDENTE"] = pts.get("ACIDENTE", 0) if row.get("ACIDENTE", 0) == 0 else 0
-        df.loc[idx, "PTS_DTO"] = pts.get("DTO", 0) if row.get("DTO", 0) == 0 else 0
+        # ABS, VALES, ACIDENTE, DTO (zero é bom)
+        abs_val = df.loc[mask_op, "ABS"].fillna(0)
+        df.loc[mask_op & (abs_val == 0), "PTS_ABS"] = pts.get("ABS", 0)
+        
+        vales_val = df.loc[mask_op, "VALES"].fillna(0)
+        df.loc[mask_op & (vales_val == 0), "PTS_VALES"] = pts.get("VALES", 0)
+        
+        acid_val = df.loc[mask_op, "ACIDENTE"].fillna(0)
+        df.loc[mask_op & (acid_val == 0), "PTS_ACIDENTE"] = pts.get("ACIDENTE", 0)
+        
+        dto_val = df.loc[mask_op, "DTO"].fillna(0)
+        df.loc[mask_op & (dto_val == 0), "PTS_DTO"] = pts.get("DTO", 0)
     
-    # Modo ARMAZÉM
+    # =========================================================
+    # MODO ARMAZÉM
+    # =========================================================
     mask_armazem = (mode == "ARMAZEM") & (~mask_apoio) & (~mask_empt)
-    df.loc[mask_armazem & (df["ABS"].fillna(0) == 0), "PTS_ABS"] = PONTOS_ARMAZEM["ABS"]
-    df.loc[mask_armazem & (df["ACIDENTE"].fillna(0) == 0), "PTS_ACIDENTE"] = PONTOS_ARMAZEM["ACIDENTE"]
-    df.loc[mask_armazem & (df["DTO"].fillna(0) == 0), "PTS_DTO"] = PONTOS_ARMAZEM["DTO"]
     
-    # Calcular TOTAL_PTS
+    abs_val = df.loc[mask_armazem, "ABS"].fillna(0)
+    df.loc[mask_armazem & (abs_val == 0), "PTS_ABS"] = PONTOS_ARMAZEM["ABS"]
+    
+    acid_val = df.loc[mask_armazem, "ACIDENTE"].fillna(0)
+    df.loc[mask_armazem & (acid_val == 0), "PTS_ACIDENTE"] = PONTOS_ARMAZEM["ACIDENTE"]
+    
+    dto_val = df.loc[mask_armazem, "DTO"].fillna(0)
+    df.loc[mask_armazem & (dto_val == 0), "PTS_DTO"] = PONTOS_ARMAZEM["DTO"]
+    
+    # =========================================================
+    # TOTAL
+    # =========================================================
     pts_sum_cols = [c for c in pts_cols if c in df.columns]
     df["TOTAL_PTS"] = df[pts_sum_cols].sum(axis=1)
     
