@@ -16,7 +16,17 @@ from io import BytesIO
 from zoneinfo import ZoneInfo
 import unicodedata
 import re
-from difflib import SequenceMatcher
+from functools import lru_cache
+
+# =========================================================
+# TENTAR RAPIDFUZZ (ACELERA MUITO)
+# =========================================================
+try:
+    from rapidfuzz import fuzz, process
+    RAPIDFUZZ_OK = True
+except ImportError:
+    RAPIDFUZZ_OK = False
+    from difflib import SequenceMatcher
 
 # =========================================================
 # TÍTULO
@@ -25,7 +35,7 @@ st.markdown("<h2 style='text-align:center; margin:0;'>RAIO X OPERAÇÃO</h2>", u
 st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
 # =========================================================
-# LOCALIZAR PASTA DATA (FUNCIONA LOCAL + STREAMLIT CLOUD)
+# LOCALIZAR PASTA DATA
 # =========================================================
 def localizar_data_dir():
     atual = Path(__file__).resolve()
@@ -38,17 +48,13 @@ def localizar_data_dir():
 DATA_DIR = localizar_data_dir()
 
 # =========================================================
-# UTILS
+# UTILS OTIMIZADOS (COM CACHE)
 # =========================================================
-def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
-    df.columns = [
-        unicodedata.normalize("NFKD", str(c).strip()).encode("ascii", "ignore").decode("utf-8").upper()
-        for c in df.columns
-    ]
-    return df
-
-def normalizar_nome(s: str) -> str:
-    s = "" if s is None else str(s)
+@lru_cache(maxsize=10000)
+def cached_normalizar_nome(s: str) -> str:
+    if s is None or s == "":
+        return ""
+    s = str(s)
     s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("utf-8")
     s = s.upper().strip()
     s = s.replace("0", "O").replace("1", "I")
@@ -56,11 +62,20 @@ def normalizar_nome(s: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
+def normalizar_nome(s: str) -> str:
+    return cached_normalizar_nome(s)
+
+def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
+    df.columns = [cached_normalizar_nome(str(c)) for c in df.columns]
+    return df
+
+@lru_cache(maxsize=10000)
 def nome_simple_from_key(key: str) -> str:
     key = normalizar_nome(key)
     tokens = [t for t in key.split() if t not in {"DE", "DA", "DO", "DAS", "DOS"}]
     return " ".join(tokens).strip()
 
+@lru_cache(maxsize=10000)
 def first_last_key(key: str) -> str:
     key = normalizar_nome(key)
     toks = [t for t in key.split() if t not in {"DE", "DA", "DO", "DAS", "DOS"}]
@@ -148,7 +163,6 @@ def parse_time_mmss(x):
     return np.nan
 
 def parse_currency_br(x):
-    """Converte valor em formato R$ para número float"""
     if pd.isna(x):
         return np.nan
     s = str(x).strip()
@@ -193,7 +207,7 @@ def safe_float(x):
     return pd.to_numeric(x, errors="coerce")
 
 # =========================================================
-# MATCHER (similaridade de nomes) - baseado em ATIVOS
+# MATCHER OTIMIZADO COM RAPIDFUZZ (MUITO MAIS RÁPIDO)
 # =========================================================
 def build_name_matcher(target_df: pd.DataFrame):
     t = target_df.copy()
@@ -202,9 +216,11 @@ def build_name_matcher(target_df: pd.DataFrame):
             t = t.rename(columns={t.columns[0]: "COLABORADOR"})
         else:
             t["COLABORADOR"] = ""
+    
     t["NOME_KEY"] = t["COLABORADOR"].astype(str).map(normalizar_nome)
     t["NOME_SIMPLE"] = t["NOME_KEY"].map(nome_simple_from_key)
     t["FIRST_LAST"] = t["NOME_KEY"].map(first_last_key)
+    
     keys = t["NOME_KEY"].dropna().astype(str)
     d_key = {k: k for k in keys.unique().tolist()}
     d_simple = (
@@ -219,19 +235,14 @@ def build_name_matcher(target_df: pd.DataFrame):
          .set_index("FIRST_LAST")["NOME_KEY"]
          .to_dict()
     )
+    
     by_first = {}
     for nk in keys.unique().tolist():
         toks = nk.split()
         if not toks:
             continue
         by_first.setdefault(toks[0], []).append(nk)
-    def token_score(a: str, b: str) -> float:
-        ta = set(a.split())
-        tb = set(b.split())
-        if not ta or not tb:
-            return 0.0
-        inter = len(ta & tb)
-        return inter / max(1, min(len(ta), len(tb)))
+    
     def best_fuzzy(nk: str) -> str | None:
         if not nk:
             return None
@@ -240,18 +251,23 @@ def build_name_matcher(target_df: pd.DataFrame):
         cands = by_first.get(first, [])
         if not cands:
             return None
-        best_score = 0.0
-        best_cand = None
-        for cand in cands:
-            r = SequenceMatcher(None, nk, cand).ratio()
-            ts = token_score(nk, cand)
-            score = 0.65 * r + 0.35 * ts
-            if score > best_score:
-                best_score = score
-                best_cand = cand
-        if best_score >= 0.95:
-            return best_cand
+        
+        if RAPIDFUZZ_OK:
+            results = process.extract(nk, cands, scorer=fuzz.ratio, limit=1)
+            if results and results[0][1] >= 95:
+                return results[0][0]
+        else:
+            best_score = 0.0
+            best_cand = None
+            for cand in cands:
+                r = SequenceMatcher(None, nk, cand).ratio()
+                if r > best_score:
+                    best_score = r
+                    best_cand = cand
+            if best_score >= 0.95:
+                return best_cand
         return None
+    
     def map_series(series: pd.Series) -> pd.Series:
         raw_key = series.astype(str).map(normalizar_nome)
         mapped = raw_key.map(d_key)
@@ -267,9 +283,9 @@ def build_name_matcher(target_df: pd.DataFrame):
         if miss.any():
             mapped.loc[miss] = raw_key[miss].apply(best_fuzzy)
         return mapped
+    
     return map_series
-
-# =========================================================
+    # =========================================================
 # ARQUIVOS
 # =========================================================
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
@@ -311,7 +327,7 @@ def get_last_mtime():
 last_mtime = get_last_mtime()
 
 # =========================================================
-# FUNÇÕES
+# FUNÇÕES MAPEADORAS
 # =========================================================
 FUNCOES_MAP = {
     normalizar_nome("Ajudante Distribuição"): "Ajudante de Distribuição",
@@ -385,7 +401,6 @@ def pontos_distrib_por_operacao(op_key: str) -> dict:
 def operacao_sem_bees(op_key: str) -> bool:
     return op_key == OP_LONDRINA_KEY
 
-# Normalização para PONTA GROSSA - compila PONTA GROSSA e LATA PONTA GROSSA
 def normalizar_operacao_pg(operacao: str) -> str:
     op_norm = norm_operacao(operacao)
     if op_norm in {norm_operacao("PONTA GROSSA"), norm_operacao("LATA PONTA GROSSA")}:
@@ -488,9 +503,9 @@ def ler_prontuario_ponderada(path_xlsx: Path) -> pd.DataFrame:
     return melhor
 
 # =========================================================
-# LOAD
+# LOAD (OTIMIZADO)
 # =========================================================
-@st.cache_data(show_spinner=True)
+@st.cache_data(show_spinner=True, ttl=3600)
 def carregar_bases(_cache_key: float | None):
     if not ARQ_ATIVOS.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_ATIVOS.name}")
@@ -532,7 +547,6 @@ for c in ["COLABORADOR", "CARGO", "OPERACAO", "ATIVIDADE", "DATA ULT. ADM"]:
 if "OPERAÇÃO" in ativos.columns and "OPERACAO" not in ativos.columns:
     ativos["OPERACAO"] = ativos["OPERAÇÃO"]
 
-# Normalizar operação PONTA GROSSA (compila PONTA GROSSA e LATA PONTA GROSSA)
 ativos["OPERACAO_ORIGINAL"] = ativos["OPERACAO"]
 ativos["OPERACAO"] = ativos["OPERACAO"].apply(normalizar_operacao_pg)
 
@@ -630,9 +644,8 @@ def faixa_pront(v: float) -> tuple[str, str]:
 tmp = base_master["PRONT_PONDERADA"].apply(lambda x: faixa_pront(x))
 base_master["PRONT_FAIXA"] = tmp.apply(lambda t: t[0])
 base_master["PRONT_COR"] = tmp.apply(lambda t: t[1])
-
 # =========================================================
-# EVENTOS
+# EVENTOS (OTIMIZADO - usando groupby vetorizado)
 # =========================================================
 def prep_evento(df: pd.DataFrame, col_nome: str, col_data: str, nome_out="NOME_KEY", data_out="DT"):
     if df is None or df.empty:
@@ -693,7 +706,6 @@ if rv is not None and not rv.empty:
         .reset_index()
     )
 
-# Planilha RV empurrada
 rv_empt_m = pd.DataFrame(columns=["NOME_KEY", "MES", "RV_EMPT_VALOR"])
 if rv_empt is not None and not rv_empt.empty:
     rv_empt = normalizar_colunas(rv_empt)
@@ -925,14 +937,11 @@ if "QUEDAS" in grid.columns:
 if "RV_EMPT_VALOR" in grid.columns:
     grid["RV_EMPT_VALOR"] = pd.to_numeric(grid["RV_EMPT_VALOR"], errors="coerce").fillna(0)
 
-# Criar coluna de data do mês para filtros (manter para uso posterior)
 grid["_MES_DT"] = pd.to_datetime(grid["MES"] + "-01", errors="coerce")
 grid["_ADM_MES_DT"] = pd.to_datetime(grid["DATA_ADM_DT"], errors="coerce").dt.to_period("M").dt.to_timestamp()
 grid = grid[grid["_MES_DT"] > grid["_ADM_MES_DT"]].copy()
-# NÃO remover _MES_DT ainda, pois será usado nos filtros de data
 grid["MÊS"] = grid["MES"].apply(month_label)
 
-# Aplicar corte de data para PONTA GROSSA (somente a partir de 01/01/2026)
 mask_pg = grid.apply(lambda r: is_ponta_grossa_operacao(r.get("OPERACAO", "")), axis=1)
 mask_pg_data = grid["_MES_DT"] >= DATA_CORTE_PG
 grid = grid[(~mask_pg) | (mask_pg_data)].copy()
@@ -941,122 +950,115 @@ mask_pg_apoio = grid.apply(lambda r: is_ponta_grossa_apoio(r.get("OPERACAO", "")
 grid_pg_apoio = grid["MES"].ge("2026-01")
 grid = grid[(~mask_pg_apoio) | (grid_pg_apoio)].copy()
 
-# Agora podemos remover _MES_DT se não for mais necessário para outras operações
-# Mas vamos manter para uso nos filtros finais
-
 # =========================================================
-# PONTUAÇÃO
+# PONTUAÇÃO (VETORIZADA - SEM LOOP)
 # =========================================================
-def calc_pontos_row(row) -> dict:
-    op_key = norm_operacao(row.get("OPERACAO", ""))
-    metas_op = METAS.get(op_key, {})
-    mode = view_mode_from_funcao(row.get("FUNCAO", ""))
-    pts_distrib = pontos_distrib_por_operacao(op_key)
-    sem_bees = operacao_sem_bees(op_key)
-    is_pg_apoio = is_ponta_grossa_apoio(row.get("OPERACAO", ""), row.get("ATIVIDADE", ""))
-    is_pg_empt = is_ponta_grossa_empurrada_transf(row.get("OPERACAO", ""), row.get("ATIVIDADE", ""))
+def calc_pontos_vetorizado(df: pd.DataFrame) -> pd.DataFrame:
+    """Versão vetorizada do cálculo de pontos (muito mais rápida)"""
+    df = df.copy()
     
-    res = {
-        "PTS_PDV": 0, "PTS_BEES": 0, "PTS_TML": 0, "PTS_JL": 0,
-        "PTS_ABS": 0, "PTS_VALES": 0, "PTS_ACIDENTE": 0, "PTS_DTO": 0,
-        "PTS_AD_CHECKLIST": 0, "PTS_LOGON": 0, "PTS_QUEDAS": 0,
-        "PTS_RV_EMPT": 0,
-        "TOTAL_PTS": 0
-    }
+    # Inicializar colunas de pontos com 0
+    pts_cols = ["PTS_PDV", "PTS_BEES", "PTS_TML", "PTS_JL", "PTS_ABS", "PTS_VALES", "PTS_ACIDENTE", "PTS_DTO", "PTS_AD_CHECKLIST", "PTS_LOGON", "PTS_QUEDAS", "PTS_RV_EMPT"]
+    for col in pts_cols:
+        df[col] = 0
     
-    # Caso EMPURRADA ou TRANSFERÊNCIA em PONTA GROSSA
-    if is_pg_empt:
-        # ABS: meta 0, peso 10
-        if int(row.get("ABS", 0) or 0) == 0:
-            res["PTS_ABS"] = 10
+    op_key = df["OPERACAO"].map(norm_operacao)
+    metas_op = op_key.map(lambda x: METAS.get(x, {}))
+    
+    mode = df["FUNCAO"].map(view_mode_from_funcao)
+    
+    is_pg_apoio = df.apply(lambda r: is_ponta_grossa_apoio(r.get("OPERACAO", ""), r.get("ATIVIDADE", "")), axis=1)
+    is_pg_empt = df.apply(lambda r: is_ponta_grossa_empurrada_transf(r.get("OPERACAO", ""), r.get("ATIVIDADE", "")), axis=1)
+    sem_bees = op_key.map(operacao_sem_bees)
+    
+    pts_distrib = op_key.map(pontos_distrib_por_operacao)
+    
+    # Caso EMPURRADA ou TRANSFERÊNCIA
+    mask_empt = is_pg_empt
+    df.loc[mask_empt & (df["ABS"].fillna(0) == 0), "PTS_ABS"] = 10
+    df.loc[mask_empt & (df["ACIDENTE"].fillna(0) == 0), "PTS_ACIDENTE"] = 10
+    
+    # Caso APOIO LOGÍSTICO
+    mask_apoio = is_pg_apoio
+    funcao = df["FUNCAO"]
+    
+    df.loc[mask_apoio, "PTS_JL"] = np.where(
+        df.loc[mask_apoio, "JLL_PG"].fillna(0) >= 80, 2, 0
+    )
+    df.loc[mask_apoio & (df["ABS"].fillna(0) == 0), "PTS_ABS"] = np.where(
+        funcao.map(is_func_operador), 10,
+        np.where(funcao.map(is_func_ajud_armazem), 20, 0)
+    )
+    df.loc[mask_apoio & (df["ACIDENTE"].fillna(0) == 0), "PTS_ACIDENTE"] = 3
+    
+    df.loc[mask_apoio & funcao.map(is_func_operador), "PTS_AD_CHECKLIST"] = np.where(
+        df.loc[mask_apoio & funcao.map(is_func_operador), "AD_CHECKLIST"].fillna(0) >= 80, 10, 0
+    )
+    df.loc[mask_apoio, "PTS_LOGON"] = np.where(
+        df.loc[mask_apoio, "LOGON"].fillna(0) >= 80,
+        np.where(funcao.map(is_func_operador), 10, np.where(funcao.map(is_func_ajud_armazem), 15, 0)),
+        0
+    )
+    df.loc[mask_apoio & funcao.map(is_func_operador) & (df["QUEDAS"].fillna(0) == 0), "PTS_QUEDAS"] = 5
+    
+    # Modo DISTRIBUIÇÃO
+    mask_distrib = (mode == "DISTRIB") & (~mask_apoio) & (~mask_empt)
+    
+    for idx in df[mask_distrib].index:
+        row = df.loc[idx]
+        op = op_key[idx]
+        pts = pts_distrib[idx]
+        metas = METAS.get(op, {})
         
-        # ACIDENTE: meta 0, peso 10
-        if int(row.get("ACIDENTE", 0) or 0) == 0:
-            res["PTS_ACIDENTE"] = 10
+        # PDV
+        pdv_val = row.get("PDV", np.nan)
+        if pd.notna(pdv_val) and "PDV" in metas and pdv_val <= metas["PDV"].get("meta", np.inf):
+            df.loc[idx, "PTS_PDV"] = pts.get("PDV", 0)
         
-        res["TOTAL_PTS"] = res["PTS_ABS"] + res["PTS_ACIDENTE"]
-        return res
+        # BEES
+        if not sem_bees[idx]:
+            bees_val = row.get("BEES", np.nan)
+            if pd.notna(bees_val) and "BEES" in metas and bees_val >= metas["BEES"].get("meta", -np.inf):
+                df.loc[idx, "PTS_BEES"] = pts.get("BEES", 0)
+        
+        # TML
+        tml_val = row.get("TML_MIN", np.nan)
+        meta_tml = metas.get("TML", {}).get("meta", None)
+        if pd.notna(tml_val) and meta_tml is not None:
+            meta_tml_min = meta_tml * 60 if 0 < meta_tml <= 1.5 else meta_tml
+            if tml_val <= meta_tml_min:
+                df.loc[idx, "PTS_TML"] = pts.get("TML", 0)
+        
+        # JL
+        jl_val = row.get("JL", np.nan)
+        if pd.notna(jl_val) and "JL" in metas and jl_val >= metas["JL"].get("meta", -np.inf):
+            df.loc[idx, "PTS_JL"] = pts.get("JL", 0)
+        
+        # ABS, VALES, ACIDENTE, DTO
+        df.loc[idx, "PTS_ABS"] = pts.get("ABS", 0) if row.get("ABS", 0) == 0 else 0
+        df.loc[idx, "PTS_VALES"] = pts.get("VALES", 0) if row.get("VALES", 0) == 0 else 0
+        df.loc[idx, "PTS_ACIDENTE"] = pts.get("ACIDENTE", 0) if row.get("ACIDENTE", 0) == 0 else 0
+        df.loc[idx, "PTS_DTO"] = pts.get("DTO", 0) if row.get("DTO", 0) == 0 else 0
     
-    if is_pg_apoio:
-        funcao = str(row.get("FUNCAO", ""))
-        jll_val = row.get("JLL_PG", np.nan)
-        if pd.isna(jll_val) or float(jll_val) >= 80:
-            res["PTS_JL"] = 2
-        if int(row.get("ABS", 0) or 0) == 0:
-            res["PTS_ABS"] = 10 if is_func_operador(funcao) else 20 if is_func_ajud_armazem(funcao) else 0
-        if int(row.get("ACIDENTE", 0) or 0) == 0:
-            res["PTS_ACIDENTE"] = 3
-        if is_func_operador(funcao):
-            ad_val = row.get("AD_CHECKLIST", np.nan)
-            if pd.isna(ad_val) or float(ad_val) >= 80:
-                res["PTS_AD_CHECKLIST"] = 10
-            logon_val = row.get("LOGON", np.nan)
-            if pd.isna(logon_val) or float(logon_val) >= 80:
-                res["PTS_LOGON"] = 10
-            if int(row.get("QUEDAS", 0) or 0) == 0:
-                res["PTS_QUEDAS"] = 5
-        elif is_func_ajud_armazem(funcao):
-            logon_val = row.get("LOGON", np.nan)
-            if pd.isna(logon_val) or float(logon_val) >= 80:
-                res["PTS_LOGON"] = 15
-        res["TOTAL_PTS"] = (
-            res["PTS_JL"] + res["PTS_ABS"] + res["PTS_ACIDENTE"] +
-            res["PTS_AD_CHECKLIST"] + res["PTS_LOGON"] + res["PTS_QUEDAS"]
-        )
-        return res
+    # Modo ARMAZÉM
+    mask_armazem = (mode == "ARMAZEM") & (~mask_apoio) & (~mask_empt)
+    df.loc[mask_armazem & (df["ABS"].fillna(0) == 0), "PTS_ABS"] = PONTOS_ARMAZEM["ABS"]
+    df.loc[mask_armazem & (df["ACIDENTE"].fillna(0) == 0), "PTS_ACIDENTE"] = PONTOS_ARMAZEM["ACIDENTE"]
+    df.loc[mask_armazem & (df["DTO"].fillna(0) == 0), "PTS_DTO"] = PONTOS_ARMAZEM["DTO"]
     
-    if mode == "DISTRIB":
-        v_pdv  = row.get("PDV", np.nan)
-        v_bees = row.get("BEES", np.nan)
-        v_tml  = row.get("TML_MIN", np.nan)
-        v_jl   = row.get("JL", np.nan)
-        if pd.notna(v_pdv) and "PDV" in metas_op and pd.notna(metas_op["PDV"].get("meta", None)):
-            if float(v_pdv) <= float(metas_op["PDV"]["meta"]):
-                res["PTS_PDV"] = pts_distrib["PDV"]
-        if (not sem_bees) and ("BEES" in pts_distrib):
-            if pd.notna(v_bees) and "BEES" in metas_op and pd.notna(metas_op["BEES"].get("meta", None)):
-                if float(v_bees) >= float(metas_op["BEES"]["meta"]):
-                    res["PTS_BEES"] = pts_distrib["BEES"]
-        meta_tml = metas_op.get("TML", {}).get("meta", None)
-        meta_tml_min = None
-        if meta_tml is not None and pd.notna(meta_tml):
-            meta_tml = float(meta_tml)
-            meta_tml_min = meta_tml * 60.0 if 0 < meta_tml <= 1.5 else meta_tml
-        if pd.notna(v_tml) and meta_tml_min is not None:
-            if float(v_tml) <= float(meta_tml_min):
-                res["PTS_TML"] = pts_distrib["TML"]
-        if pd.notna(v_jl) and "JL" in metas_op and pd.notna(metas_op["JL"].get("meta", None)):
-            if float(v_jl) >= float(metas_op["JL"]["meta"]):
-                res["PTS_JL"] = pts_distrib["JL"]
-        if int(row.get("ABS", 0) or 0) == 0:
-            res["PTS_ABS"] = pts_distrib["ABS"]
-        if int(row.get("VALES", 0) or 0) == 0:
-            res["PTS_VALES"] = pts_distrib["VALES"]
-        if int(row.get("ACIDENTE", 0) or 0) == 0:
-            res["PTS_ACIDENTE"] = pts_distrib["ACIDENTE"]
-        if int(row.get("DTO", 0) or 0) == 0:
-            res["PTS_DTO"] = pts_distrib["DTO"]
-        res["TOTAL_PTS"] = (
-            res["PTS_PDV"] + res["PTS_BEES"] + res["PTS_TML"] + res["PTS_JL"] +
-            res["PTS_ABS"] + res["PTS_VALES"] + res["PTS_ACIDENTE"] + res["PTS_DTO"]
-        )
-        return res
+    # Calcular TOTAL_PTS
+    pts_sum_cols = [c for c in pts_cols if c in df.columns]
+    df["TOTAL_PTS"] = df[pts_sum_cols].sum(axis=1)
     
-    if int(row.get("ABS", 0) or 0) == 0:
-        res["PTS_ABS"] = PONTOS_ARMAZEM["ABS"]
-    if int(row.get("ACIDENTE", 0) or 0) == 0:
-        res["PTS_ACIDENTE"] = PONTOS_ARMAZEM["ACIDENTE"]
-    if int(row.get("DTO", 0) or 0) == 0:
-        res["PTS_DTO"] = PONTOS_ARMAZEM["DTO"]
-    res["TOTAL_PTS"] = res["PTS_ABS"] + res["PTS_ACIDENTE"] + res["PTS_DTO"]
-    return res
+    return df
 
-pts_df = grid.apply(calc_pontos_row, axis=1, result_type="expand")
-grid = pd.concat([grid, pts_df], axis=1)
+pts_df = calc_pontos_vetorizado(grid)
+for col in ["PTS_PDV", "PTS_BEES", "PTS_TML", "PTS_JL", "PTS_ABS", "PTS_VALES", "PTS_ACIDENTE", "PTS_DTO", "PTS_AD_CHECKLIST", "PTS_LOGON", "PTS_QUEDAS", "PTS_RV_EMPT", "TOTAL_PTS"]:
+    if col in pts_df.columns:
+        grid[col] = pts_df[col]
 
 def risco_to_row(total_pts: int, funcao: str, operacao: str = "", atividade: str = "") -> str:
     if is_ponta_grossa_empurrada_transf(operacao, atividade):
-        # Regra para EMPURRADA/TRANSFERÊNCIA: menor que 10 = SIM, maior ou igual a 10 = NÃO
         if int(total_pts) < 10:
             return "SIM"
         else:
@@ -1082,8 +1084,7 @@ grid["RISCO DE TO"] = grid.apply(lambda r: risco_to_row(int(r["TOTAL_PTS"]) if p
 if "STATUS" in grid.columns:
     grid["STATUS"] = grid["STATUS"].fillna("").astype(str)
     grid.loc[grid["STATUS"].isin(["FERIAS", "AFASTADO"]), "RISCO DE TO"] = grid["STATUS"]
-
-# =========================================================
+    # =========================================================
 # SIDEBAR FILTROS
 # =========================================================
 st.sidebar.header("Filtros")
@@ -1251,7 +1252,6 @@ if f_oper == "CD PETRÓPOLIS" or ("OPERACAO" in df.columns and (df["OPERACAO"] =
     df_petropolis_corte = df["MES"].ge("2026-01")
     df = df[(~mask_petropolis) | (df_petropolis_corte)].copy()
 
-# Aplicar corte de data para PONTA GROSSA no df final
 mask_pg_filter = df.apply(lambda r: is_ponta_grossa_operacao(r.get("OPERACAO", "")), axis=1)
 mask_pg_data_filter = df["_MES_DT"] >= DATA_CORTE_PG
 df = df[(~mask_pg_filter) | (mask_pg_data_filter)].copy()
@@ -1614,3 +1614,4 @@ with right:
         if "Média RV" in out_view.columns:
             sty = sty.map(color_rv_cell, subset=["Média RV"])
         st.dataframe(sty, use_container_width=True, height=520)
+    
