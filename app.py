@@ -1,4 +1,4 @@
-# app.py - VERSÃO COMPLETA E ATUALIZADA
+# app.py - VERSÃO CORRIGIDA
 import streamlit as st
 import pandas as pd
 from pathlib import Path
@@ -22,10 +22,10 @@ def carregar_credenciais():
     # Se não encontrar, cria uma padrão
     st.warning("Arquivo de credenciais não encontrado. Criando padrão...")
     df = pd.DataFrame([
-        {"Usuario": "Adm", "Senha": "Adm@log20@", "Operacao": "Todas"},
-        {"Usuario": "cd.litoral", "Senha": "lito@log20", "Operacao": "CD LITORAL"},
-        {"Usuario": "cd.petrop", "Senha": "petr@log20", "Operacao": "CD PETRÓPOLIS"},
-        {"Usuario": "cd.cascave", "Senha": "casc@log20", "Operacao": "CD CASCAVEL"},
+        {"Usuario": "Adm", "Senha": "Adm@log20@", "Operação": "Todas"},
+        {"Usuario": "cd.litoral", "Senha": "lito@log20", "Operação": "CD LITORAL"},
+        {"Usuario": "cd.petrop", "Senha": "petr@log20", "Operação": "CD PETRÓPOLIS"},
+        {"Usuario": "cd.cascave", "Senha": "casc@log20", "Operação": "CD CASCAVEL"},
     ])
     
     # Tentar salvar
@@ -82,21 +82,21 @@ def fazer_login():
             if not user.empty:
                 st.session_state.logado = True
                 st.session_state.usuario = user.iloc[0]["Usuario"]
-                st.session_state.operacao = user.iloc[0]["Operacao"]
+                st.session_state.operacao = user.iloc[0]["Operação"]  # ← com acento
                 st.success(f"✅ Bem-vindo, {usuario}!")
                 st.rerun()
                 return True
             else:
                 st.error("❌ Usuário ou senha inválidos")
                 with st.expander("🔧 Debug - Usuários disponíveis"):
-                    st.dataframe(creds[["Usuario", "Operacao"]])
+                    st.dataframe(creds[["Usuario", "Operação"]])
     
     st.markdown('</div>', unsafe_allow_html=True)
     return False
 
 def get_operacao():
     """Retorna a operação do usuário logado"""
-    return st.session_state.get("operacao", "Todas")
+    return st.session_state.get("operacao", "Todas")  # ← 'operacao' minúsculo
 
 def get_usuario():
     """Retorna o nome do usuário logado"""
@@ -113,32 +113,16 @@ def aplicar_filtro(df, coluna="Operação"):
     if operacao == "Todas" or get_usuario() == "Adm":
         return df
     
-    # Tenta encontrar a coluna correta (ignorando maiúsculas/minúsculas)
-    coluna_encontrada = None
-    for col in df.columns:
-        if col == "Operação" or col == "OPERACAO" or col == "operacao":
-            coluna_encontrada = col
-            break
-        if "oper" in col.lower():
-            coluna_encontrada = col
-            break
-    
-    if coluna_encontrada is None:
-        st.warning(f"⚠️ Nenhuma coluna de operação encontrada. Colunas: {list(df.columns)}")
+    # Verifica se a coluna existe
+    if coluna not in df.columns:
+        st.warning(f"⚠️ Coluna '{coluna}' não encontrada. Colunas: {list(df.columns)}")
         return df
     
-    # Mostra debug no dashboard
-    st.write(f"🔍 Filtrando usando coluna: **{coluna_encontrada}**")
-    st.write(f"🔍 Operação do usuário: **{operacao}**")
-    st.write(f"🔍 Valores únicos na coluna: {df[coluna_encontrada].unique().tolist()}")
-    
     # Aplica o filtro
-    mascara = df[coluna_encontrada].astype(str).str.strip() == operacao
-    df_filtrado = df[mascara].copy()
-    
-    st.write(f"🔍 Registros antes: {len(df)} | Depois: {len(df_filtrado)}")
+    df_filtrado = df[df[coluna].astype(str).str.strip() == operacao].copy()
     
     return df_filtrado
+
 # =========================
 # CONFIGURAÇÃO DA PÁGINA
 # =========================
