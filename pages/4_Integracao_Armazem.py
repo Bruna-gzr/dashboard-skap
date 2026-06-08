@@ -1,3 +1,4 @@
+# pages/4_Integracao_Armazem.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,6 +9,12 @@ import plotly.graph_objects as go
 import locale
 import os
 from io import BytesIO
+import sys
+from pathlib import Path
+
+# Importar funções do app.py
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from app import aplicar_filtro, get_operacao
 
 # Tentar configurar locale para português
 try:
@@ -27,6 +34,9 @@ st.set_page_config(
     page_icon="📦",
     initial_sidebar_state="expanded"
 )
+
+# Pega a operação do usuário logado
+OPERACAO_USUARIO = get_operacao()
 
 # CSS personalizado
 st.markdown("""
@@ -74,6 +84,15 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# Botão para voltar ao menu
+if st.button("← Voltar ao Menu"):
+    st.switch_page("app.py")
+
+if OPERACAO_USUARIO != "Todas":
+    st.caption(f"📍 Operação: **{OPERACAO_USUARIO}**")
+else:
+    st.caption("📍 Visualizando TODAS as operações")
 
 # =========================
 # Funções auxiliares
@@ -155,7 +174,11 @@ def load_data():
     ]
     
     admitidos = pd.read_excel("data/Admitidos.xlsx")
-    admitidos = aplicar_filtro_unidade(admitidos, "Operação")
+    
+    # Aplicar filtro pela operação do usuário
+    if OPERACAO_USUARIO != "Todas":
+        admitidos = admitidos[admitidos["Operação"] == OPERACAO_USUARIO].copy()
+    
     integracao = {m: pd.read_excel("data/Integracao Armazem.xlsx", sheet_name=m) for m in ["M1", "M2", "M3", "M4", "M5"]}
     
     colaboradores_ativos_lista = []
@@ -166,6 +189,9 @@ def load_data():
             try:
                 colaboradores_ativos = pd.read_excel(caminho)
                 if 'Colaborador' in colaboradores_ativos.columns:
+                    # Aplicar filtro na base de ativos também
+                    if OPERACAO_USUARIO != "Todas" and "Operação" in colaboradores_ativos.columns:
+                        colaboradores_ativos = colaboradores_ativos[colaboradores_ativos["Operação"] == OPERACAO_USUARIO].copy()
                     colaboradores_ativos_lista = colaboradores_ativos['Colaborador'].tolist()
                     arquivo_encontrado = True
                     break
