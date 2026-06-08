@@ -1,3 +1,52 @@
+# =========================
+# CONFIGURAÇÃO DA PÁGINA (deve vir ANTES de qualquer coisa)
+# =========================
+st.set_page_config(
+    page_title="Dashboard RH",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# =========================
+# IMPORTAR SISTEMA DE LOGIN
+# =========================
+import sys
+from pathlib import Path
+
+# Adicionar o diretório pai ao path para importar o sistema_login
+sys.path.insert(0, str(Path(__file__).parent))
+
+try:
+    from sistema_login import fazer_login, exibir_info_usuario, aplicar_filtro_unidade, logout
+except ImportError:
+    # Se não encontrar, criar funções básicas
+    def fazer_login():
+        if "logado" not in st.session_state:
+            st.session_state.logado = True
+            st.session_state.usuario = "Adm"
+            st.session_state.unidade = "Todas"
+        return True
+    
+    def exibir_info_usuario():
+        pass
+    
+    def aplicar_filtro_unidade(df, coluna="Operação"):
+        return df
+
+# =========================
+# VERIFICAR LOGIN (executado PRIMEIRO)
+# =========================
+if not fazer_login():
+    st.stop()  # Para a execução se não estiver logado
+
+# Mostrar informações do usuário no sidebar
+exibir_info_usuario()
+
+# =========================
+# CONTINUAÇÃO DO SEU CÓDIGO...
+# =========================
+
 import re
 import unicodedata
 from pathlib import Path
