@@ -1,36 +1,45 @@
-# app.py
+# app.py - VERSÃO SEM HASH (mais simples)
 import streamlit as st
-import hashlib
 import pandas as pd
 from pathlib import Path
-from datetime import datetime
 
 # =========================
 # FUNÇÕES DE LOGIN
 # =========================
 
-def hash_senha(senha: str) -> str:
-    return hashlib.sha256(senha.encode()).hexdigest()
-
 @st.cache_data(ttl=3600)
 def carregar_credenciais():
+    """Carrega a planilha de credenciais"""
     caminhos = [
         Path(".data/credenciais.xlsx"),
         Path("data/credenciais.xlsx"),
         Path("credenciais.xlsx"),
+        Path("../credenciais.xlsx"),
     ]
     for caminho in caminhos:
         if caminho.exists():
             return pd.read_excel(caminho)
     
-    # Credenciais padrão para teste
-    return pd.DataFrame([
-        {"Usuario": "Adm", "Senha": hash_senha("Adm@log20@"), "Operacao": "Todas"},
-        {"Usuario": "cd.litoral", "Senha": hash_senha("lito@log20"), "Operacao": "CD LITORAL"},
-        {"Usuario": "cd.petrop", "Senha": hash_senha("petr@log20"), "Operacao": "CD PETRÓPOLIS"},
+    # Se não encontrar, cria uma padrão
+    st.warning("Arquivo de credenciais não encontrado. Criando padrão...")
+    df = pd.DataFrame([
+        {"Usuario": "Adm", "Senha": "Adm@log20@", "Operacao": "Todas"},
+        {"Usuario": "cd.litoral", "Senha": "lito@log20", "Operacao": "CD LITORAL"},
+        {"Usuario": "cd.petrop", "Senha": "petr@log20", "Operacao": "CD PETRÓPOLIS"},
     ])
+    
+    # Tentar salvar
+    try:
+        Path(".data").mkdir(exist_ok=True)
+        df.to_excel(".data/credenciais.xlsx", index=False)
+        st.success("Arquivo de credenciais criado em .data/credenciais.xlsx")
+    except:
+        pass
+    
+    return df
 
 def fazer_login():
+    """Verifica login sem hash (compara texto diretamente)"""
     if "logado" in st.session_state and st.session_state.logado:
         return True
     
@@ -50,24 +59,38 @@ def fazer_login():
     
     st.markdown('<div class="login-box">', unsafe_allow_html=True)
     st.markdown("## 🔐 Login")
+    st.markdown("Digite suas credenciais")
     
-    with st.form("login"):
-        usuario = st.text_input("Usuário")
-        senha = st.text_input("Senha", type="password")
-        submitted = st.form_submit_button("Entrar", use_container_width=True)
+    with st.form("login_form"):
+        usuario = st.text_input("👤 Usuário")
+        senha = st.text_input("🔒 Senha", type="password")
+        submitted = st.form_submit_button("📥 Entrar", use_container_width=True)
         
         if submitted:
+            if not usuario or not senha:
+                st.error("❌ Preencha usuário e senha")
+                return False
+            
             creds = carregar_credenciais()
-            senha_hash = hash_senha(senha)
-            user = creds[(creds["Usuario"] == usuario) & (creds["Senha"] == senha_hash)]
+            
+            # 🔴 COMPARAÇÃO DIRETA (sem hash)
+            user = creds[
+                (creds["Usuario"].astype(str).str.strip() == usuario) & 
+                (creds["Senha"].astype(str).str.strip() == senha)
+            ]
             
             if not user.empty:
                 st.session_state.logado = True
                 st.session_state.usuario = user.iloc[0]["Usuario"]
                 st.session_state.operacao = user.iloc[0]["Operacao"]
+                st.success(f"✅ Bem-vindo, {usuario}!")
                 st.rerun()
+                return True
             else:
-                st.error("Usuário ou senha inválidos")
+                st.error("❌ Usuário ou senha inválidos")
+                # Mostrar usuários disponíveis para debug (opcional)
+                with st.expander("🔧 Debug - Usuários disponíveis"):
+                    st.dataframe(creds[["Usuario", "Operacao"]])
     
     st.markdown('</div>', unsafe_allow_html=True)
     return False
@@ -79,13 +102,20 @@ def get_usuario():
     return st.session_state.get("usuario", "")
 
 def aplicar_filtro(df, coluna="Operação"):
+    """Filtra DataFrame pela operação do usuário"""
     if df is None or df.empty:
         return df
+    
     operacao = get_operacao()
+    
+    # Admin ou usuário sem operação específica vê tudo
     if operacao == "Todas" or get_usuario() == "Adm":
         return df
+    
     if coluna in df.columns:
-        return df[df[coluna].astype(str).str.strip() == operacao].copy()
+        df_filtrado = df[df[coluna].astype(str).str.strip() == operacao].copy()
+        return df_filtrado
+    
     return df
 
 # =========================
@@ -126,7 +156,7 @@ st.write("Use os botões abaixo para navegar entre os módulos.")
 st.markdown("---")
 st.subheader("📊 Dashboards Disponíveis")
 
-# Botões para cada dashboard (usando .pages/)
+# Botões para cada dashboard
 col1, col2 = st.columns(2)
 
 with col1:
