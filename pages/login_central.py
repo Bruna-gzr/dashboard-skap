@@ -142,8 +142,11 @@ def get_unidade_usuario():
 def get_usuario():
     return st.session_state.get("usuario", "")
 
-def aplicar_filtro_unidade(df, coluna="Operação"):
-    """Filtra DataFrame pela unidade do usuário"""
+def aplicar_filtro_unidade(df, coluna_sugerida="Operação"):
+    """
+    Filtra DataFrame pela unidade do usuário.
+    Funciona com colunas chamadas: Operação, Unidade, CD, Filial, etc.
+    """
     if df is None or df.empty:
         return df
     
@@ -153,14 +156,51 @@ def aplicar_filtro_unidade(df, coluna="Operação"):
     if not unidade or unidade == "Todas" or get_usuario() == "Adm":
         return df
     
-    # Procura a coluna certa
+    # Lista de possíveis nomes de coluna (ordem de prioridade)
+    possiveis_nomes = [
+        "Operação", "Unidade", "CD", "Filial", 
+        "OPERACAO", "UNIDADE", "operacao", "unidade",
+        "Op", "OP", "op", "unid"
+    ]
+    
+    # Primeiro, tenta encontrar a coluna exata
     coluna_encontrada = None
-    for col in df.columns:
-        if coluna.lower() in col.lower():
-            coluna_encontrada = col
-            break
     
+    # Tenta a coluna sugerida primeiro
+    if coluna_sugerida in df.columns:
+        coluna_encontrada = coluna_sugerida
+    else:
+        # Procura por qualquer nome na lista
+        for nome in possiveis_nomes:
+            if nome in df.columns:
+                coluna_encontrada = nome
+                break
+        
+        # Se ainda não encontrou, procura por similaridade (case-insensitive)
+        if not coluna_encontrada:
+            for col in df.columns:
+                col_lower = col.lower()
+                if any(palavra.lower() in col_lower for palavra in ["operacao", "unidade", "cd", "filial"]):
+                    coluna_encontrada = col
+                    break
+    
+    # Aplica o filtro se encontrou a coluna
     if coluna_encontrada:
-        return df[df[coluna_encontrada].astype(str).str.contains(unidade, case=False, na=False)].copy()
+        # Converte para string e faz a comparação
+        mask = df[coluna_encontrada].astype(str).str.strip() == unidade
+        
+        # Se não achou exato, tenta contains (para casos como "CD LITORAL" vs "LITORAL")
+        if not mask.any():
+            mask = df[coluna_encontrada].astype(str).str.contains(unidade, case=False, na=False)
+        
+        df_filtrado = df[mask].copy()
+        
+        # Mostra no log quantos registros foram filtrados (opcional)
+        if len(df_filtrado) < len(df):
+            st.sidebar.caption(f"📊 {coluna_encontrada}: {len(df_filtrado)} registros de {len(df)}")
+        
+        return df_filtrado
     
+    # Se não encontrou nenhuma coluna, retorna o DataFrame original (com aviso)
+    st.sidebar.warning(f"⚠️ Não foi possível filtrar por unidade. Coluna não encontrada.")
     return df
