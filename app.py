@@ -167,7 +167,7 @@ with col1:
         st.switch_page(".pages/2_Materiais_integracoes.py")
     
     if st.button("🚚 Integração Distribuição", use_container_width=True):
-        st.switch_page(".pages/3_Integracao_Distribuicao.py")
+        st.switch_page("pages/3_Integracao_Distribuicao.py")
     
     if st.button("📦 Integração Armazém", use_container_width=True):
         st.switch_page(".pages/4_Integracao_Armazem.py")
