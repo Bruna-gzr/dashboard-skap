@@ -749,6 +749,7 @@ def vincular_checks_otimizado(base_oper: pd.DataFrame, nps: pd.DataFrame, batepa
     nps_nome_col = "Informe seu nome completo:"
     nps_cpf_col = "Informe seu CPF:"
     nps_op_col = "Informe a operação que você trabalha:"
+    nps_padrinho_col = "Informe o nome do seu Padrinho."
 
     for c in [nps_nome_col, nps_cpf_col, "Data Cadastro"]:
         if c not in nps_df.columns:
@@ -760,6 +761,7 @@ def vincular_checks_otimizado(base_oper: pd.DataFrame, nps: pd.DataFrame, batepa
     nps_df["op_norm"] = nps_df[nps_op_col].apply(norm_text) if nps_op_col in nps_df.columns else ""
     nps_df["Data Cadastro"] = pd.to_datetime(nps_df["Data Cadastro"], errors="coerce", dayfirst=True)
     nps_df["DataHora Resposta"] = combinar_data_hora(nps_df, "Data Cadastro", "Horário da resposta")
+    nps_df["Padrinho"] = nps_df[nps_padrinho_col] if nps_padrinho_col in nps_df.columns else ""
 
     # =========================
     # Bate-papo
@@ -779,7 +781,7 @@ def vincular_checks_otimizado(base_oper: pd.DataFrame, nps: pd.DataFrame, batepa
     bp_df["Data Cadastro"] = pd.to_datetime(bp_df["Data Cadastro"], errors="coerce", dayfirst=True)
     bp_df["DataHora Resposta"] = combinar_data_hora(bp_df, "Data Cadastro", "Horário da resposta")
 
-    def vincular_por_nome_prioritario_otimizado(df_resp: pd.DataFrame, lookup_dict) -> pd.DataFrame:
+    def vincular_por_nome_prioritario_otimizado(df_resp: pd.DataFrame, lookup_dict, is_nps: bool = False) -> pd.DataFrame:
         df = df_resp.copy().reset_index(drop=True)
 
         for col in [
@@ -788,6 +790,10 @@ def vincular_checks_otimizado(base_oper: pd.DataFrame, nps: pd.DataFrame, batepa
         ]:
             if col not in df.columns:
                 df[col] = pd.NA
+                
+        # Adicionar coluna Padrinho se for NPS
+        if is_nps and "Padrinho" not in df.columns:
+            df["Padrinho"] = pd.NA
 
         df["match_tipo"] = "NAO_ENCONTRADO"
         df["match_score"] = pd.NA
@@ -851,14 +857,18 @@ def vincular_checks_otimizado(base_oper: pd.DataFrame, nps: pd.DataFrame, batepa
                         "Operação", "Data", "Data_dt", "Status Colaborador"
                     ]:
                         df.at[idx, col] = base_row[col]
+                    
+                    # Manter a informação do Padrinho se existir
+                    if is_nps and "Padrinho" in row.index and pd.notna(row["Padrinho"]):
+                        df.at[idx, "Padrinho"] = row["Padrinho"]
 
                 df.at[idx, "match_tipo"] = tipo
                 df.at[idx, "match_score"] = score
 
         return df
 
-    nps_m = vincular_por_nome_prioritario_otimizado(nps_df, base_lookup_dict)
-    bp_m = vincular_por_nome_prioritario_otimizado(bp_df, base_lookup_dict)
+    nps_m = vincular_por_nome_prioritario_otimizado(nps_df, base_lookup_dict, is_nps=True)
+    bp_m = vincular_por_nome_prioritario_otimizado(bp_df, base_lookup_dict, is_nps=False)
 
     return {
         "base_operacional": base,
@@ -985,6 +995,18 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
             )
 
             tmp = tmp.merge(real, on="contrato_id", how="left")
+            
+            # Adicionar informação do Padrinho para NPS
+            if etapa["tipo"] == "NPS" and "Padrinho" in form.columns:
+                padrinho_info = (
+                    form_et.dropna(subset=["contrato_id"])
+                    .dropna(subset=["Padrinho"])
+                    .groupby("contrato_id", as_index=False)["Padrinho"]
+                    .first()
+                )
+                tmp = tmp.merge(padrinho_info, on="contrato_id", how="left")
+            else:
+                tmp["Padrinho"] = pd.NA
 
         tmp["Status"] = tmp.apply(
             lambda r: status_prazo(r["Data Realização"], r["Prazo Mín"], r["Prazo Máx"], hoje),
@@ -1091,8 +1113,10 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     st.plotly_chart(fig, width="stretch", key=f"chart_{key_prefix}")
 
     tabela = df_farol.copy()
+    
+    # Definir colunas para exibir - REMOVER Status Colaborador e CPF, ADICIONAR Padrinho
     cols_show = [
-        "Status Colaborador", "Operação", "Colaborador", "CPF", "Cargo",
+        "Operação", "Colaborador", "Cargo", "Padrinho",
         "Data_dt", "Etapa", "Prazo Mín", "Prazo Máx", "Data Realização",
         "Dias", "Status"
     ]
@@ -1101,7 +1125,7 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     tabela = formatar_datas_para_tabela(tabela)
 
     ordem_final = [
-        "Status Colaborador", "Operação", "Colaborador", "CPF", "Cargo",
+        "Operação", "Colaborador", "Cargo", "Padrinho",
         "Data Admissão", "Etapa", "Prazo Mín", "Prazo Máx", "Data Realização",
         "Dias", "Status"
     ]
@@ -1431,7 +1455,12 @@ if pd.isna(data_min_disponivel):
 if pd.isna(data_max_disponivel):
     data_max_disponivel = pd.Timestamp(datetime.now().date())
 
-data_padrao_ini = pd.Timestamp("2025-01-01")
+# ALTERAÇÃO: Data padrão de início = 01/01/2026
+data_padrao_ini = pd.Timestamp("2026-01-01")
+# Se a data padrão for maior que a data máxima disponível, usa a data máxima
+if data_padrao_ini > data_max_disponivel:
+    data_padrao_ini = data_max_disponivel
+# Se for menor que a data mínima, usa a data mínima
 if data_padrao_ini < data_min_disponivel:
     data_padrao_ini = data_min_disponivel
 
@@ -1470,6 +1499,7 @@ with col_ini:
     )
 
 with col_fim:
+    # Data final = data mais recente da coluna Data da planilha Admitidos
     dt_fim = st.date_input(
         "Fim",
         value=data_max_disponivel.date(),
