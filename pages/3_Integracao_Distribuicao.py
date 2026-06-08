@@ -437,9 +437,13 @@ if pd.isna(min_adm) or pd.isna(max_adm):
     min_adm = pd.to_datetime("2024-09-01")
     max_adm = pd.to_datetime(datetime.today().date()).normalize()
 
-# Data padrão = última data de admissão (2026-01-01 como fallback)
-default_ini = max_adm
+# Data padrão = 01/01/2026 (fixo)
+default_ini = pd.to_datetime("2026-01-01")
+
+# Garantir que a data padrão está dentro do intervalo
 if default_ini < min_adm:
+    default_ini = min_adm
+if default_ini > max_adm:
     default_ini = min_adm
 
 st.sidebar.subheader("Período de admissão")
