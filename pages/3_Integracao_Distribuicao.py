@@ -44,6 +44,23 @@ except Exception:
     ultima_atualizacao_txt = "não disponível"
 
 # =========================
+# Obter última data de admissão da planilha Admitidos
+# =========================
+def obter_ultima_data_admissao():
+    try:
+        if ARQ_ADMITIDOS.exists():
+            admitidos_temp = pd.read_excel(ARQ_ADMITIDOS)
+            admitidos_temp = normalizar_colunas(admitidos_temp)
+            if "DATA" in admitidos_temp.columns:
+                datas = tratar_data_segura(admitidos_temp["DATA"])
+                ultima_data = datas.max()
+                if pd.notna(ultima_data):
+                    return pd.to_datetime(ultima_data)
+    except Exception:
+        pass
+    return pd.to_datetime("2026-01-01")
+
+# =========================
 # Utils
 # =========================
 def normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
@@ -412,16 +429,17 @@ etapas_df = pd.concat(etapas_dfs, ignore_index=True)
 # =========================
 st.sidebar.header("Filtros")
 
+# Obter data mínima (primeira admissão) e máxima (última admissão)
 min_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").min()
-max_adm = pd.to_datetime(etapas_df["ADMISSAO_DT"], errors="coerce").max()
+max_adm = obter_ultima_data_admissao()  # Última data da planilha Admitidos
+
 if pd.isna(min_adm) or pd.isna(max_adm):
     min_adm = pd.to_datetime("2024-09-01")
     max_adm = pd.to_datetime(datetime.today().date()).normalize()
 
-default_ini = pd.to_datetime("2025-01-01")
+# Data padrão = última data de admissão (2026-01-01 como fallback)
+default_ini = max_adm
 if default_ini < min_adm:
-    default_ini = min_adm
-if default_ini > max_adm:
     default_ini = min_adm
 
 st.sidebar.subheader("Período de admissão")
@@ -557,7 +575,7 @@ with col_pct:
 st.divider()
 
 # =========================
-# 2 - Aderência por Operação
+# 2 - Aderência por Operação (com cores personalizadas)
 # =========================
 st.subheader("📊 Aderência por Operação")
 
@@ -581,6 +599,17 @@ ader_oper["ADERENCIA_%"] = np.where(
 
 ader_oper = ader_oper.sort_values("ADERENCIA_%", ascending=False)
 
+# Definir cores baseado no percentual de aderência
+def get_cor_aderencia(valor):
+    if valor >= 95:
+        return "#22c55e"  # Verde
+    elif valor >= 90:
+        return "#facc15"  # Amarelo
+    else:
+        return "#ef4444"  # Vermelho
+
+ader_oper["COR"] = ader_oper["ADERENCIA_%"].apply(get_cor_aderencia)
+
 if len(ader_oper) == 0:
     st.info("Sem dados para calcular aderência com os filtros atuais.")
 else:
@@ -589,8 +618,22 @@ else:
         x="OPERACAO",
         y="ADERENCIA_%",
         text=ader_oper["ADERENCIA_%"].map(lambda x: f"{x:.2f}%"),
+        color="ADERENCIA_%",
+        color_continuous_scale=["#ef4444", "#facc15", "#22c55e"],
+        range_color=[0, 100],
     )
-    fig_ad.update_layout(yaxis_title="Aderência (%)", xaxis={"categoryorder": "total descending"})
+    fig_ad.update_traces(
+        textposition="outside",
+        marker_color=ader_oper["COR"],
+        marker_line_color=ader_oper["COR"],
+        marker_line_width=1,
+    )
+    fig_ad.update_layout(
+        yaxis_title="Aderência (%)", 
+        xaxis={"categoryorder": "total descending"},
+        showlegend=False,
+        coloraxis_showscale=False
+    )
     st.plotly_chart(fig_ad, use_container_width=True)
 
 st.divider()
