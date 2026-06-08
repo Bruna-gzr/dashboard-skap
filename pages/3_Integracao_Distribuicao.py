@@ -661,12 +661,12 @@ else:
 st.divider()
 
 # =========================
-# 4 - 🟡 No prazo vencendo em até 3 dias
+# 4 - 🟡 No prazo vencendo em até 7 dias
 # =========================
-vencendo_3_df = df_f[
+vencendo_7_df = df_f[
     (df_f["STATUS"] == "Pendente mas no prazo") &
     (df_f["DIAS"] >= 0) &
-    (df_f["DIAS"] <= 3)
+    (df_f["DIAS"] <= 7)
 ].copy()
 
 cols_alerta = [
@@ -680,32 +680,32 @@ cols_alerta = [
     "DIAS"
 ]
 
-vencendo_3_df = vencendo_3_df[
-    [c for c in cols_alerta if c in vencendo_3_df.columns]
+vencendo_7_df = vencendo_7_df[
+    [c for c in cols_alerta if c in vencendo_7_df.columns]
 ]
 
-st.subheader("🟡 No prazo vencendo em até 3 dias")
+st.subheader("🟡 No prazo vencendo em até 7 dias")
 
-if len(vencendo_3_df) == 0:
+if len(vencendo_7_df) == 0:
     st.info(
         "Nenhuma etapa 'Pendente mas no prazo' "
-        "vencendo em até 3 dias com os filtros atuais."
+        "vencendo em até 7 dias com os filtros atuais."
     )
 else:
-    vencendo_3_df["_ADM_DT"] = pd.to_datetime(
-        vencendo_3_df["ADMISSAO"],
+    vencendo_7_df["_ADM_DT"] = pd.to_datetime(
+        vencendo_7_df["ADMISSAO"],
         dayfirst=True,
         errors="coerce"
     )
 
-    vencendo_3_df = (
-        vencendo_3_df
+    vencendo_7_df = (
+        vencendo_7_df
         .sort_values(["_ADM_DT", "COLABORADOR", "DIAS"])
         .drop(columns=["_ADM_DT"])
     )
 
     st.dataframe(
-        centralizar_tabela(vencendo_3_df),
+        centralizar_tabela(vencendo_7_df),
         use_container_width=True
     )
 
@@ -713,14 +713,14 @@ else:
     # Download Excel
     # =========================
     excel_alerta = preparar_excel_para_download(
-        vencendo_3_df,
-        sheet_name="Vencendo_3_Dias"
+        vencendo_7_df,
+        sheet_name="Vencendo_7_Dias"
     )
 
     st.download_button(
-        label="⬇️ Baixar Excel (Vencendo em até 3 dias)",
+        label="⬇️ Baixar Excel (Vencendo em até 7 dias)",
         data=excel_alerta,
-        file_name="pendentes_vencendo_3_dias.xlsx",
+        file_name="pendentes_vencendo_7_dias.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
