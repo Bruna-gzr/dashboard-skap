@@ -266,7 +266,7 @@ df["ADMISSAO"] = to_datetime_safe(df["ADMISSAO"])
 # hoje no fuso BR (evita +1 dia no Streamlit Cloud)
 hoje = pd.Timestamp.now(tz=ZoneInfo("America/Sao_Paulo")).normalize().tz_localize(None)
 
-# NOVO: Período de 180 dias para trás a partir de hoje
+# Período de 180 dias para trás a partir de hoje
 data_180_dias_atras = hoje - timedelta(days=180)
 
 # Filtrar apenas admissões nos últimos 180 dias
@@ -306,10 +306,10 @@ f_status = st.sidebar.multiselect(
 f_status_colab = st.sidebar.multiselect(
     "Status do colaborador",
     ["Ativo", "Inativo"],
-    default=["Ativo", "Inativo"],  # ALTERADO: agora padrão é "Todos" (Ativo + Inativo)
+    default=["Ativo", "Inativo"],
 )
 
-# NOVO: Período fixo: Início = 180 dias atrás, Fim = hoje
+# Período fixo: Início = 180 dias atrás, Fim = hoje
 dt_ini = data_180_dias_atras
 dt_fim = hoje
 
@@ -328,7 +328,7 @@ if f_status_colab:
 # =========================
 # Cards globais
 # =========================
-no_prazo_venc3_ids = set()
+no_prazo_venc7_ids = set()
 nao_realizada_ids = set()
 
 for _, status_col, limite_col, _ in etapas:
@@ -337,32 +337,48 @@ for _, status_col, limite_col, _ in etapas:
 
     mask_np = (st_col == "No prazo") & lim.notna()
     dias_para_vencer = (lim - hoje).dt.days
-    mask_venc3 = mask_np & dias_para_vencer.between(0, 3)
-    no_prazo_venc3_ids.update(df_f.loc[mask_venc3, "COLABORADOR"].astype(str).tolist())
+    mask_venc7 = mask_np & dias_para_vencer.between(0, 7)
+    no_prazo_venc7_ids.update(df_f.loc[mask_venc7, "COLABORADOR"].astype(str).tolist())
 
     mask_nr = (st_col == "Não Realizada")
     nao_realizada_ids.update(df_f.loc[mask_nr, "COLABORADOR"].astype(str).tolist())
 
 c1, c2, c3 = st.columns(3)
 c1.metric(f"Total (últimos 180 dias)", len(df_f))
-c2.metric("🟡 No prazo vencendo em até 3 dias", len(no_prazo_venc3_ids))
+c2.metric("🟡 No prazo vencendo em até 7 dias", len(no_prazo_venc7_ids))
 c3.metric("🔴 Com alguma etapa Não Realizada", len(nao_realizada_ids))
 
 st.divider()
 
 # =========================
-# Progresso Geral (empresa) - barra
+# Progresso Geral (empresa) - barra com cores
 # =========================
 st.subheader("📌 Aderência Média - Log20")
 
 progresso_empresa = float(df_f["PROGRESSO_GERAL_NUM"].mean()) if len(df_f) else 0.0
 progresso_empresa = max(0.0, min(1.0, progresso_empresa))
+pct_empresa = progresso_empresa * 100
+
+# Definir cor baseado no percentual
+if pct_empresa >= 95:
+    cor_barra = "#22c55e"  # Verde
+elif pct_empresa >= 90:
+    cor_barra = "#facc15"  # Amarelo
+else:
+    cor_barra = "#ef4444"  # Vermelho
 
 c_bar, c_txt = st.columns([6, 1])
 with c_txt:
     st.markdown(f"### {progresso_empresa:.2%}")
 with c_bar:
-    st.progress(progresso_empresa)
+    st.markdown(
+        f"""
+        <div style="width: 100%; background: #2a2f3a; border-radius: 999px; height: 12px; overflow: hidden;">
+          <div style="width: {min(pct_empresa, 100):.2f}%; background: {cor_barra}; height: 12px; border-radius: 999px;"></div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 # =========================
 # Estilos
@@ -435,7 +451,7 @@ if len(prog_op) == 0:
 else:
     prog_op["PROGRESSO_MEDIO_%"] = (prog_op["PROGRESSO_MEDIO"] * 100).round(1)
     
-    # NOVO: Definir cores baseado no valor
+    # Definir cores baseado no valor
     def get_cor_progresso(valor_percentual):
         if valor_percentual >= 95:
             return "#22c55e"  # Verde
@@ -471,18 +487,6 @@ else:
     st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
-
-# =========================
-# Debug
-# =========================
-with st.expander("🧪 Debug: conferir divergências (RAW vs normalizado)", expanded=False):
-    for nome_aba, status_col, _, _ in etapas:
-        ex = df_f.loc[df_f[status_col] == "Não Realizada", ["COLABORADOR", "OPERACAO", status_col + "_RAW", status_col]].head(20)
-        if len(ex):
-            st.write(f"**{nome_aba}**")
-            st.dataframe(ex, use_container_width=True)
-        else:
-            st.caption(f"{nome_aba}: sem 'Não Realizada' nos filtros atuais.")
 
 # =========================
 # 🔴 Não Realizada — detalhamento geral
@@ -528,9 +532,9 @@ else:
 st.divider()
 
 # =========================
-# 🟡 No prazo vencendo em até 3 dias (geral)
+# 🟡 No prazo vencendo em até 7 dias (geral)
 # =========================
-st.subheader("🟡 No prazo vencendo em até 3 dias (geral)")
+st.subheader("🟡 No prazo vencendo em até 7 dias (geral)")
 
 linhas_np = []
 for nome_aba, status_col, limite_col, dt_col in etapas:
@@ -539,13 +543,13 @@ for nome_aba, status_col, limite_col, dt_col in etapas:
 
     mask_np = (st_col == "No prazo") & lim.notna()
     dias_para_vencer = (lim - hoje).dt.days
-    mask_venc3 = mask_np & dias_para_vencer.between(0, 3)
+    mask_venc7 = mask_np & dias_para_vencer.between(0, 7)
 
-    if mask_venc3.any():
-        tmp_np = df_f.loc[mask_venc3, ["COLABORADOR", "STATUS COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
+    if mask_venc7.any():
+        tmp_np = df_f.loc[mask_venc7, ["COLABORADOR", "STATUS COLABORADOR", "OPERACAO", "ATIVIDADE", "ADMISSAO", "TEMPO DE CASA"]].copy()
         tmp_np["ETAPA"] = nome_aba
-        tmp_np["DATA LIMITE"] = lim.loc[mask_venc3].copy()
-        tmp_np["DIAS"] = pd.to_numeric(dias_para_vencer.loc[mask_venc3], errors="coerce").fillna(0).astype(int).values
+        tmp_np["DATA LIMITE"] = lim.loc[mask_venc7].copy()
+        tmp_np["DIAS"] = pd.to_numeric(dias_para_vencer.loc[mask_venc7], errors="coerce").fillna(0).astype(int).values
         linhas_np.append(tmp_np)
 
 if linhas_np:
@@ -554,7 +558,7 @@ if linhas_np:
     df_alerta["ADMISSAO"] = fmt_data(df_alerta["ADMISSAO"])
     df_alerta["DATA LIMITE"] = fmt_data(df_alerta["DATA LIMITE"])
 
-    st.metric("Registros 'No prazo' vencendo em até 3 dias", len(df_alerta))
+    st.metric("Registros 'No prazo' vencendo em até 7 dias", len(df_alerta))
 
     view_np = df_alerta[["COLABORADOR","STATUS COLABORADOR","OPERACAO","ATIVIDADE","ADMISSAO","TEMPO DE CASA","ETAPA","DATA LIMITE","DIAS"]].copy()
     try:
@@ -562,9 +566,19 @@ if linhas_np:
     except AttributeError:
         sty_np = styler_padrao(view_np).applymap(estilo_dias, subset=["DIAS"])
     st.dataframe(sty_np, use_container_width=True, height=420)
+    
+    # Botão de download Excel
+    excel_alerta = preparar_excel_para_download(view_np, sheet_name="Vencendo_7_Dias")
+    st.download_button(
+        label="⬇️ Baixar Excel (No prazo vencendo em até 7 dias)",
+        data=excel_alerta,
+        file_name="pendentes_vencendo_7_dias.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
 else:
-    st.metric("Registros 'No prazo' vencendo em até 3 dias", 0)
-    st.info("Nenhum colaborador com etapa 'No prazo' vencendo em até 3 dias com os filtros atuais.")
+    st.metric("Registros 'No prazo' vencendo em até 7 dias", 0)
+    st.info("Nenhum colaborador com etapa 'No prazo' vencendo em até 7 dias com os filtros atuais.")
 
 st.divider()
 
