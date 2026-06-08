@@ -5,3 +5,4 @@ openpyxl
 numpy
 matplotlib
 rapidfuzz
+rapidfuzz>=3.0.0
