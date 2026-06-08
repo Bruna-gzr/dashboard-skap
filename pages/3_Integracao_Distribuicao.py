@@ -31,7 +31,7 @@ nps = pd.read_excel(DATA_DIR / "NPS Mentor.xlsx")
 batepapo = pd.read_excel(DATA_DIR / "Bate papo mentor.xlsx")
 
 # Aplicar filtro pela operação do usuário
-admitidos = aplicar_filtro(admitidos, "Operação")
+admitidos = aplicar_filtro(admitidos)
 base_ativos = aplicar_filtro(base_ativos, "Operação")
 nps = aplicar_filtro(nps, "Operação")
 batepapo = aplicar_filtro(batepapo, "Operação")
