@@ -113,36 +113,32 @@ def aplicar_filtro(df, coluna="Operação"):
     if operacao == "Todas" or get_usuario() == "Adm":
         return df
     
-    # Verifica se a coluna existe
-    if coluna not in df.columns:
-        # Tenta encontrar a coluna ignorando acentos e maiúsculas
-        for col in df.columns:
-            if col.lower().strip() == "operacao":
-                coluna = col
-                break
-            elif "oper" in col.lower():
-                coluna = col
-                break
-        else:
-            # Se não encontrou, mostra aviso
-            st.warning(f"⚠️ Coluna de operação não encontrada. Colunas disponíveis: {list(df.columns)}")
-            return df
+    # Tenta encontrar a coluna correta (ignorando maiúsculas/minúsculas)
+    coluna_encontrada = None
+    for col in df.columns:
+        if col == "Operação" or col == "OPERACAO" or col == "operacao":
+            coluna_encontrada = col
+            break
+        if "oper" in col.lower():
+            coluna_encontrada = col
+            break
     
-    # Aplica o filtro (compara exato)
-    mask = df[coluna].astype(str).str.strip() == operacao
-    df_filtrado = df[mask].copy()
+    if coluna_encontrada is None:
+        st.warning(f"⚠️ Nenhuma coluna de operação encontrada. Colunas: {list(df.columns)}")
+        return df
     
-    # Se não achou nada, tenta contains (para casos com diferenças)
-    if len(df_filtrado) == 0:
-        mask = df[coluna].astype(str).str.contains(operacao, case=False, na=False)
-        df_filtrado = df[mask].copy()
+    # Mostra debug no dashboard
+    st.write(f"🔍 Filtrando usando coluna: **{coluna_encontrada}**")
+    st.write(f"🔍 Operação do usuário: **{operacao}**")
+    st.write(f"🔍 Valores únicos na coluna: {df[coluna_encontrada].unique().tolist()}")
     
-    # Mostra no sidebar quantos registros foram filtrados
-    if len(df_filtrado) < len(df):
-        st.sidebar.caption(f"📊 Filtrado: {len(df_filtrado)} de {len(df)} registros")
+    # Aplica o filtro
+    mascara = df[coluna_encontrada].astype(str).str.strip() == operacao
+    df_filtrado = df[mascara].copy()
+    
+    st.write(f"🔍 Registros antes: {len(df)} | Depois: {len(df_filtrado)}")
     
     return df_filtrado
-
 # =========================
 # CONFIGURAÇÃO DA PÁGINA
 # =========================
