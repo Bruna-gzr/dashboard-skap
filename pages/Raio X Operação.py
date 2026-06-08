@@ -1176,7 +1176,8 @@ if f_func != "Todos":
 if f_ativ != "Todos":
     base_fil = base_fil[base_fil["ATIVIDADE"].astype(str) == str(f_ativ)]
 base_fil["DATA_ADM_DT"] = pd.to_datetime(base_fil["DATA_ADM_DT"], errors="coerce")
-base_fil = base_fil[(base_fil["DATA_ADM_DT"].dt.date >= adm_ini) & (base_fil["DATA_ADM_DT"].dt.date <= adm_fim)]
+base_fil["DATA_ADM_DT"] = pd.to_datetime(base_fil["DATA_ADM_DT"], errors="coerce")
+base_fil = base_fil[(base_fil["DATA_ADM_DT"] >= pd.Timestamp(adm_ini)) & (base_fil["DATA_ADM_DT"] <= pd.Timestamp(adm_fim))]
 colabs_disp = sorted(base_fil["COLABORADOR"].dropna().astype(str).unique().tolist())
 f_colab = st.sidebar.selectbox("Colaborador", ["Todos"] + colabs_disp, index=0)
 
@@ -1286,7 +1287,8 @@ if f_func != "Todos":
 if f_ativ != "Todos":
     df = df[df["ATIVIDADE"].astype(str) == str(f_ativ)]
 df["DATA_ADM_DT"] = pd.to_datetime(df["DATA_ADM_DT"], errors="coerce")
-df = df[(df["DATA_ADM_DT"].dt.date >= adm_ini) & (df["DATA_ADM_DT"].dt.date <= adm_fim)]
+df["DATA_ADM_DT"] = pd.to_datetime(df["DATA_ADM_DT"], errors="coerce")
+df = df[(df["DATA_ADM_DT"] >= pd.Timestamp(adm_ini)) & (df["DATA_ADM_DT"] <= pd.Timestamp(adm_fim))]
 if f_mes != "Todos":
     mm, yy = f_mes.split("/")
     mes_key = f"{yy}-{mm}"
