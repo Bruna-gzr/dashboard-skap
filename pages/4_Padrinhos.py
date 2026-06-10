@@ -34,59 +34,34 @@ except Exception:
 st.title("👨🏻‍🎓 Gestão de Padrinhos")
 
 # =========================
-# Card de Links dos Formulários (VERSÃO CORRIGIDA)
+# Card de Links dos Formulários (VERSÃO STREAMLIT NATIVA - SEM ERRO)
 # =========================
-st.markdown("""
-<div style="
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    border-radius: 20px;
-    padding: 20px 25px;
-    margin: 15px 0 25px 0;
-    border: 1px solid #2a3a5c;
-">
-    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-        
-        <!-- Card 1 - Avaliação do Padrinho -->
-        <div style="flex: 1; min-width: 280px; background: #0f0f1a; border-radius: 16px; padding: 18px; border-left: 4px solid #f0d36b;">
-            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                <span style="font-size: 28px;">📝</span>
-                <div>
-                    <div style="color: #f0d36b; font-weight: 800; font-size: 1.1rem;">AVALIAÇÃO DO PADRINHO</div>
-                    <div style="color: #b0b0b0; font-size: 0.75rem;">1ª e Última semana da Integração</div>
-                </div>
-            </div>
-            <div style="color: #c0c0c0; font-size: 0.8rem; margin-bottom: 12px; line-height: 1.4;">
-                📌 Avaliação do colaborador novo sobre o suporte do padrinho.
-            </div>
-            <a href="https://dmpeople.com.br/shared-answer-form?form=670029728140718c2fd45654&path=new-research-form-answer" 
-               target="_blank" 
-               style="display: inline-flex; align-items: center; gap: 8px; background: #1e2a3a; color: #90caf9; text-decoration: none; padding: 8px 14px; border-radius: 30px; font-size: 0.8rem; font-weight: 500;">
-                🔗 dmpeople.com.br/form
-            </a>
-        </div>
-        
-        <!-- Card 2 - Bate-papo -->
-        <div style="flex: 1; min-width: 280px; background: #0f0f1a; border-radius: 16px; padding: 18px; border-left: 4px solid #4caf50;">
-            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                <span style="font-size: 28px;">💬</span>
-                <div>
-                    <div style="color: #4caf50; font-weight: 800; font-size: 1.1rem;">BATE-PAPO & AVALIAÇÃO</div>
-                    <div style="color: #b0b0b0; font-size: 0.75rem;">2ª, 3ª, 4ª semana e Última semana</div>
-                </div>
-            </div>
-            <div style="color: #c0c0c0; font-size: 0.8rem; margin-bottom: 12px; line-height: 1.4;">
-                📌 Conversas semanais entre colaborador e padrinho.
-            </div>
-            <a href="https://dmpeople.com.br/shared-answer-form?form=67002d6f81f224e2c8c7805f&path=new-research-form-answer" 
-               target="_blank" 
-               style="display: inline-flex; align-items: center; gap: 8px; background: #1e2a3a; color: #a5d6a7; text-decoration: none; padding: 8px 14px; border-radius: 30px; font-size: 0.8rem; font-weight: 500;">
-                🔗 dmpeople.com.br/form
-            </a>
-        </div>
-        
-    </div>
-</div>
-""", unsafe_allow_html=True)
+with st.container():
+    st.markdown("---")
+    col1, col2 = st.columns(2, gap="large")
+    
+    with col1:
+        with st.container(border=True):
+            st.markdown("### 📝 **AVALIAÇÃO DO PADRINHO**")
+            st.caption("1ª e Última semana da Integração")
+            st.write("📌 Avaliação do colaborador novo sobre o suporte do padrinho.")
+            st.link_button(
+                "🔗 Acessar formulário", 
+                "https://dmpeople.com.br/shared-answer-form?form=670029728140718c2fd45654&path=new-research-form-answer",
+                use_container_width=True
+            )
+    
+    with col2:
+        with st.container(border=True):
+            st.markdown("### 💬 **BATE-PAPO & AVALIAÇÃO**")
+            st.caption("2ª, 3ª, 4ª semana e Última semana")
+            st.write("📌 Conversas semanais entre colaborador e padrinho.")
+            st.link_button(
+                "🔗 Acessar formulário", 
+                "https://dmpeople.com.br/shared-answer-form?form=67002d6f81f224e2c8c7805f&path=new-research-form-answer",
+                use_container_width=True
+            )
+    st.markdown("---")
 
 # =========================
 # Estilo
