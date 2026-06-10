@@ -34,7 +34,7 @@ except Exception:
 st.title("👨🏻‍🎓 Gestão de Padrinhos")
 
 # =========================
-# Card de Links dos Formulários
+# Card de Links dos Formulários (VERSÃO CORRIGIDA)
 # =========================
 st.markdown("""
 <div style="
@@ -87,6 +87,7 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
 # =========================
 # Estilo
 # =========================
