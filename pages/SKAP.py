@@ -31,14 +31,33 @@ ARQ_COM = DATA_DIR / "Skap - comentarios.xlsx"
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 
 # =========================
-# Última atualização dos dados + cache
+# Função para obter timestamp atualizada
 # =========================
 def get_last_mtime():
+    """Retorna o timestamp mais recente dos arquivos"""
     arquivos = [ARQ_SKAP, ARQ_COM, ARQ_ATIVOS]
-    return max(a.stat().st_mtime for a in arquivos if a.exists())
+    mtimes = []
+    for a in arquivos:
+        if a.exists():
+            mtimes.append(a.stat().st_mtime)
+    return max(mtimes) if mtimes else 0
 
+# =========================
+# Botão de refresh com session_state para forçar recarga
+# =========================
+if "refresh_key" not in st.session_state:
+    st.session_state.refresh_key = 0
+
+def force_refresh():
+    st.session_state.refresh_key += 1
+    st.cache_data.clear()
+
+# =========================
+# Cache dos dados - usa refresh_key como parte da chave
+# =========================
 @st.cache_data(show_spinner=True)
-def carregar_dados(_cache_key: float):
+def carregar_dados(_refresh_key: int):
+    """Carrega os dados do Excel - refresh_key força recarga"""
     if not ARQ_SKAP.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_SKAP}")
     if not ARQ_COM.exists():
@@ -52,18 +71,25 @@ def carregar_dados(_cache_key: float):
 
     return skap_df, com_df, ativos_df
 
+# =========================
+# Exibe info e botão de refresh
+# =========================
 try:
+    # Mostra quando foi a última modificação dos arquivos
     last_mtime = get_last_mtime()
-    dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
-    st.caption(f"🕒 Última atualização dos dados: {dt.strftime('%d/%m/%Y %H:%M')}")
+    if last_mtime > 0:
+        dt = datetime.fromtimestamp(last_mtime, tz=ZoneInfo("America/Sao_Paulo"))
+        st.caption(f"🕒 Última modificação dos arquivos: {dt.strftime('%d/%m/%Y %H:%M:%S')}")
+    else:
+        st.caption("🕒 Aguardando arquivos...")
 
     c_refresh, _ = st.columns([1, 5])
     with c_refresh:
-        if st.button("🔄 Atualizar dados agora", use_container_width=True):
-            st.cache_data.clear()
+        if st.button("🔄 Atualizar dados agora", use_container_width=True, on_click=force_refresh):
             st.rerun()
 
-    skap, comentarios, ativos = carregar_dados(last_mtime)
+    # Carrega os dados (passa refresh_key como parâmetro)
+    skap, comentarios, ativos = carregar_dados(st.session_state.refresh_key)
 
 except Exception as e:
     st.error(f"❌ Erro ao carregar os arquivos da pasta /data: {e}")
