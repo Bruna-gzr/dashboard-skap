@@ -34,6 +34,104 @@ except Exception:
 st.title("👨🏻‍🎓 Gestão de Padrinhos")
 
 # =========================
+# Card de Links dos Formulários
+# =========================
+st.markdown("""
+<div style="
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border-radius: 20px;
+    padding: 20px 25px;
+    margin: 15px 0 25px 0;
+    border: 1px solid #2a3a5c;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+">
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+        
+        <!-- Card 1 -->
+        <div style="
+            flex: 1;
+            min-width: 280px;
+            background: #0f0f1a;
+            border-radius: 16px;
+            padding: 18px;
+            border-left: 4px solid #f0d36b;
+        ">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <span style="font-size: 28px;">📝</span>
+                <div>
+                    <div style="color: #f0d36b; font-weight: 800; font-size: 1.1rem;">AVALIAÇÃO DO PADRINHO</div>
+                    <div style="color: #b0b0b0; font-size: 0.75rem;">1ª e Última semana da Integração</div>
+                </div>
+            </div>
+            <div style="color: #c0c0c0; font-size: 0.8rem; margin-bottom: 12px; line-height: 1.4;">
+                📌 Avaliação do colaborador novo sobre o suporte do padrinho.
+            </div>
+            <a href="https://dmpeople.com.br/shared-answer-form?form=670029728140718c2fd45654&path=new-research-form-answer" 
+               target="_blank"
+               style="
+                   display: inline-flex;
+                   align-items: center;
+                   gap: 8px;
+                   background: #1e2a3a;
+                   color: #90caf9;
+                   text-decoration: none;
+                   padding: 8px 14px;
+                   border-radius: 30px;
+                   font-size: 0.8rem;
+                   font-weight: 500;
+                   transition: all 0.2s;
+               "
+               onmouseover="this.style.background='#2a3a4a'"
+               onmouseout="this.style.background='#1e2a3a'">
+                <span>🔗</span> dmpeople.com.br/form
+            </a>
+        </div>
+        
+        <!-- Card 2 -->
+        <div style="
+            flex: 1;
+            min-width: 280px;
+            background: #0f0f1a;
+            border-radius: 16px;
+            padding: 18px;
+            border-left: 4px solid #4caf50;
+        ">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <span style="font-size: 28px;">💬</span>
+                <div>
+                    <div style="color: #4caf50; font-weight: 800; font-size: 1.1rem;">BATE-PAPO & AVALIAÇÃO</div>
+                    <div style="color: #b0b0b0; font-size: 0.75rem;">2ª, 3ª, 4ª semana e Última semana</div>
+                </div>
+            </div>
+            <div style="color: #c0c0c0; font-size: 0.8rem; margin-bottom: 12px; line-height: 1.4;">
+                📌 Conversas semanais entre colaborador e padrinho.
+            </div>
+            <a href="https://dmpeople.com.br/shared-answer-form?form=67002d6f81f224e2c8c7805f&path=new-research-form-answer" 
+               target="_blank"
+               style="
+                   display: inline-flex;
+                   align-items: center;
+                   gap: 8px;
+                   background: #1e2a3a;
+                   color: #a5d6a7;
+                   text-decoration: none;
+                   padding: 8px 14px;
+                   border-radius: 30px;
+                   font-size: 0.8rem;
+                   font-weight: 500;
+                   transition: all 0.2s;
+               "
+               onmouseover="this.style.background='#2a3a4a'"
+               onmouseout="this.style.background='#1e2a3a'">
+                <span>🔗</span> dmpeople.com.br/form
+            </a>
+        </div>
+        
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# =========================
 # Estilo
 # =========================
 st.markdown("""
@@ -168,6 +266,25 @@ div[data-baseweb="input"] > div {
     font-size: 1.15rem;
     margin-top: 8px;
     margin-bottom: 10px;
+}
+
+/* Estilo para os links nos cards */
+.link-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #1e2a3a;
+    color: #90caf9;
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+.link-card:hover {
+    background: #2a3a4a;
+    color: #bbdef5;
 }
 </style>
 """, unsafe_allow_html=True)
