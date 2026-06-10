@@ -42,17 +42,7 @@ def file_hash(filepath):
         return hashlib.md5(f.read()).hexdigest()
 
 # =========================
-# Botão de refresh
-# =========================
-col_refresh, _ = st.columns([1, 5])
-with col_refresh:
-    if st.button("🔄 Forçar recarga TOTAL", use_container_width=True, type="primary"):
-        st.cache_data.clear()
-        st.cache_resource.clear()
-        st.rerun()
-
-# =========================
-# Função para carregar dados SEM CACHE (usando hash para forçar reload)
+# Função para carregar dados SEM CACHE
 # =========================
 def carregar_dados_sem_cache():
     """Carrega os dados SEM usar cache"""
@@ -65,48 +55,18 @@ def carregar_dados_sem_cache():
     if not ARQ_ATIVOS.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_ATIVOS}")
     
-    # Mostra informações dos arquivos
-    st.sidebar.markdown("### 📁 Arquivos carregados:")
-    
-    skap_mtime = datetime.fromtimestamp(ARQ_SKAP.stat().st_mtime)
-    skap_size = ARQ_SKAP.stat().st_size
-    st.sidebar.caption(f"📊 Skap.xlsx: {skap_mtime.strftime('%d/%m/%Y %H:%M:%S')} ({skap_size} bytes)")
-    
-    com_mtime = datetime.fromtimestamp(ARQ_COM.stat().st_mtime)
-    com_size = ARQ_COM.stat().st_size
-    st.sidebar.caption(f"💬 Comentários: {com_mtime.strftime('%d/%m/%Y %H:%M:%S')} ({com_size} bytes)")
-    
-    ativos_mtime = datetime.fromtimestamp(ARQ_ATIVOS.stat().st_mtime)
-    ativos_size = ARQ_ATIVOS.stat().st_size
-    st.sidebar.caption(f"👥 Base ativos: {ativos_mtime.strftime('%d/%m/%Y %H:%M:%S')} ({ativos_size} bytes)")
-    
-    # Calcula hash combinado
-    combined_hash = hashlib.md5(
-        f"{file_hash(ARQ_SKAP)}_{file_hash(ARQ_COM)}_{file_hash(ARQ_ATIVOS)}".encode()
-    ).hexdigest()
-    st.sidebar.caption(f"🔑 Hash dos arquivos: {combined_hash[:8]}...")
-    
     # Lê os arquivos
     skap_df = pd.read_excel(ARQ_SKAP)
     com_df = pd.read_excel(ARQ_COM)
     ativos_df = pd.read_excel(ARQ_ATIVOS)
     
-    return skap_df, com_df, ativos_df, combined_hash
+    return skap_df, com_df, ativos_df
 
 # =========================
-# Carrega os dados SEM CACHE
+# Carrega os dados
 # =========================
 try:
-    skap, comentarios, ativos, current_hash = carregar_dados_sem_cache()
-    
-    # Armazena o hash na session state para debug
-    if "last_hash" not in st.session_state:
-        st.session_state.last_hash = current_hash
-    elif st.session_state.last_hash != current_hash:
-        st.success("🔄 Dados foram atualizados! Novos arquivos detectados.")
-        st.session_state.last_hash = current_hash
-    
-    st.sidebar.success("✅ Dados carregados com sucesso!")
+    skap, comentarios, ativos = carregar_dados_sem_cache()
     
 except Exception as e:
     st.error(f"❌ Erro ao carregar os arquivos da pasta /data: {e}")
@@ -115,8 +75,6 @@ except Exception as e:
         "data/Skap.xlsx, data/Skap - comentarios.xlsx e data/Base colaboradores ativos.xlsx"
     )
     st.stop()
-
-st.divider()
 
 # =========================
 # Utils
@@ -226,6 +184,13 @@ def melhor_chave_aproximada(chave, candidatos, cutoff=0.92):
             melhor_score = score
             melhor = cand
     return melhor if melhor_score >= cutoff else ""
+
+def recarregar_cache():
+    """Função para recarregar o cache"""
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.success("✅ Cache recarregado com sucesso!")
+    st.rerun()
 
 # =========================
 # Normalização
@@ -477,6 +442,13 @@ with col_fim:
 if data_ini > data_fim:
     st.sidebar.warning("⚠️ A data de Início não pode ser maior que a data de Fim. Ajustei automaticamente.")
     data_ini, data_fim = data_fim, data_ini
+
+# =========================
+# Botão de recarregar cache (agora na sidebar, depois dos filtros)
+# =========================
+st.sidebar.markdown("---")
+if st.sidebar.button("⚙️ Recarregar cache (uso corporativo)", use_container_width=True):
+    recarregar_cache()
 
 # =========================
 # Aplicação dos filtros
