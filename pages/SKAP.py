@@ -16,6 +16,7 @@ from io import BytesIO
 from zoneinfo import ZoneInfo
 import unicodedata
 from difflib import SequenceMatcher
+import hashlib
 
 # =========================
 # Config
@@ -31,57 +32,82 @@ ARQ_COM = DATA_DIR / "Skap - comentarios.xlsx"
 ARQ_ATIVOS = DATA_DIR / "Base colaboradores ativos.xlsx"
 
 # =========================
-# Botão de refresh SIMPLES - sem cache problemático
+# Função para calcular hash do arquivo (detecta mudanças)
 # =========================
-if "force_reload" not in st.session_state:
-    st.session_state.force_reload = False
+def file_hash(filepath):
+    """Calcula o hash MD5 do arquivo para detectar mudanças"""
+    if not filepath.exists():
+        return "0"
+    with open(filepath, 'rb') as f:
+        return hashlib.md5(f.read()).hexdigest()
 
-col_refresh, col_info = st.columns([1, 3])
+# =========================
+# Botão de refresh
+# =========================
+col_refresh, _ = st.columns([1, 5])
 with col_refresh:
-    if st.button("🔄 Forçar recarga completa", use_container_width=True):
-        st.session_state.force_reload = True
+    if st.button("🔄 Forçar recarga TOTAL", use_container_width=True, type="primary"):
         st.cache_data.clear()
+        st.cache_resource.clear()
         st.rerun()
 
 # =========================
-# Função para carregar dados SEM cache problemático
+# Função para carregar dados SEM CACHE (usando hash para forçar reload)
 # =========================
-@st.cache_data(show_spinner="Carregando dados...", ttl=0)  # ttl=0 força recarga a cada execução
-def carregar_dados(force=False):
-    """Carrega os dados do Excel - sem cache persistente"""
+def carregar_dados_sem_cache():
+    """Carrega os dados SEM usar cache"""
+    
+    # Verifica se arquivos existem
     if not ARQ_SKAP.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_SKAP}")
     if not ARQ_COM.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_COM}")
     if not ARQ_ATIVOS.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {ARQ_ATIVOS}")
-
-    # Mostra timestamp dos arquivos
-    skap_mtime = datetime.fromtimestamp(ARQ_SKAP.stat().st_mtime)
-    com_mtime = datetime.fromtimestamp(ARQ_COM.stat().st_mtime)
-    ativos_mtime = datetime.fromtimestamp(ARQ_ATIVOS.stat().st_mtime)
     
-    st.caption(f"📅 Skap.xlsx: {skap_mtime.strftime('%d/%m/%Y %H:%M:%S')}")
-    st.caption(f"📅 Comentários: {com_mtime.strftime('%d/%m/%Y %H:%M:%S')}")
-    st.caption(f"📅 Base ativos: {ativos_mtime.strftime('%d/%m/%Y %H:%M:%S')}")
-
+    # Mostra informações dos arquivos
+    st.sidebar.markdown("### 📁 Arquivos carregados:")
+    
+    skap_mtime = datetime.fromtimestamp(ARQ_SKAP.stat().st_mtime)
+    skap_size = ARQ_SKAP.stat().st_size
+    st.sidebar.caption(f"📊 Skap.xlsx: {skap_mtime.strftime('%d/%m/%Y %H:%M:%S')} ({skap_size} bytes)")
+    
+    com_mtime = datetime.fromtimestamp(ARQ_COM.stat().st_mtime)
+    com_size = ARQ_COM.stat().st_size
+    st.sidebar.caption(f"💬 Comentários: {com_mtime.strftime('%d/%m/%Y %H:%M:%S')} ({com_size} bytes)")
+    
+    ativos_mtime = datetime.fromtimestamp(ARQ_ATIVOS.stat().st_mtime)
+    ativos_size = ARQ_ATIVOS.stat().st_size
+    st.sidebar.caption(f"👥 Base ativos: {ativos_mtime.strftime('%d/%m/%Y %H:%M:%S')} ({ativos_size} bytes)")
+    
+    # Calcula hash combinado
+    combined_hash = hashlib.md5(
+        f"{file_hash(ARQ_SKAP)}_{file_hash(ARQ_COM)}_{file_hash(ARQ_ATIVOS)}".encode()
+    ).hexdigest()
+    st.sidebar.caption(f"🔑 Hash dos arquivos: {combined_hash[:8]}...")
+    
+    # Lê os arquivos
     skap_df = pd.read_excel(ARQ_SKAP)
     com_df = pd.read_excel(ARQ_COM)
     ativos_df = pd.read_excel(ARQ_ATIVOS)
-
-    return skap_df, com_df, ativos_df
+    
+    return skap_df, com_df, ativos_df, combined_hash
 
 # =========================
-# Carrega os dados
+# Carrega os dados SEM CACHE
 # =========================
 try:
-    # Passa o force_reload como parâmetro para forçar recarga
-    skap, comentarios, ativos = carregar_dados(st.session_state.force_reload)
+    skap, comentarios, ativos, current_hash = carregar_dados_sem_cache()
     
-    # Reseta o flag após carregar
-    if st.session_state.force_reload:
-        st.session_state.force_reload = False
-        
+    # Armazena o hash na session state para debug
+    if "last_hash" not in st.session_state:
+        st.session_state.last_hash = current_hash
+    elif st.session_state.last_hash != current_hash:
+        st.success("🔄 Dados foram atualizados! Novos arquivos detectados.")
+        st.session_state.last_hash = current_hash
+    
+    st.sidebar.success("✅ Dados carregados com sucesso!")
+    
 except Exception as e:
     st.error(f"❌ Erro ao carregar os arquivos da pasta /data: {e}")
     st.info(
@@ -90,7 +116,6 @@ except Exception as e:
     )
     st.stop()
 
-st.success("✅ Dados carregados com sucesso!")
 st.divider()
 
 # =========================
