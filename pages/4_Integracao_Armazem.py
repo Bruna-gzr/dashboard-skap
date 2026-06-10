@@ -9,21 +9,7 @@ import plotly.graph_objects as go
 import locale
 import os
 from io import BytesIO
-import sys
 from pathlib import Path
-
-# Importar funções do app.py
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from app import aplicar_filtro, get_operacao
-
-# Tentar configurar locale para português
-try:
-    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
-except:
-    try:
-        locale.setlocale(locale.LC_TIME, 'portuguese')
-    except:
-        pass
 
 # =========================
 # Configuração da página
@@ -34,6 +20,45 @@ st.set_page_config(
     page_icon="📦",
     initial_sidebar_state="expanded"
 )
+
+# =========================
+# Funções auxiliares (substituindo as importações do app.py)
+# =========================
+
+def get_operacao():
+    """
+    Retorna a operação do usuário logado.
+    Se não houver usuário logado, retorna "Todas".
+    """
+    # Verifica se existe usuário logado no session_state
+    if "usuario" in st.session_state and "operacao" in st.session_state.usuario:
+        return st.session_state.usuario["operacao"]
+    return "Todas"
+
+def aplicar_filtro(df, filtros):
+    """
+    Aplica filtros no dataframe
+    """
+    df_filtrado = df.copy()
+    
+    if filtros.get("operacao") and filtros["operacao"] != "Todas":
+        df_filtrado = df_filtrado[df_filtrado["OPERACAO"] == filtros["operacao"]]
+    
+    if filtros.get("lideranca"):
+        df_filtrado = df_filtrado[df_filtrado["LIDERANCA"].isin(filtros["lideranca"])]
+    
+    if filtros.get("atividade"):
+        df_filtrado = df_filtrado[df_filtrado["ATIVIDADE"].isin(filtros["atividade"])]
+    
+    if filtros.get("data_inicio") and filtros.get("data_fim"):
+        if "DATA ADMISSAO" in df_filtrado.columns:
+            df_filtrado["_DATA"] = pd.to_datetime(df_filtrado["DATA ADMISSAO"], errors="coerce", dayfirst=True)
+            df_filtrado = df_filtrado[
+                (df_filtrado["_DATA"] >= pd.Timestamp(filtros["data_inicio"])) &
+                (df_filtrado["_DATA"] <= pd.Timestamp(filtros["data_fim"]))
+            ]
+    
+    return df_filtrado
 
 # Pega a operação do usuário logado
 OPERACAO_USUARIO = get_operacao()
@@ -303,7 +328,7 @@ if filtro_colaborador != "Todos":
     colaborador_selecionado = filtro_colaborador
 
 # =========================
-# Fuzzy Match - VERSÃO OTIMIZADA (mantém mesma lógica, mas rápido)
+# Fuzzy Match - VERSÃO OTIMIZADA
 # =========================
 results_list = []
 
@@ -314,8 +339,7 @@ for modulo, df_mod in integracao.items():
     if 'CPF' not in df_mod.columns:
         df_mod['CPF'] = ''
     
-    # PRÉ-CALCULAR tudo que for possível (faz uma vez só)
-    # Criar uma lista de tuplas com (nome_norm, cpf_norm, linha_completa) para busca rápida
+    # PRÉ-CALCULAR tudo que for possível
     mod_matches = []
     for _, tgt in df_mod.iterrows():
         nome_norm = str(tgt['Colaborador']).lower().strip()
@@ -326,7 +350,7 @@ for modulo, df_mod in integracao.items():
             'original': tgt
         })
     
-    # Para cada colaborador, fazer o match (mesma lógica do original, mas com pré-cálculo)
+    # Para cada colaborador, fazer o match
     for _, row in admitidos_filtrado.iterrows():
         nome_row = str(row['Colaborador']).lower().strip()
         cpf_row = str(row.get('CPF', '')).lower().strip()
@@ -335,7 +359,6 @@ for modulo, df_mod in integracao.items():
         best_match = None
         
         for tgt in mod_matches:
-            # Mesma lógica do seu fuzzy_match original
             score_name = similar(nome_row, tgt['nome'])
             score_cpf = similar(cpf_row, tgt['cpf'])
             final_score = max(score_name, score_cpf)
