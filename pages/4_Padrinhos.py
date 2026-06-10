@@ -34,7 +34,7 @@ except Exception:
 st.title("👨🏻‍🎓 Gestão de Padrinhos")
 
 # =========================
-# Card de Links dos Formulários
+# Card de Links dos Formulários (VERSÃO CORRIGIDA)
 # =========================
 st.markdown("""
 <div style="
@@ -43,19 +43,11 @@ st.markdown("""
     padding: 20px 25px;
     margin: 15px 0 25px 0;
     border: 1px solid #2a3a5c;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
 ">
-    <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
         
-        <!-- Card 1 -->
-        <div style="
-            flex: 1;
-            min-width: 280px;
-            background: #0f0f1a;
-            border-radius: 16px;
-            padding: 18px;
-            border-left: 4px solid #f0d36b;
-        ">
+        <!-- Card 1 - Avaliação do Padrinho -->
+        <div style="flex: 1; min-width: 280px; background: #0f0f1a; border-radius: 16px; padding: 18px; border-left: 4px solid #f0d36b;">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
                 <span style="font-size: 28px;">📝</span>
                 <div>
@@ -67,35 +59,14 @@ st.markdown("""
                 📌 Avaliação do colaborador novo sobre o suporte do padrinho.
             </div>
             <a href="https://dmpeople.com.br/shared-answer-form?form=670029728140718c2fd45654&path=new-research-form-answer" 
-               target="_blank"
-               style="
-                   display: inline-flex;
-                   align-items: center;
-                   gap: 8px;
-                   background: #1e2a3a;
-                   color: #90caf9;
-                   text-decoration: none;
-                   padding: 8px 14px;
-                   border-radius: 30px;
-                   font-size: 0.8rem;
-                   font-weight: 500;
-                   transition: all 0.2s;
-               "
-               onmouseover="this.style.background='#2a3a4a'"
-               onmouseout="this.style.background='#1e2a3a'">
-                <span>🔗</span> dmpeople.com.br/form
+               target="_blank" 
+               style="display: inline-flex; align-items: center; gap: 8px; background: #1e2a3a; color: #90caf9; text-decoration: none; padding: 8px 14px; border-radius: 30px; font-size: 0.8rem; font-weight: 500;">
+                🔗 dmpeople.com.br/form
             </a>
         </div>
         
-        <!-- Card 2 -->
-        <div style="
-            flex: 1;
-            min-width: 280px;
-            background: #0f0f1a;
-            border-radius: 16px;
-            padding: 18px;
-            border-left: 4px solid #4caf50;
-        ">
+        <!-- Card 2 - Bate-papo -->
+        <div style="flex: 1; min-width: 280px; background: #0f0f1a; border-radius: 16px; padding: 18px; border-left: 4px solid #4caf50;">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
                 <span style="font-size: 28px;">💬</span>
                 <div>
@@ -107,23 +78,9 @@ st.markdown("""
                 📌 Conversas semanais entre colaborador e padrinho.
             </div>
             <a href="https://dmpeople.com.br/shared-answer-form?form=67002d6f81f224e2c8c7805f&path=new-research-form-answer" 
-               target="_blank"
-               style="
-                   display: inline-flex;
-                   align-items: center;
-                   gap: 8px;
-                   background: #1e2a3a;
-                   color: #a5d6a7;
-                   text-decoration: none;
-                   padding: 8px 14px;
-                   border-radius: 30px;
-                   font-size: 0.8rem;
-                   font-weight: 500;
-                   transition: all 0.2s;
-               "
-               onmouseover="this.style.background='#2a3a4a'"
-               onmouseout="this.style.background='#1e2a3a'">
-                <span>🔗</span> dmpeople.com.br/form
+               target="_blank" 
+               style="display: inline-flex; align-items: center; gap: 8px; background: #1e2a3a; color: #a5d6a7; text-decoration: none; padding: 8px 14px; border-radius: 30px; font-size: 0.8rem; font-weight: 500;">
+                🔗 dmpeople.com.br/form
             </a>
         </div>
         
