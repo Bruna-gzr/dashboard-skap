@@ -554,7 +554,7 @@ ativos = ativos[ativos["FUNCAO"].isin(FUNCOES_PERMITIDAS)].copy()
 map_to_ativos_key = build_name_matcher(ativos[["COLABORADOR"]].copy())
 
 # =========================================================
-# SKAP
+# SKAP - Buscar Níveis e Proficiência
 # =========================================================
 skap = normalizar_colunas(skap) if not skap.empty else skap
 if not skap.empty:
@@ -562,10 +562,12 @@ if not skap.empty:
         skap["COLABORADOR"] = ""
     if "NIVEIS" not in skap.columns:
         skap["NIVEIS"] = ""
+    if "PROFICIENCIA" not in skap.columns:
+        skap["PROFICIENCIA"] = ""
     skap["NOME_KEY"] = map_to_ativos_key(skap["COLABORADOR"])
-    skap_niveis = skap[["NOME_KEY", "NIVEIS"]].dropna(subset=["NOME_KEY"]).drop_duplicates(subset=["NOME_KEY"], keep="last")
+    skap_info = skap[["NOME_KEY", "NIVEIS", "PROFICIENCIA"]].dropna(subset=["NOME_KEY"]).drop_duplicates(subset=["NOME_KEY"], keep="last")
 else:
-    skap_niveis = pd.DataFrame(columns=["NOME_KEY", "NIVEIS"])
+    skap_info = pd.DataFrame(columns=["NOME_KEY", "NIVEIS", "PROFICIENCIA"])
 
 # =========================================================
 # CICLO DE GENTE
@@ -597,7 +599,7 @@ if ciclo is not None and not ciclo.empty:
 # =========================================================
 # BASE MASTER
 # =========================================================
-base_master = ativos.merge(skap_niveis, on="NOME_KEY", how="left").merge(ciclo_map, on="NOME_KEY", how="left")
+base_master = ativos.merge(skap_info, on="NOME_KEY", how="left").merge(ciclo_map, on="NOME_KEY", how="left")
 if pront is None or pront.empty:
     base_master["PRONT_PONDERADA"] = np.nan
 else:
@@ -611,6 +613,8 @@ else:
     base_master.loc[miss, "PRONT_PONDERADA"] = base_master.loc[miss, "FIRST_LAST"].map(d_fl)
 if "NIVEIS" not in base_master.columns:
     base_master["NIVEIS"] = ""
+if "PROFICIENCIA" not in base_master.columns:
+    base_master["PROFICIENCIA"] = ""
 if "CICLO_CLASSIFICACAO_FINAL" not in base_master.columns:
     base_master["CICLO_CLASSIFICACAO_FINAL"] = ""
 MOTORISTAS_OK = {normalizar_nome("Motorista de Distribuição"), normalizar_nome("Motorista de Van"), normalizar_nome("Motorista")}
@@ -896,7 +900,7 @@ if not meses_all:
 colab_univ = base_master[[
     "NOME_KEY","NOME_SIMPLE","FIRST_LAST",
     "COLABORADOR","OPERACAO","OPER_KEY","ATIVIDADE",
-    "FUNCAO","DATA_ADM_DT","ADMISSAO","NIVEIS",
+    "FUNCAO","DATA_ADM_DT","ADMISSAO","NIVEIS","PROFICIENCIA",
     "PRONT_PONDERADA","PRONT_FAIXA","PRONT_COR",
     "CICLO_CLASSIFICACAO_FINAL"
 ]].copy()
@@ -1122,11 +1126,11 @@ f_oper = st.sidebar.selectbox("Operação", ["Todos"] + ops_disp, index=0)
 # Filtrar funções disponíveis baseado na operação selecionada
 def get_funcoes_disponiveis(operacao):
     if operacao == "CDR BAHIA" or operacao == "VIDROS PR":
-        return ["Operador", "Ajudante de armazem"]
+        return ["Todos", "Operador", "Ajudante de armazem"]
     elif operacao == "ESTÂNCIA" or operacao == "PONTA GROSSA":
-        return ["Operador", "Ajudante de armazem", "Motorista"]
+        return ["Todos", "Operador", "Ajudante de armazem", "Motorista"]
     elif operacao == "CDL CAMAÇARI":
-        return ["Ajudante de Distribuição", "Motorista de Distribuição", "Motorista de Van"]
+        return ["Todos", "Ajudante de Distribuição", "Motorista de Distribuição", "Motorista de Van"]
     else:
         return ["Todos"] + FUNCOES_PERMITIDAS
 
@@ -1568,7 +1572,9 @@ with right:
                     ciclo_val = ""
             st.metric("Ciclo de gente", ciclo_val)
         with cD:
-            st.metric("Pontuação Total (média)", "-" if df.empty else f"{df['TOTAL_PTS'].mean():.1f}")
+            niveis_val = ref_last_colab.get("NIVEIS", "-") if ref_last_colab is not None else "-"
+            proficiencia_val = ref_last_colab.get("PROFICIENCIA", "-") if ref_last_colab is not None else "-"
+            st.metric("SKAP", f"{niveis_val} / {proficiencia_val}")
     st.divider()
     st.subheader("📊 Pontuação x mês")
     if df.empty:
@@ -1685,7 +1691,7 @@ with right:
                 continue
             new_cols.append(col)
         out_flat.columns = new_cols
-        MAX_ROWS_STYLE = 200  # Reduzido de 800 para 200
+        MAX_ROWS_STYLE = 200
         if len(out_flat) > MAX_ROWS_STYLE:
             st.warning(f"Mostrando só os primeiros {MAX_ROWS_STYLE} registros com formatação (limite do Streamlit).")
             out_view = out_flat.head(MAX_ROWS_STYLE).copy()
