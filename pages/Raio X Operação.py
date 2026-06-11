@@ -1515,7 +1515,6 @@ with left:
         )
         rank["MEDIA_TOTAL"] = rank["MEDIA_TOTAL"].map(lambda x: f"{x:.1f}")
         rank_out = rank[["COLABORADOR", "FUNCAO", "MEDIA_TOTAL"]].rename(columns={"FUNCAO":"CARGO"})
-        # Remover a coluna de índice que aparece antes do nome
         st.dataframe(centralizar_tabela(rank_out), use_container_width=True, height=360)
 
 with right:
@@ -1571,7 +1570,7 @@ with right:
                 if normalizar_nome(ciclo_val) == "NAN":
                     ciclo_val = ""
             st.metric("Ciclo de gente", ciclo_val)
-                with cD:
+        with cD:
             niveis_val = ref_last_colab.get("NIVEIS", "-") if ref_last_colab is not None else "-"
             proficiencia_val = ref_last_colab.get("PROFICIENCIA", "-") if ref_last_colab is not None else "-"
             
@@ -1583,7 +1582,8 @@ with right:
                 pass  # mantém o valor original se não for numérico
             
             st.metric("SKAP", f"{niveis_val}")
-            st.caption(f"Proficiência: {proficiencia_val}")    st.divider()
+            st.caption(f"Proficiência: {proficiencia_val}")
+    st.divider()
     st.subheader("📊 Pontuação x mês")
     if df.empty:
         st.info("Sem dados para o gráfico com os filtros atuais.")
