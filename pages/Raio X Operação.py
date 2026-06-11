@@ -396,6 +396,16 @@ ATIV_EMPT_KEY = normalizar_nome("EMPURRADA")
 ATIV_TRANSF_KEY = normalizar_nome("TRANSFERÊNCIA INSUMOS")
 DATA_CORTE_PG = pd.Timestamp("2026-01-01")
 
+# Novas operações e suas datas de corte
+OPERACOES_CORTE = {
+    "CD ARACAJU": "2026-05-01",
+    "ESTÂNCIA": "2026-05-01",
+    "CDR BAHIA": "2026-06-01",
+    "CDL CAMAÇARI": "2026-06-01",
+    "CD SALVADOR": "2026-06-01",
+    "VIDROS PR": "2026-01-01",
+}
+
 def is_ponta_grossa_operacao(operacao: str) -> bool:
     op_norm = norm_operacao(operacao)
     return op_norm in {norm_operacao("PONTA GROSSA"), norm_operacao("LATA PONTA GROSSA")}
@@ -721,10 +731,10 @@ if rv_empt is not None and not rv_empt.empty:
             .reset_index()
         )
 
-ind_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PDV", "BEES", "TML_MIN", "JL", "STATUS", "STATUS_RAW"])
+ind_m = pd.DataFrame(columns=["NOME_KEY", "MES", "PDV", "BEES", "TML_MIN", "JL", "QUANTIDADE_SAIDAS", "STATUS", "STATUS_RAW"])
 if ind is not None and not ind.empty:
     ind = normalizar_colunas(ind)
-    for c in ["COLABORADOR", "DATA", "PDV", "BEES", "TML (MIN)", "JL", "STATUS"]:
+    for c in ["COLABORADOR", "DATA", "PDV", "BEES", "TML (MIN)", "JL", "QUANTIDADE SAÍDAS", "STATUS"]:
         if c not in ind.columns:
             ind[c] = ""
     ind["NOME_KEY"] = map_to_ativos_key(ind["COLABORADOR"])
@@ -735,6 +745,7 @@ if ind is not None and not ind.empty:
     ind["BEES_NUM"] = ind["BEES"].apply(parse_percent)
     ind["TML_MIN"] = ind["TML (MIN)"].apply(parse_time_mmss)
     ind["JL_NUM"] = ind["JL"].apply(parse_percent)
+    ind["QUANTIDADE_SAIDAS_NUM"] = safe_float(ind["QUANTIDADE SAÍDAS"])
     ind["STATUS_NORM"] = ind["STATUS"].astype(str).map(normalizar_nome)
     ind["STATUS_RAW"] = ind["STATUS"].astype(str)
     def status_final(s):
@@ -761,6 +772,7 @@ if ind is not None and not ind.empty:
             BEES=("BEES_NUM", "mean"),
             TML_MIN=("TML_MIN", "mean"),
             JL=("JL_NUM", "mean"),
+            QUANTIDADE_SAIDAS=("QUANTIDADE_SAIDAS_NUM", "sum"),
             STATUS=("STATUS_NORM", pick_status),
             STATUS_RAW=("STATUS_RAW", pick_status_raw),
         )
@@ -899,7 +911,7 @@ def left_join(grid_, df_, cols_keep):
         return grid_
     return grid_.merge(df_[["NOME_KEY", "MES"] + cols_keep], on=["NOME_KEY", "MES"], how="left")
 
-grid = left_join(grid, ind_m, ["PDV","BEES","TML_MIN","JL","STATUS","STATUS_RAW"])
+grid = left_join(grid, ind_m, ["PDV","BEES","TML_MIN","JL","QUANTIDADE_SAIDAS","STATUS","STATUS_RAW"])
 grid = left_join(grid, abs_m, ["ABS"])
 grid = left_join(grid, vales_m, ["VALES"])
 grid = left_join(grid, acid_m, ["ACIDENTE"])
@@ -926,6 +938,18 @@ grid["_ADM_MES_DT"] = pd.to_datetime(grid["DATA_ADM_DT"], errors="coerce").dt.to
 grid = grid[grid["_MES_DT"] > grid["_ADM_MES_DT"]].copy()
 grid["MÊS"] = grid["MES"].apply(month_label)
 
+# Aplicar cortes de data para novas operações
+def aplicar_corte_operacao(df):
+    mask = pd.Series(True, index=df.index)
+    for op, data_corte in OPERACOES_CORTE.items():
+        op_mask = df["OPERACAO"] == op
+        data_corte_dt = pd.Timestamp(data_corte)
+        mask_corte = df["_MES_DT"] >= data_corte_dt
+        mask = mask & (~op_mask | mask_corte)
+    return df[mask].copy()
+
+grid = aplicar_corte_operacao(grid)
+
 mask_pg = grid.apply(lambda r: is_ponta_grossa_operacao(r.get("OPERACAO", "")), axis=1)
 mask_pg_data = grid["_MES_DT"] >= DATA_CORTE_PG
 grid = grid[(~mask_pg) | (mask_pg_data)].copy()
@@ -946,6 +970,9 @@ def calc_pontos_row(row) -> dict:
     is_pg_apoio = is_ponta_grossa_apoio(row.get("OPERACAO", ""), row.get("ATIVIDADE", ""))
     is_pg_empt = is_ponta_grossa_empurrada_transf(row.get("OPERACAO", ""), row.get("ATIVIDADE", ""))
     
+    # Operações especiais: CDR BAHIA e VIDROS PR
+    is_operacao_especial = row.get("OPERACAO", "") in ["CDR BAHIA", "VIDROS PR"]
+    
     res = {
         "PTS_PDV": 0, "PTS_BEES": 0, "PTS_TML": 0, "PTS_JL": 0,
         "PTS_ABS": 0, "PTS_VALES": 0, "PTS_ACIDENTE": 0, "PTS_DTO": 0,
@@ -953,6 +980,16 @@ def calc_pontos_row(row) -> dict:
         "PTS_RV_EMPT": 0,
         "TOTAL_PTS": 0
     }
+    
+    if is_operacao_especial:
+        if int(row.get("ABS", 0) or 0) == 0:
+            res["PTS_ABS"] = 10
+        if int(row.get("ACIDENTE", 0) or 0) == 0:
+            res["PTS_ACIDENTE"] = 10
+        if int(row.get("DTO", 0) or 0) == 0:
+            res["PTS_DTO"] = 10
+        res["TOTAL_PTS"] = res["PTS_ABS"] + res["PTS_ACIDENTE"] + res["PTS_DTO"]
+        return res
     
     if is_pg_empt:
         if int(row.get("ABS", 0) or 0) == 0:
@@ -1040,6 +1077,14 @@ pts_df = grid.apply(calc_pontos_row, axis=1, result_type="expand")
 grid = pd.concat([grid, pts_df], axis=1)
 
 def risco_to_row(total_pts: int, funcao: str, operacao: str = "", atividade: str = "") -> str:
+    # Operações especiais: CDR BAHIA e VIDROS PR usam mesma regra de CD Cascavel
+    is_operacao_especial = operacao in ["CDR BAHIA", "VIDROS PR"]
+    
+    if is_operacao_especial:
+        if int(total_pts) >= 10:
+            return "NÃO"
+        return "SIM"
+    
     if is_ponta_grossa_empurrada_transf(operacao, atividade):
         if int(total_pts) < 10:
             return "SIM"
@@ -1073,9 +1118,27 @@ if "STATUS" in grid.columns:
 st.sidebar.header("Filtros")
 ops_disp = sorted(base_master["OPERACAO"].dropna().astype(str).unique().tolist())
 f_oper = st.sidebar.selectbox("Operação", ["Todos"] + ops_disp, index=0)
+
+# Filtrar funções disponíveis baseado na operação selecionada
+def get_funcoes_disponiveis(operacao):
+    if operacao == "CDR BAHIA" or operacao == "VIDROS PR":
+        return ["Operador", "Ajudante de armazem"]
+    elif operacao == "ESTÂNCIA" or operacao == "PONTA GROSSA":
+        return ["Operador", "Ajudante de armazem", "Motorista"]
+    elif operacao == "CDL CAMAÇARI":
+        return ["Ajudante de Distribuição", "Motorista de Distribuição", "Motorista de Van"]
+    else:
+        return ["Todos"] + FUNCOES_PERMITIDAS
+
+if f_oper != "Todos":
+    funcoes_disponiveis = get_funcoes_disponiveis(f_oper)
+else:
+    funcoes_disponiveis = ["Todos"] + FUNCOES_PERMITIDAS
+
+f_func = st.sidebar.selectbox("Função", funcoes_disponiveis, index=0)
+
 mes_opts = ["Todos"] + [month_label(m) for m in meses_all]
 f_mes = st.sidebar.selectbox("Período", mes_opts, index=0)
-f_func = st.sidebar.selectbox("Função", ["Todos"] + FUNCOES_PERMITIDAS, index=0)
 
 if f_oper != "Todos" and is_ponta_grossa_operacao(f_oper):
     ativs_base = sorted(base_master["ATIVIDADE"].dropna().astype(str).unique().tolist())
@@ -1089,36 +1152,31 @@ else:
     ativs = sorted(base_master["ATIVIDADE"].dropna().astype(str).unique().tolist())
 
 f_ativ = st.sidebar.selectbox("Atividade", ["Todos"] + ativs, index=0)
-min_adm = pd.to_datetime(base_master["DATA_ADM_DT"], errors="coerce").min()
-max_adm = pd.to_datetime(base_master["DATA_ADM_DT"], errors="coerce").max()
-if pd.isna(min_adm) or pd.isna(max_adm):
-    min_adm = pd.to_datetime("2024-01-01")
-    max_adm = pd.to_datetime(datetime.today().date())
-st.sidebar.subheader("Período de admissão")
-col_ini, col_fim = st.sidebar.columns(2)
-with col_ini:
-    adm_ini = st.date_input("Início", value=min_adm.date(), min_value=min_adm.date(), max_value=max_adm.date(), format="DD/MM/YYYY")
-with col_fim:
-    adm_fim = st.date_input("Fim", value=max_adm.date(), min_value=min_adm.date(), max_value=max_adm.date(), format="DD/MM/YYYY")
-if adm_ini > adm_fim:
-    st.sidebar.warning("⚠️ Início maior que Fim. Ajustei automaticamente.")
-    adm_ini, adm_fim = adm_fim, adm_ini
-base_fil = base_master.copy()
-if f_oper != "Todos":
-    base_fil = base_fil[base_fil["OPERACAO"] == f_oper]
-if f_func != "Todos":
-    base_fil = base_fil[base_fil["FUNCAO"] == f_func]
-if f_ativ != "Todos":
-    base_fil = base_fil[base_fil["ATIVIDADE"].astype(str) == str(f_ativ)]
-base_fil["DATA_ADM_DT"] = pd.to_datetime(base_fil["DATA_ADM_DT"], errors="coerce")
-base_fil = base_fil[(base_fil["DATA_ADM_DT"].dt.date >= adm_ini) & (base_fil["DATA_ADM_DT"].dt.date <= adm_fim)]
-colabs_disp = sorted(base_fil["COLABORADOR"].dropna().astype(str).unique().tolist())
+
+colabs_disp = sorted(base_master["COLABORADOR"].dropna().astype(str).unique().tolist())
 f_colab = st.sidebar.selectbox("Colaborador", ["Todos"] + colabs_disp, index=0)
 
 # =========================================================
 # REGRAS DE PONTUAÇÃO
 # =========================================================
 def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
+    if operacao in ["CDR BAHIA", "VIDROS PR"]:
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Regras de pontuação")
+        regras = [
+            ("ABS", 0, 10, "Qtde (== 0)"),
+            ("ACIDENTE", 0, 10, "Qtde (== 0)"),
+            ("Desvios DTO", 0, 10, "Qtde (== 0)"),
+        ]
+        for nome, meta, peso, regra in regras:
+            st.sidebar.write(f"• **{nome}** — Meta: **{meta}** / Peso: **{peso}** ({regra})")
+        st.sidebar.markdown("**Total de pontos possíveis:** **30**")
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Regras para RISCO DE TO?")
+        st.sidebar.write("• **NÃO** — Pontuação total >= 10")
+        st.sidebar.write("• **SIM** — Pontuação total < 10")
+        return
+    
     if funcao == "Todos":
         mode = "DISTRIB"
     else:
@@ -1138,7 +1196,10 @@ def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
             st.sidebar.write(f"• **{nome}** — Meta: **{meta}** / Peso: **{peso}** ({regra})")
         st.sidebar.markdown("**Total de pontos possíveis:** **20**")
         st.sidebar.caption("**Média RV:** Exibida em R$ (sem pontuação)")
-        st.sidebar.caption("**RISCO DE TO:** SIM (pts < 10) / NÃO (pts >= 10)")
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Regras para RISCO DE TO?")
+        st.sidebar.write("• **SIM** — Pontos < 10")
+        st.sidebar.write("• **NÃO** — Pontos >= 10")
         return
     
     is_pg_ctx = operacao != "Todos" and atividade != "Todos" and is_ponta_grossa_apoio(operacao, atividade)
@@ -1163,6 +1224,11 @@ def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
         for nome, meta, peso, regra in regras:
             st.sidebar.write(f"• **{nome}** — Meta: **{meta}** / Peso: **{peso}** ({regra})")
         st.sidebar.markdown("**Total de pontos possíveis:** **40**")
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Regras para RISCO DE TO?")
+        st.sidebar.write("• **NÃO** — Pontuação total > 25")
+        st.sidebar.write("• **ATENÇÃO** — Pontuação total >= 20 e <= 25")
+        st.sidebar.write("• **SIM** — Pontuação total < 20")
         return
     
     if operacao == "Todos" or funcao == "Todos":
@@ -1171,6 +1237,15 @@ def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
         total_arm = sum(PONTOS_ARMAZEM.values())
         st.sidebar.write(f"• Total possível (Distribuição): **{total_disp}**")
         st.sidebar.write(f"• Total possível (Armazém): **{total_arm}**")
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Regras para RISCO DE TO?")
+        st.sidebar.write("**Distribuição:**")
+        st.sidebar.write("• **NÃO** — Pontuação total > 20")
+        st.sidebar.write("• **ATENÇÃO** — Pontuação total >= 15 e <= 20")
+        st.sidebar.write("• **SIM** — Pontuação total < 15")
+        st.sidebar.write("**Armazém:**")
+        st.sidebar.write("• **NÃO** — Pontuação total >= 10")
+        st.sidebar.write("• **SIM** — Pontuação total < 10")
         return
     
     regras = []
@@ -1195,6 +1270,15 @@ def render_regras_sidebar(operacao: str, funcao: str, atividade: str):
         meta_txt = "-" if meta is None else str(meta)
         st.sidebar.write(f"• **{nome}** — Meta: **{meta_txt}** / Peso: **{peso}** ({regra})")
     st.sidebar.markdown(f"**Total de pontos possíveis:** **{total}**")
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Regras para RISCO DE TO?")
+    if mode == "DISTRIB":
+        st.sidebar.write("• **NÃO** — Pontuação total > 20")
+        st.sidebar.write("• **ATENÇÃO** — Pontuação total >= 15 e <= 20")
+        st.sidebar.write("• **SIM** — Pontuação total < 15")
+    else:
+        st.sidebar.write("• **NÃO** — Pontuação total >= 10")
+        st.sidebar.write("• **SIM** — Pontuação total < 10")
 
 render_regras_sidebar(f_oper, f_func, f_ativ)
 st.sidebar.markdown("---")
@@ -1206,7 +1290,7 @@ try:
         st.sidebar.caption("🕒 Última atualização: não disponível")
 except Exception:
     st.sidebar.caption("🕒 Última atualização: não disponível")
-if st.sidebar.button("🔄 Atualizar dados agora", use_container_width=True):
+if st.sidebar.button("⚙️ Recarregar cachê (uso corporativo)", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
 
@@ -1220,8 +1304,6 @@ if f_func != "Todos":
     df = df[df["FUNCAO"] == f_func]
 if f_ativ != "Todos":
     df = df[df["ATIVIDADE"].astype(str) == str(f_ativ)]
-df["DATA_ADM_DT"] = pd.to_datetime(df["DATA_ADM_DT"], errors="coerce")
-df = df[(df["DATA_ADM_DT"].dt.date >= adm_ini) & (df["DATA_ADM_DT"].dt.date <= adm_fim)]
 if f_mes != "Todos":
     mm, yy = f_mes.split("/")
     mes_key = f"{yy}-{mm}"
@@ -1233,6 +1315,9 @@ if f_oper == "CD PETRÓPOLIS" or ("OPERACAO" in df.columns and (df["OPERACAO"] =
     mask_petropolis = df["OPERACAO"] == "CD PETRÓPOLIS"
     df_petropolis_corte = df["MES"].ge("2026-01")
     df = df[(~mask_petropolis) | (df_petropolis_corte)].copy()
+
+# Aplicar novamente os cortes para as novas operações no df filtrado
+df = aplicar_corte_operacao(df)
 
 mask_pg_filter = df.apply(lambda r: is_ponta_grossa_operacao(r.get("OPERACAO", "")), axis=1)
 mask_pg_data_filter = df["_MES_DT"] >= DATA_CORTE_PG
@@ -1267,6 +1352,7 @@ if not df.empty:
         "PCT_RV": df["PCT_RV"].mean(),
         "RECARGAS": df["RECARGAS"].mean() if "RECARGAS" in df.columns else np.nan,
         "RV_EMPT_VALOR": df["RV_EMPT_VALOR"].mean() if "RV_EMPT_VALOR" in df.columns else np.nan,
+        "QUANTIDADE_SAIDAS": df["QUANTIDADE_SAIDAS"].mean() if "QUANTIDADE_SAIDAS" in df.columns else np.nan,
     }
     if f_colab != "Todos":
         ref_last_colab = df.sort_values("MES", ascending=False).iloc[0].copy()
@@ -1278,6 +1364,7 @@ elif ref_last_colab is not None:
 hide_bees_ctx = (ctx_oper_key == OP_LONDRINA_KEY)
 is_pg_ctx = (f_oper != "Todos" and f_ativ != "Todos" and is_ponta_grossa_apoio(f_oper, f_ativ))
 is_pg_empt_ctx = (f_oper != "Todos" and f_ativ != "Todos" and is_ponta_grossa_empurrada_transf(f_oper, f_ativ))
+is_operacao_especial_ctx = (f_oper in ["CDR BAHIA", "VIDROS PR"])
 
 # =========================================================
 # CORES
@@ -1320,6 +1407,12 @@ def color_rv_cell(v):
 # =========================================================
 # LAYOUT
 # =========================================================
+# Exibir nome da operação selecionada abaixo do título
+if f_oper != "Todos":
+    st.markdown(f"<h3 style='text-align:center; color:#888; margin-top:-10px;'>{f_oper}</h3>", unsafe_allow_html=True)
+else:
+    st.markdown("<h3 style='text-align:center; color:#888; margin-top:-10px;'>Todas as Operações</h3>", unsafe_allow_html=True)
+
 left, right = st.columns([1.05, 2.95], gap="large")
 
 with left:
@@ -1366,8 +1459,13 @@ with left:
         ad_res   = fmt_pct(ref_avg.get("AD_CHECKLIST", np.nan)) or "-"
         logon_res = fmt_pct(ref_avg.get("LOGON", np.nan)) or "-"
         quedas_res = "-" if pd.isna(ref_avg.get("QUEDAS", np.nan)) else f"{ref_avg.get('QUEDAS', 0):.2f}"
+        qtd_saidas_res = "-" if pd.isna(ref_avg.get("QUANTIDADE_SAIDAS", np.nan)) else f"{ref_avg.get('QUANTIDADE_SAIDAS', 0):.0f}"
         
-        if is_pg_empt_ctx:
+        if is_operacao_especial_ctx:
+            linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}")
+            linha_ind("⚠️", "ACIDENTE", f"{ref_avg.get('ACIDENTE', 0):.2f}")
+            linha_ind("📄", "Desvios DTO", f"{ref_avg.get('DTO', 0):.2f}")
+        elif is_pg_empt_ctx:
             linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}")
             linha_ind("⚠️", "ACIDENTE", f"{ref_avg.get('ACIDENTE', 0):.2f}")
             linha_ind("💰", "Média RV", rv_empt_res)
@@ -1394,6 +1492,7 @@ with left:
                 linha_ind("📄", "Desvios DTO", f"{ref_avg.get('DTO', 0):.2f}")
                 linha_ind("🔁", "Recargas", rec_res)
                 linha_ind("📈", "Média RV", rv_res)
+                linha_ind("🚛", "Quantidade Saídas", qtd_saidas_res)
             if view_mode == "ARMAZEM":
                 linha_ind("🩹", "ABS", f"{ref_avg.get('ABS', 0):.2f}")
                 linha_ind("⚠️", "ACIDENTE", f"{ref_avg.get('ACIDENTE', 0):.2f}")
@@ -1412,6 +1511,7 @@ with left:
         )
         rank["MEDIA_TOTAL"] = rank["MEDIA_TOTAL"].map(lambda x: f"{x:.1f}")
         rank_out = rank[["COLABORADOR", "FUNCAO", "MEDIA_TOTAL"]].rename(columns={"FUNCAO":"CARGO"})
+        # Remover a coluna de índice que aparece antes do nome
         st.dataframe(centralizar_tabela(rank_out), use_container_width=True, height=360)
 
 with right:
@@ -1476,7 +1576,7 @@ with right:
     else:
         g = df.groupby(["MES"], dropna=False)["TOTAL_PTS"].mean().reset_index().sort_values("MES")
         g["MÊS"] = g["MES"].apply(month_label)
-        fig = px.bar(g, x="MÊS", y="TOTAL_PTS", text=g["TOTAL_PTS"].map(lambda x: f"{x:.0f}"))
+        fig = px.bar(g, x="MÊS", y="TOTAL_PTS", text=g["TOTAL_PTS"].map(lambda x: f"{x:.0f}"), color_discrete_sequence=["#00acc1"])
         fig.update_layout(yaxis_title="Pontuação (TOTAL)", xaxis_title="")
         st.plotly_chart(fig, use_container_width=True)
     st.divider()
@@ -1495,6 +1595,7 @@ with right:
         t["MÉDIA RV"] = t.get("PCT_RV", np.nan).apply(fmt_pct)
         t["RV_EMPT_FMT"] = t.get("RV_EMPT_VALOR", np.nan).apply(fmt_currency_br)
         t["RECARGAS_TXT"] = t.get("RECARGAS", 0).fillna(0).astype(int).astype(str)
+        t["QUANTIDADE_SAIDAS_TXT"] = t.get("QUANTIDADE_SAIDAS", 0).fillna(0).astype(int).astype(str)
         t["ABS"] = t["ABS"].astype(int)
         t["VALES"] = t["VALES"].astype(int)
         t["ACIDENTE"] = t["ACIDENTE"].astype(int)
@@ -1518,7 +1619,11 @@ with right:
             if col_pts is not None:
                 out[(nome, "PTS")] = t[col_pts]
         
-        if is_pg_empt_ctx:
+        if is_operacao_especial_ctx:
+            add_indicador("ABS", "ABS", "PTS_ABS")
+            add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
+            add_indicador("Desvios DTO", "DTO", "PTS_DTO")
+        elif is_pg_empt_ctx:
             add_indicador("ABS", "ABS", "PTS_ABS")
             add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
             out[("Média RV", "Resultado")] = t["RV_EMPT_FMT"]
@@ -1553,7 +1658,8 @@ with right:
             rec_col.loc[mask_fun] = t.loc[mask_fun, "RECARGAS_TXT"]
             out[("Recargas", "Resultado")] = rec_col
             out[("Média RV", "Resultado")] = t["MÉDIA RV"]
-        if (not is_pg_ctx and not is_pg_empt_ctx) and view_mode == "ARMAZEM":
+            out[("Quantidade Saídas", "Resultado")] = t["QUANTIDADE_SAIDAS_TXT"]
+        if (not is_pg_ctx and not is_pg_empt_ctx and not is_operacao_especial_ctx) and view_mode == "ARMAZEM":
             add_indicador("ABS", "ABS", "PTS_ABS")
             add_indicador("ACIDENTE", "ACIDENTE", "PTS_ACIDENTE")
             add_indicador("Desvios DTO", "DTO", "PTS_DTO")
@@ -1579,7 +1685,7 @@ with right:
                 continue
             new_cols.append(col)
         out_flat.columns = new_cols
-        MAX_ROWS_STYLE = 800
+        MAX_ROWS_STYLE = 200  # Reduzido de 800 para 200
         if len(out_flat) > MAX_ROWS_STYLE:
             st.warning(f"Mostrando só os primeiros {MAX_ROWS_STYLE} registros com formatação (limite do Streamlit).")
             out_view = out_flat.head(MAX_ROWS_STYLE).copy()
