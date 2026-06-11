@@ -1571,20 +1571,19 @@ with right:
                 if normalizar_nome(ciclo_val) == "NAN":
                     ciclo_val = ""
             st.metric("Ciclo de gente", ciclo_val)
-        with cD:
-    niveis_val = ref_last_colab.get("NIVEIS", "-") if ref_last_colab is not None else "-"
-    proficiencia_val = ref_last_colab.get("PROFICIENCIA", "-") if ref_last_colab is not None else "-"
-    
-    # Formatar proficiencia como percentual se for numérico
-    try:
-        proficiencia_num = float(proficiencia_val)
-        proficiencia_val = f"{proficiencia_num:.1f}%"
-    except (ValueError, TypeError):
-        pass  # mantém o valor original se não for numérico
-    
-    st.metric("SKAP", f"{niveis_val}")
-    st.caption(f"Proficiência: {proficiencia_val}")
-    st.divider()
+                with cD:
+            niveis_val = ref_last_colab.get("NIVEIS", "-") if ref_last_colab is not None else "-"
+            proficiencia_val = ref_last_colab.get("PROFICIENCIA", "-") if ref_last_colab is not None else "-"
+            
+            # Formatar proficiencia como percentual se for numérico
+            try:
+                proficiencia_num = float(proficiencia_val)
+                proficiencia_val = f"{proficiencia_num:.1f}%"
+            except (ValueError, TypeError):
+                pass  # mantém o valor original se não for numérico
+            
+            st.metric("SKAP", f"{niveis_val}")
+            st.caption(f"Proficiência: {proficiencia_val}")    st.divider()
     st.subheader("📊 Pontuação x mês")
     if df.empty:
         st.info("Sem dados para o gráfico com os filtros atuais.")
