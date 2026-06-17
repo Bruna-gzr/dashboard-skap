@@ -1083,6 +1083,23 @@ def montar_farol_por_etapa(base_oper, df_nps, df_bp, hoje):
 
             tmp = tmp.merge(real, on="contrato_id", how="left")
 
+            # Adiciona a coluna do padrinho
+            if etapa["tipo"] == "NPS":
+                col_padrinho = "Informe o nome do seu Padrinho."
+                if col_padrinho in form_et.columns:
+                    padrinho = (
+                        form_et.dropna(subset=[col_realizacao])
+                        .dropna(subset=["contrato_id"])
+                        .groupby("contrato_id", as_index=False)[col_padrinho]
+                        .first()
+                        .rename(columns={col_padrinho: "Padrinho"})
+                    )
+                    tmp = tmp.merge(padrinho, on="contrato_id", how="left")
+                else:
+                    tmp["Padrinho"] = pd.NA
+            else:
+                tmp["Padrinho"] = pd.NA
+
         tmp["Status"] = tmp.apply(
             lambda r: status_prazo(r["Data Realização"], r["Prazo Mín"], r["Prazo Máx"], hoje),
             axis=1,
@@ -1189,8 +1206,8 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
 
     tabela = df_farol.copy()
     cols_show = [
-        "Status Colaborador", "Operação", "Colaborador", "CPF", "Cargo",
-        "Data_dt", "Etapa", "Prazo Mín", "Prazo Máx", "Data Realização",
+        "Operação", "Colaborador", "CPF", "Cargo",
+        "Data_dt", "Etapa", "Padrinho", "Prazo Mín", "Prazo Máx", "Data Realização",
         "Dias", "Status"
     ]
     cols_show = [c for c in cols_show if c in tabela.columns]
@@ -1198,8 +1215,8 @@ def render_farol(df_farol: pd.DataFrame, titulo: str, key_prefix: str):
     tabela = formatar_datas_para_tabela(tabela)
 
     ordem_final = [
-        "Status Colaborador", "Operação", "Colaborador", "CPF", "Cargo",
-        "Data Admissão", "Etapa", "Prazo Mín", "Prazo Máx", "Data Realização",
+        "Operação", "Colaborador", "CPF", "Cargo",
+        "Data Admissão", "Etapa", "Padrinho", "Prazo Mín", "Prazo Máx", "Data Realização",
         "Dias", "Status"
     ]
     tabela = tabela[[c for c in ordem_final if c in tabela.columns]]
@@ -1351,7 +1368,7 @@ def render_grafico_resposta(df: pd.DataFrame, coluna: str, key_prefix: str):
             </div>
             """,
             unsafe_allow_html=True
-        )
+            )
 
 def render_lista_respostas(df: pd.DataFrame, coluna: str):
     titulo_limpo = str(coluna).split("__")[0].split(".")[0]
