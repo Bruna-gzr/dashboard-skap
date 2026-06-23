@@ -233,6 +233,111 @@ def clean_cpf(x) -> str:
         s = "0" + s
     return s if len(s) == 11 else ""
 
+def comparar_cpf_inteligente(cpf_resp: str, cpf_base: str) -> tuple[bool, float, str]:
+    """
+    Compara CPFs com diferentes níveis de completude
+    
+    Retorna: (match, score, tipo_match)
+    - match: True se considerar match
+    - score: 0-100 baseado na similaridade
+    - tipo_match: descrição do tipo de match
+    """
+    if not cpf_resp or not cpf_base:
+        return False, 0, "SEM_CPF"
+    
+    # Limpa ambos
+    cpf_resp_clean = re.sub(r"\D", "", str(cpf_resp))
+    cpf_base_clean = re.sub(r"\D", "", str(cpf_base))
+    
+    # Se ambos estão vazios
+    if not cpf_resp_clean or not cpf_base_clean:
+        return False, 0, "SEM_CPF"
+    
+    # Caso 1: CPF completo (11 dígitos) - match exato
+    if len(cpf_resp_clean) == 11 and len(cpf_base_clean) == 11:
+        if cpf_resp_clean == cpf_base_clean:
+            return True, 100.0, "CPF_EXATO_COMPLETO"
+        return False, 0, "CPF_DIVERGENTE"
+    
+    # Caso 2: Um dos CPFs está incompleto, mas tem pelo menos 9 dígitos
+    # (últimos 9 dígitos são os mais importantes para identificação)
+    if len(cpf_resp_clean) >= 9 and len(cpf_base_clean) >= 9:
+        # Pega os últimos 9 dígitos de cada
+        resp_sufixo = cpf_resp_clean[-9:]
+        base_sufixo = cpf_base_clean[-9:]
+        
+        if resp_sufixo == base_sufixo:
+            # Verifica se os dígitos restantes (se existirem) também batem
+            resp_prefixo = cpf_resp_clean[:-9] if len(cpf_resp_clean) > 9 else ""
+            base_prefixo = cpf_base_clean[:-9] if len(cpf_base_clean) > 9 else ""
+            
+            # Se ambos têm prefixo e são diferentes, score menor
+            if resp_prefixo and base_prefixo and resp_prefixo != base_prefixo:
+                return True, 85.0, "CPF_SUFIXO_IGUAL_PREFIXO_DIVERGENTE"
+            
+            # Classifica o tipo de match baseado na completude
+            if len(cpf_resp_clean) == 11 and len(cpf_base_clean) == 11:
+                return True, 100.0, "CPF_EXATO_COMPLETO"
+            elif len(cpf_resp_clean) == 11 and len(cpf_base_clean) < 11:
+                return True, 95.0, "CPF_RESP_COMPLETO_BASE_INCOMPLETO"
+            elif len(cpf_resp_clean) < 11 and len(cpf_base_clean) == 11:
+                return True, 95.0, "CPF_RESP_INCOMPLETO_BASE_COMPLETO"
+            else:
+                return True, 90.0, "CPF_AMBOS_INCOMPLETOS_SUFIXO_IGUAL"
+    
+    # Caso 3: Similaridade de sequência (fallback)
+    if len(cpf_resp_clean) >= 6 and len(cpf_base_clean) >= 6:
+        # Usa SequenceMatcher para similaridade
+        ratio = SequenceMatcher(None, cpf_resp_clean, cpf_base_clean).ratio()
+        if ratio > 0.85:  # 85% de similaridade
+            tipo = "CPF_SIMILARIDADE" if ratio < 0.95 else "CPF_QUASE_EXATO"
+            return True, ratio * 100, tipo
+    
+    return False, 0, "SEM_MATCH"
+
+def validar_cpf_com_alertas(cpf: str) -> dict:
+    """
+    Valida CPF e retorna alertas sobre possíveis problemas
+    """
+    cpf_clean = re.sub(r"\D", "", str(cpf))
+    
+    resultado = {
+        "valido": False,
+        "completo": False,
+        "digitos": len(cpf_clean),
+        "alertas": [],
+        "sugestao": None
+    }
+    
+    if not cpf_clean:
+        resultado["alertas"].append("CPF vazio")
+        return resultado
+    
+    # Verifica se tem pelo menos 9 dígitos
+    if len(cpf_clean) < 9:
+        resultado["alertas"].append(f"CPF com apenas {len(cpf_clean)} dígitos (mínimo 9)")
+        return resultado
+    
+    # Verifica se tem 11 dígitos (completo)
+    if len(cpf_clean) == 11:
+        resultado["completo"] = True
+        # Validação básica de CPF (não todos iguais)
+        if cpf_clean == cpf_clean[0] * 11:
+            resultado["alertas"].append("CPF com todos os dígitos iguais")
+            return resultado
+        resultado["valido"] = True
+        return resultado
+    
+    # CPF incompleto (9 ou 10 dígitos)
+    if len(cpf_clean) == 9:
+        resultado["alertas"].append("CPF com 9 dígitos (faltam os 2 dígitos verificadores)")
+        resultado["sugestao"] = "Verificar se o CPF foi digitado corretamente"
+    elif len(cpf_clean) == 10:
+        resultado["alertas"].append("CPF com 10 dígitos (falta 1 dígito verificador)")
+        resultado["sugestao"] = "Verificar se o CPF foi digitado corretamente"
+    
+    return resultado
+
 def norm_text(x) -> str:
     if pd.isna(x):
         return ""
@@ -631,7 +736,24 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
             if not pool_op.empty:
                 pool = pool_op
 
-        # 1) nome exato primeiro
+        # PRIORIDADE 1: CPF (com match inteligente)
+        if cpf_base and len(cpf_base) >= 9:
+            for _, ativo in pool.iterrows():
+                cpf_ativo = str(ativo.get("cpf_clean", "")).strip()
+                match, score, tipo_match = comparar_cpf_inteligente(cpf_base, cpf_ativo)
+                if match and score >= 85:
+                    status_lista.append("Ativo")
+                    tipo_lista.append(f"CPF_PRIORITARIO_{tipo_match}")
+                    score_lista.append(score)
+                    break
+            else:
+                # Se não encontrou por CPF, continua para outras regras
+                pass
+            # Se já encontrou por CPF, pula para o próximo colaborador
+            if len(status_lista) > len([s for s in status_lista if s != "Ativo"]):
+                continue
+
+        # 1) nome exato primeiro (se não encontrou por CPF)
         exatos = pool[pool["nome_norm_flex"] == nome_base_flex].copy()
 
         if len(exatos) == 1:
@@ -639,10 +761,11 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
 
             # se ambos têm CPF, valida
             if cpf_base and cpf_ativo:
-                if cpf_base == cpf_ativo:
+                match, score, tipo_match = comparar_cpf_inteligente(cpf_base, cpf_ativo)
+                if match and score >= 85:
                     status_lista.append("Ativo")
-                    tipo_lista.append("NOME_EXATO_UNICO_CPF_OK")
-                    score_lista.append(100.0)
+                    tipo_lista.append(f"NOME_EXATO_UNICO_CPF_{tipo_match}")
+                    score_lista.append(score)
                 else:
                     status_lista.append("Inativo")
                     tipo_lista.append("NOME_EXATO_UNICO_CPF_DIVERGENTE")
@@ -655,15 +778,22 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
             score_lista.append(100.0)
             continue
 
-        # 2) se nome exato veio duplicado, usa CPF para desempate
+        # 2) se nome exato veio duplicado, usa CPF para desempate (com match inteligente)
         if len(exatos) > 1:
-            if cpf_base and len(cpf_base) == 11:
-                exato_cpf = exatos[exatos["cpf_clean"] == cpf_base].copy()
-                if len(exato_cpf) == 1:
-                    status_lista.append("Ativo")
-                    tipo_lista.append("NOME_DUPLICADO_CPF")
-                    score_lista.append(100.0)
-                    continue
+            if cpf_base and len(cpf_base) >= 9:
+                for _, ativo in exatos.iterrows():
+                    cpf_ativo = str(ativo.get("cpf_clean", "")).strip()
+                    match, score, tipo_match = comparar_cpf_inteligente(cpf_base, cpf_ativo)
+                    if match and score >= 85:
+                        status_lista.append("Ativo")
+                        tipo_lista.append(f"NOME_DUPLICADO_CPF_{tipo_match}")
+                        score_lista.append(score)
+                        break
+                else:
+                    status_lista.append("Inativo")
+                    tipo_lista.append("NOME_DUPLICADO_SEM_DESEMPATE")
+                    score_lista.append(pd.NA)
+                continue
 
             status_lista.append("Inativo")
             tipo_lista.append("NOME_DUPLICADO_SEM_DESEMPATE")
@@ -671,13 +801,20 @@ def classificar_status_colaborador(base_oper: pd.DataFrame, base_ativos: pd.Data
             continue
 
         # 3) fallback por CPF só se não achou por nome
-        if cpf_base and len(cpf_base) == 11:
-            cpf_hit = pool[pool["cpf_clean"] == cpf_base].copy()
-            if len(cpf_hit) == 1:
-                status_lista.append("Ativo")
-                tipo_lista.append("CPF_FALLBACK")
-                score_lista.append(100.0)
-                continue
+        if cpf_base and len(cpf_base) >= 9:
+            for _, ativo in pool.iterrows():
+                cpf_ativo = str(ativo.get("cpf_clean", "")).strip()
+                match, score, tipo_match = comparar_cpf_inteligente(cpf_base, cpf_ativo)
+                if match and score >= 85:
+                    status_lista.append("Ativo")
+                    tipo_lista.append(f"CPF_FALLBACK_{tipo_match}")
+                    score_lista.append(score)
+                    break
+            else:
+                status_lista.append("Inativo")
+                tipo_lista.append("NAO_ENCONTRADO")
+                score_lista.append(pd.NA)
+            continue
 
         # 4) não usa fuzzy para status de ativo/inativo
         status_lista.append("Inativo")
@@ -715,6 +852,36 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
     if pool.empty:
         return None, 0, "SEM_CONTRATO_ANTERIOR"
 
+    # PRIORIDADE 1: CPF com match inteligente
+    if cpf_resp and len(cpf_resp) >= 9:
+        melhores_cpf = []
+        for _, base_row in pool.iterrows():
+            cpf_base = str(base_row.get("cpf_clean", "")).strip()
+            match, score, tipo_match = comparar_cpf_inteligente(cpf_resp, cpf_base)
+            if match and score >= 85:
+                melhores_cpf.append((base_row, score, tipo_match))
+        
+        if melhores_cpf:
+            # Pega o melhor match por CPF
+            melhores_cpf.sort(key=lambda x: x[1], reverse=True)
+            melhor_base, melhor_score, tipo_match = melhores_cpf[0]
+            
+            # Filtra por operação se possível
+            if op_resp_norm and "op_norm" in pool.columns:
+                pool_op = pool[pool["op_norm"] == op_resp_norm].copy()
+                if not pool_op.empty:
+                    # Verifica se o melhor está na operação correta
+                    melhor_op = str(melhor_base.get("op_norm", "")).strip()
+                    if melhor_op != op_resp_norm:
+                        # Tenta encontrar outro com o mesmo CPF e operação correta
+                        for base_row, score, _ in melhores_cpf:
+                            if str(base_row.get("op_norm", "")).strip() == op_resp_norm:
+                                melhor_base = base_row
+                                melhor_score = score
+                                break
+            
+            return melhor_base, melhor_score, f"CPF_PRIORITARIO_{tipo_match}"
+
     # 1) nome exato + operação
     exato = pool[pool["nome_norm_flex"] == nome_resp_flex].copy()
 
@@ -728,11 +895,15 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
         return exato.iloc[0], 100.0, "NOME_EXATO_CONTRATO"
 
     if len(exato) > 1:
-        if cpf_resp and len(cpf_resp) == 11:
-            exato_cpf = exato[exato["cpf_clean"] == cpf_resp].copy()
-            if len(exato_cpf) == 1:
-                exato_cpf = exato_cpf.sort_values("Data_dt", ascending=False)
-                return exato_cpf.iloc[0], 100.0, "NOME_DUPLICADO_CPF_CONTRATO"
+        if cpf_resp and len(cpf_resp) >= 9:
+            for _, base_row in exato.iterrows():
+                cpf_base = str(base_row.get("cpf_clean", "")).strip()
+                match, score, tipo_match = comparar_cpf_inteligente(cpf_resp, cpf_base)
+                if match and score >= 85:
+                    return base_row, score, f"NOME_DUPLICADO_CPF_{tipo_match}"
+                # Se não achou, ordena por data e pega o mais recente
+            exato = exato.sort_values("Data_dt", ascending=False)
+            return exato.iloc[0], 100.0, "NOME_DUPLICADO_DATA_MAIS_RECENTE"
 
     # 2) fuzzy por nome
     cand, score = buscar_melhor_candidato_por_nome(
@@ -770,18 +941,20 @@ def escolher_contrato_da_resposta(row_resp, base_lookup: pd.DataFrame):
                 candidatos = candidatos.sort_values("Data_dt", ascending=False)
                 return candidatos.iloc[0], score, "NOME_FUZZY_CONTRATO"
 
-            if len(candidatos) > 1 and cpf_resp and len(cpf_resp) == 11:
-                cand_cpf = candidatos[candidatos["cpf_clean"] == cpf_resp].copy()
-                if len(cand_cpf) == 1:
-                    cand_cpf = cand_cpf.sort_values("Data_dt", ascending=False)
-                    return cand_cpf.iloc[0], score, "NOME_FUZZY_CPF_CONTRATO"
+            if len(candidatos) > 1 and cpf_resp and len(cpf_resp) >= 9:
+                for _, base_row in candidatos.iterrows():
+                    cpf_base = str(base_row.get("cpf_clean", "")).strip()
+                    match, score_cpf, tipo_match = comparar_cpf_inteligente(cpf_resp, cpf_base)
+                    if match and score_cpf >= 85:
+                        return base_row, score_cpf, f"NOME_FUZZY_CPF_{tipo_match}"
 
     # 3) fallback final por CPF
-    if cpf_resp and len(cpf_resp) == 11:
-        pool_cpf = pool[pool["cpf_clean"] == cpf_resp].copy()
-        if not pool_cpf.empty:
-            pool_cpf = pool_cpf.sort_values("Data_dt", ascending=False)
-            return pool_cpf.iloc[0], 100.0, "CPF_FALLBACK_CONTRATO"
+    if cpf_resp and len(cpf_resp) >= 9:
+        for _, base_row in pool.iterrows():
+            cpf_base = str(base_row.get("cpf_clean", "")).strip()
+            match, score, tipo_match = comparar_cpf_inteligente(cpf_resp, cpf_base)
+            if match and score >= 85:
+                return base_row, score, f"CPF_FALLBACK_{tipo_match}"
 
     return None, score if "score" in locals() else 0, "NAO_ENCONTRADO"
 
@@ -846,33 +1019,103 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
 
         df["match_tipo"] = "NAO_ENCONTRADO"
         df["match_score"] = pd.NA
+        df["match_detalhe"] = pd.NA
 
-        # 1) MATCH EXATO POR NOME + OPERAÇÃO
-        mapa_nome_op = (
-            base[base_cols]
-            .sort_values("Data_dt")
-            .drop_duplicates(subset=["nome_norm_flex", "op_norm"], keep="last")
-            .copy()
-        )
+        # ============================================
+        # MATCH INTELIGENTE POR CPF (PRIORITÁRIO)
+        # ============================================
+        # Cria lookup de CPFs da base
+        base_cpf_lookup = []
+        for _, base_row in base[base_cols].iterrows():
+            cpf_clean = re.sub(r"\D", "", str(base_row.get("cpf_clean", "")))
+            if cpf_clean:
+                base_cpf_lookup.append({
+                    "cpf_original": cpf_clean,
+                    "cpf_sufixo": cpf_clean[-9:] if len(cpf_clean) >= 9 else cpf_clean,
+                    "cpf_completo": len(cpf_clean) == 11,
+                    "contrato_id": base_row["contrato_id"],
+                    "Colaborador": base_row["Colaborador"],
+                    "CPF": base_row["CPF"],
+                    "Cargo": base_row["Cargo"],
+                    "Tipo Cargo": base_row["Tipo Cargo"],
+                    "Operação": base_row["Operação"],
+                    "Data": base_row["Data"],
+                    "Data_dt": base_row["Data_dt"],
+                    "Status Colaborador": base_row["Status Colaborador"],
+                    "op_norm": base_row.get("op_norm", ""),
+                })
+        
+        # Para cada resposta, tenta match por CPF
+        for idx in df.index:
+            cpf_resp = re.sub(r"\D", "", str(df.at[idx, "cpf_clean"]))
+            if not cpf_resp or len(cpf_resp) < 9:
+                continue
+                
+            op_resp_norm = norm_text(str(df.at[idx, "op_norm"]))
+            
+            melhores_matches = []
+            
+            for base_cpf in base_cpf_lookup:
+                match, score, tipo_match = comparar_cpf_inteligente(cpf_resp, base_cpf["cpf_original"])
+                if match and score >= 85:
+                    # Verifica operação
+                    if op_resp_norm:
+                        base_op = str(base_cpf.get("op_norm", "")).strip()
+                        if base_op and base_op != op_resp_norm:
+                            # Se operação não bate, reduz score
+                            score = score * 0.9
+                    melhores_matches.append((base_cpf, score, tipo_match))
+            
+            if melhores_matches:
+                # Ordena por score e pega o melhor
+                melhores_matches.sort(key=lambda x: x[1], reverse=True)
+                melhor_base, melhor_score, tipo_match = melhores_matches[0]
+                
+                # Se o score for alto o suficiente, considera match
+                if melhor_score >= 85:
+                    for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                        df.at[idx, col] = melhor_base[col]
+                    
+                    df.at[idx, "match_tipo"] = "CPF_PRIORITARIO"
+                    df.at[idx, "match_score"] = melhor_score
+                    df.at[idx, "match_detalhe"] = tipo_match
+                    continue
 
-        df_merge_nome_op = df.merge(
-            mapa_nome_op[
-                ["nome_norm_flex", "op_norm", "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]
-            ],
-            on=["nome_norm_flex", "op_norm"],
-            how="left",
-            suffixes=("", "_base")
-        )
+        # ============================================
+        # MATCH EXATO POR NOME + OPERAÇÃO (para os que sobraram)
+        # ============================================
+        falt = df["contrato_id"].isna()
+        if falt.any():
+            mapa_nome_op = (
+                base[base_cols]
+                .sort_values("Data_dt")
+                .drop_duplicates(subset=["nome_norm_flex", "op_norm"], keep="last")
+                .copy()
+            )
 
-        achou_nome_op = df_merge_nome_op["contrato_id_base"].notna()
+            df_merge_nome_op = df.loc[falt].copy().reset_index()
+            df_merge_nome_op = df_merge_nome_op.merge(
+                mapa_nome_op[
+                    ["nome_norm_flex", "op_norm", "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]
+                ],
+                on=["nome_norm_flex", "op_norm"],
+                how="left",
+                suffixes=("", "_base")
+            )
 
-        for idx in df_merge_nome_op[achou_nome_op].index:
-            for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
-                df.at[idx, col] = df_merge_nome_op.at[idx, f"{col}_base"]
-            df.at[idx, "match_tipo"] = "NOME_EXATO_CONTRATO"
-            df.at[idx, "match_score"] = 100.0
+            achou_nome_op = df_merge_nome_op["contrato_id_base"].notna()
 
-        # 1.1) MATCH EXATO POR NOME APENAS, nos que faltaram
+            for _, row in df_merge_nome_op[achou_nome_op].iterrows():
+                idx_real = row["index"]
+                for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
+                    df.at[idx_real, col] = row[f"{col}_base"]
+                df.at[idx_real, "match_tipo"] = "NOME_EXATO_CONTRATO"
+                df.at[idx_real, "match_score"] = 100.0
+                df.at[idx_real, "match_detalhe"] = "NOME+OPERAÇÃO"
+
+        # ============================================
+        # MATCH EXATO POR NOME (para os que sobraram)
+        # ============================================
         falt = df["contrato_id"].isna()
         if falt.any():
             mapa_nome = (
@@ -900,38 +1143,11 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
                     df.at[idx_real, col] = row[f"{col}_base"]
                 df.at[idx_real, "match_tipo"] = "NOME_EXATO_CONTRATO"
                 df.at[idx_real, "match_score"] = 100.0
+                df.at[idx_real, "match_detalhe"] = "NOME_APENAS"
 
-        # 2) MATCH EXATO POR CPF NOS QUE FALTARAM
-        falt = df["contrato_id"].isna()
-        if falt.any():
-            mapa_cpf = (
-                base[base_cols]
-                .loc[base["cpf_clean"].astype(str).str.len() == 11]
-                .sort_values("Data_dt")
-                .drop_duplicates(subset=["cpf_clean"], keep="last")
-                .copy()
-            )
-
-            df_falt = df.loc[falt].copy().reset_index()
-            df_falt = df_falt.merge(
-                mapa_cpf[
-                    ["cpf_clean", "contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]
-                ],
-                on="cpf_clean",
-                how="left",
-                suffixes=("", "_base")
-            )
-
-            achou_cpf = df_falt["contrato_id_base"].notna()
-
-            for _, row in df_falt[achou_cpf].iterrows():
-                idx_real = row["index"]
-                for col in ["contrato_id", "Colaborador", "CPF", "Cargo", "Tipo Cargo", "Operação", "Data", "Data_dt", "Status Colaborador"]:
-                    df.at[idx_real, col] = row[f"{col}_base"]
-                df.at[idx_real, "match_tipo"] = "CPF_CONTRATO"
-                df.at[idx_real, "match_score"] = 100.0
-
-        # 3) FUZZY SÓ NOS RESTANTES
+        # ============================================
+        # FUZZY (para os que sobraram)
+        # ============================================
         falt = df["contrato_id"].isna()
         if falt.any():
             resultados = df.loc[falt].apply(
@@ -951,6 +1167,7 @@ def vincular_checks(base_oper: pd.DataFrame, nps: pd.DataFrame, batepapo: pd.Dat
 
                 df.at[idx, "match_tipo"] = tipo
                 df.at[idx, "match_score"] = score
+                df.at[idx, "match_detalhe"] = "FUZZY"
 
         return df
 
