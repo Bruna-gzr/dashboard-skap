@@ -363,15 +363,18 @@ METAS = {
     "CD SAO CRISTOVAO": {"PDV": {"meta": 3.5}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
     "CD FRANCISCO BELTRAO": {"PDV": {"meta": 2.84}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 89.0}},
     "CD PETROPOLIS": {"PDV": {"meta": 3.05}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
+    "CD SALVADOR": {"PDV": {"meta": 4.2}, "BEES": {"meta": 95.0}, "TML": {"meta": 30.0}, "JL": {"meta": 80.0}},
 }
 METAS = {norm_operacao(k): v for k, v in METAS.items()}
 
 OP_LONDRINA_KEY = norm_operacao("CD LONDRINA")
 OP_PETROPOLIS_KEY = norm_operacao("CD PETROPOLIS")
+OP_SALVADOR_KEY = norm_operacao("CD SALVADOR")
 
 PONTOS_DISTRIB_PADRAO = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}
 PONTOS_DISTRIB_LONDRINA = {"PDV": 5, "TML": 3, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}
 PONTOS_DISTRIB_PETROPOLIS = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}
+PONTOS_DISTRIB_SALVADOR = {"PDV": 5, "BEES": 1, "TML": 2, "JL": 3, "ABS": 5, "VALES": 5, "ACIDENTE": 5, "DTO": 4}
 PONTOS_ARMAZEM = {"ABS": 10, "ACIDENTE": 10, "DTO": 10}
 
 def pontos_distrib_por_operacao(op_key: str) -> dict:
@@ -379,6 +382,8 @@ def pontos_distrib_por_operacao(op_key: str) -> dict:
         return PONTOS_DISTRIB_LONDRINA
     elif op_key == OP_PETROPOLIS_KEY:
         return PONTOS_DISTRIB_PETROPOLIS
+    elif op_key == OP_SALVADOR_KEY:
+        return PONTOS_DISTRIB_SALVADOR
     return PONTOS_DISTRIB_PADRAO
 
 def operacao_sem_bees(op_key: str) -> bool:
