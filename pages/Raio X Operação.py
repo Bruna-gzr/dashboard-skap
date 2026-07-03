@@ -320,6 +320,7 @@ FUNCOES_MAP = {
     normalizar_nome("Motorista Entregador I"): "Motorista de Van",
     normalizar_nome("Motorista Entregador"): "Motorista de Van",
     normalizar_nome("Motorista Entregador II"): "Motorista de Van",
+    normalizar_nome("Motorista Entregador III"): "Motorista de Distribuição",  # <-- NOVO
     normalizar_nome("Motorista Carreta"): "Motorista",
     normalizar_nome("Motorista Bitrem/Rodotrem"): "Motorista",
     normalizar_nome("Ajudante Armazém"): "Ajudante de armazem",
