@@ -1642,6 +1642,15 @@ with right:
             s = "" if pd.isna(x) else str(x).strip()
             return "TRABALHANDO" if normalizar_nome(s) == normalizar_nome("DESCLASSIFICADO") else s
         t["STATUS_EXIB"] = t.get("STATUS_RAW", "").apply(status_exibir)
+        
+        # ===== CORREÇÃO: Garantir que a coluna MÊS existe =====
+        if "MÊS" not in t.columns:
+            if "MES" in t.columns:
+                t["MÊS"] = t["MES"].apply(month_label)
+            else:
+                # Se não tiver nem MES, criar uma coluna vazia
+                t["MÊS"] = ""
+        
         base_cols = {
             ("MÊS",""): t["MÊS"],
             ("COLABORADOR",""): t["COLABORADOR"],
@@ -1650,6 +1659,7 @@ with right:
             ("TOTAL",""): t["TOTAL_PTS"],
         }
         out = pd.DataFrame(base_cols)
+        
         def add_indicador(nome, col_res, col_pts=None):
             out[(nome, "Resultado")] = t[col_res]
             if col_pts is not None:
