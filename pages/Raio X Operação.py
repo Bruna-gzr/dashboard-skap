@@ -943,9 +943,26 @@ if "RV_EMPT_VALOR" in grid.columns:
     grid["RV_EMPT_VALOR"] = pd.to_numeric(grid["RV_EMPT_VALOR"], errors="coerce").fillna(0)
 
 grid["_MES_DT"] = pd.to_datetime(grid["MES"] + "-01", errors="coerce")
-grid["_ADM_MES_DT"] = pd.to_datetime(grid["DATA_ADM_DT"], errors="coerce").dt.to_period("M").dt.to_timestamp()
-grid = grid[grid["_MES_DT"] > grid["_ADM_MES_DT"]].copy()
-grid["MÊS"] = grid["MES"].apply(month_label)
+grid["_ADM_MES_DT"] = (
+    pd.to_datetime(grid["DATA_ADM_DT"], errors="coerce")
+      .dt.to_period("M")
+      .dt.to_timestamp()
+)
+
+# CD SALVADOR aparece já no mês da admissão.
+mask_salvador = grid["OPERACAO"] == "CD SALVADOR"
+
+grid = grid[
+    (
+        mask_salvador
+        & (grid["_MES_DT"] >= grid["_ADM_MES_DT"])
+    )
+    |
+    (
+        ~mask_salvador
+        & (grid["_MES_DT"] > grid["_ADM_MES_DT"])
+    )
+].copy()
 
 # Aplicar cortes de data para novas operações
 def aplicar_corte_operacao(df):
